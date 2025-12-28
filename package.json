@@ -1,0 +1,20 @@
+{
+  "name": "cria",
+  "version": "0.0.1",
+  "description": "Lightweight, fast, and tiny LLM Context & Memory layout renderer to enforce token budgets in long running agents.",
+  "license": "ISC",
+  "author": "me@sebastianlund.se",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.10",
+    "husky": "^9.1.7",
+    "ultracite": "^6.5.0",
+    "jest": "^30.2.0"
+  },
+  "dependencies": {}
+}
