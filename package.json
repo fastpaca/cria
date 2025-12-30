@@ -2,19 +2,35 @@
   "name": "cria",
   "version": "0.0.1",
   "description": "Lightweight, fast, and tiny LLM Context & Memory layout renderer to enforce token budgets in long running agents.",
-  "license": "ISC",
-  "author": "me@sebastianlund.se",
-  "type": "commonjs",
-  "main": "index.js",
+  "license": "MIT",
+  "author": "seb@fastpaca.com",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "test": "",
+    "build": "tsc",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "test": "tsx --test src/**/*.test.tsx",
     "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
+    "@types/node": "^22.0.0",
     "husky": "^9.1.7",
-    "ultracite": "^6.5.0",
-    "jest": "^30.2.0"
-  },
-  "dependencies": {}
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "ultracite": "^6.5.0"
+  }
 }
