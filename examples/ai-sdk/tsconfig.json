@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "cria",
+    "baseUrl": ".",
+    "paths": {
+      "cria": ["../../dist/index.d.ts"],
+      "cria/*": ["../../dist/*"]
+    }
+  },
+  "include": ["*.tsx", "*.ts"]
+}
