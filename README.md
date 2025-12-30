@@ -1,51 +1,63 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/fastpaca/cria/main/docs/logo.svg" alt="Cria" width="200">
-</p>
-
 <h1 align="center">Cria</h1>
 
 <p align="center">
-  Composable prompt components for LLMs
+  Cria is a tiny library for building LLM prompts as reusable components.
+</p>
+
+<p align="center">
+  <i>Debug, view, and save your prompts easily. Swap out components without major rewrites and test your prompts.</i>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/cria"><img src="https://img.shields.io/npm/v/cria?logo=npm&logoColor=white" alt="npm"></a>
   <a href="https://opensource.org/license/mit"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
-  <a href="https://github.com/fastpaca/cria"><img src="https://img.shields.io/github/stars/fastpaca/cria?style=social" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
-  <a href="https://fastpaca.com/blog/failure-case-memory-layout/">Blog Post</a> ·
-  <a href="#getting-started">Getting Started</a> ·
-  <a href="#documentation">Documentation</a>
+  <a href="https://github.com/fastpaca/cria/stargazers">
+    <img src="https://img.shields.io/badge/Give%20a%20Star-Support%20the%20project-orange?style=for-the-badge" alt="Give a Star">
+  </a>
 </p>
 
----
+Most prompt construction is string concatenation. Append everything to some buffer, hope the important parts survive when you hit limits or want to save cost.
 
-Cria is a tiny library for building LLM prompts as component trees. Each region declares a priority—when your prompt exceeds the token budget, Cria trims low-priority content first.
+Cria lets you declare what's expendable and what is not, and makes your prompts failure mode explicit.
+
+Cria treats memory layout as a first-class concern. You declare priorities upfront, and the library handles eviction when needed. Components let you test retrieval logic separately from system prompts, swap implementations without rewrites, and debug exactly which content got cut when quality degrades.
 
 ```tsx
 const prompt = (
   <Region priority={0}>
     You are a helpful assistant.
-    <Truncate budget={20000} from="start" priority={2}>
+
+    {/* Only preserve 80k tokens of history */}
+    <Truncate budget={80000} priority={2}>
       {conversationHistory}
     </Truncate>
+
+    {/* Only preserve 20k tokens of tool calls. It gets dropped
+        first in case we need to. */}
+    <Truncate budget={20000} priority={3}>
+      {toolCalls}
+    </Truncate>
+
+    {/* Skip examples in case we are bad on budget */}
     <Omit priority={3}>{examples}</Omit>
-    <Region priority={1}>{userMessage}</Region>
+
+    {userMessage}
   </Region>
 );
 
 render(prompt, { tokenizer, budget: 128000 });
 ```
 
+Cria will drop lower priority sections or truncate them in case it hits your prompt limits.
 ## Features
 
 - **Composable** — Build prompts from reusable components. Test and optimize each part independently.
 - **Priority-based** — Declare what's sacred (priority 0) and what's expendable (priority 3). No more guessing what gets cut.
 - **Flexible strategies** — Truncate content progressively, omit entire sections, or write custom eviction logic.
-- **Bring your own tokenizer** — Works with tiktoken, gpt-tokenizer, or any counting function.
-- **Tiny** — Zero dependencies. ~2kb minified.
+- **Tiny** — Zero dependencies.
 
 ## Getting Started
 
@@ -70,14 +82,16 @@ Add to your `tsconfig.json`:
 
 **`<Region>`** — The basic building block. Groups content with a priority level.
 
-```tsx
-<Region priority={0}>System instructions</Region>
-<Region priority={2}>Retrieved context</Region>
+```jsx
+<Region>
+  <Region priority={0}>System instructions</Region>
+  <Region priority={2}>Retrieved context</Region>
+</Region>
 ```
 
 **`<Truncate>`** — Progressively shortens content when over budget.
 
-```tsx
+```jsx
 <Truncate budget={10000} from="start" priority={2}>
   {longConversation}
 </Truncate>
@@ -85,7 +99,7 @@ Add to your `tsconfig.json`:
 
 **`<Omit>`** — Drops entirely when space is needed.
 
-```tsx
+```jsx
 <Omit priority={3}>{optionalExamples}</Omit>
 ```
 
@@ -141,14 +155,6 @@ try {
   }
 }
 ```
-
-## Why Cria?
-
-Most prompt construction is string concatenation—append everything to a buffer and hope the important parts survive context limits.
-
-Cria treats memory layout as a first-class concern. You declare priorities upfront, and the library handles eviction when needed. Components let you test retrieval logic separately from system prompts, swap implementations without rewrites, and debug exactly which content got cut when quality degrades.
-
-Read more: [Failure-First Memory Layout](https://fastpaca.com/blog/failure-case-memory-layout/)
 
 ## Contributing
 
