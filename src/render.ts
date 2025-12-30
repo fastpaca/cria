@@ -78,7 +78,9 @@ function flatten(
   let buffer = "";
 
   const flushBuffer = () => {
-    if (buffer.length === 0) return;
+    if (buffer.length === 0) {
+      return;
+    }
     const tokens = tokenizer(buffer);
     if (tokens > 0) {
       const fragment: PromptFragment = {
@@ -97,7 +99,9 @@ function flatten(
   };
 
   for (const child of element.children) {
-    if (!child) continue;
+    if (!child) {
+      continue;
+    }
 
     if (typeof child === "string") {
       buffer += child;

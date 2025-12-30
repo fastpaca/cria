@@ -22,8 +22,8 @@
  *
  * @packageDocumentation
  */
-// biome-ignore lint/performance/noBarrelFile: Entry point for package exports
 
+// biome-ignore lint/performance/noBarrelFile: Entry point for package exports
 export { Omit, Region, Truncate } from "./components";
 export { render } from "./render";
 export type {
