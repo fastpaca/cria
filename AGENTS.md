@@ -19,10 +19,24 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 ### Type Safety & Explicitness
 
 - Use explicit types for function parameters and return values when they enhance clarity
-- Prefer `unknown` over `any` when the type is genuinely unknown
+- Use `unknown` only at trust boundaries (I/O, JSON, env); never use `any`, and narrow immediately so the rest of the code works with concrete types
 - Use const assertions (`as const`) for immutable values and literal types
 - Leverage TypeScript's type narrowing instead of type assertions
+- Prefer `satisfies` for object literals to guarantee shape without widening types
+- Model state with discriminated unions and exhaustively handle them (`switch` + `assertNever`) to catch new variants
+- Avoid type assertions and non-null assertions (`!`)—add type guards or restructure code so the type system already proves safety
+- Default to immutable shapes: `const` bindings, `readonly` arrays/tuples, and `Readonly<T>` when mutation is not required
+- Validate external inputs (APIs, env, user data) once, then trust the refined types instead of re-validating downstream
+- Do not accept dictionary-style inputs (`Record<string, unknown>`, `object`) when you can define a concrete shape—model exact contracts instead of loose bags of values
+- Avoid defensive re-checking of types inside trusted layers; keep runtime validation at the boundaries and rely on the refined types internally
 - Use meaningful variable names instead of magic numbers - extract constants with descriptive names
+
+### Functional & Immutability
+
+- Prefer pure, small helpers over functions with hidden side effects; keep effects at the edges (I/O, logging)
+- Use array transforms (`map`, `filter`, `reduce`, `flatMap`) when they make the code clearer than imperative loops; keep intermediate values `const` and well named
+- Avoid mutating inputs or shared state; create updated copies instead, but avoid repeated spreads inside hot loops—prefer preallocated structures or a single rebuild
+- Favor expressive composition over deeply nested conditionals; early returns plus small helpers keep the flow readable
 
 ### Modern JavaScript/TypeScript
 
