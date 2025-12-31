@@ -33,7 +33,7 @@ interface RenderOptions {
  *
  * @example
  * ```tsx
- * import { render, Region, Omit } from "cria";
+ * import { render, Region, Omit } from "@fastpaca/cria";
  *
  * const prompt = (
  *   <Region priority={0}>

@@ -1,6 +1,6 @@
 import { openai } from "@ai-sdk/openai";
+import { Omit, Region, render, Truncate } from "@fastpaca/cria";
 import { generateText } from "ai";
-import { Omit, Region, render, Truncate } from "cria";
 import { encoding_for_model } from "tiktoken";
 
 // Create a tokenizer using tiktoken (GPT-4 encoding)

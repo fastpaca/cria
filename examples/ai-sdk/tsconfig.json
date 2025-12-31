@@ -6,11 +6,11 @@
     "strict": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "cria",
+    "jsxImportSource": "@fastpaca/cria",
     "baseUrl": ".",
     "paths": {
-      "cria": ["../../dist/index.d.ts"],
-      "cria/*": ["../../dist/*"]
+      "@fastpaca/cria": ["../../dist/index.d.ts"],
+      "@fastpaca/cria/*": ["../../dist/*"]
     }
   },
   "include": ["*.tsx", "*.ts"]

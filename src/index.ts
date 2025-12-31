@@ -3,7 +3,7 @@
  *
  * @example
  * ```tsx
- * import { render, Region, Truncate, Omit } from "cria";
+ * import { render, Region, Truncate, Omit } from "@fastpaca/cria";
  *
  * const prompt = (
  *   <Region priority={0}>

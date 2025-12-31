@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/cria"><img src="https://img.shields.io/npm/v/cria?logo=npm&logoColor=white" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/@fastpaca/cria"><img src="https://img.shields.io/npm/v/@fastpaca/cria?logo=npm&logoColor=white" alt="npm"></a>
   <a href="https://opensource.org/license/mit"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
 </p>
 
@@ -62,7 +62,7 @@ Cria will drop lower priority sections or truncate them in case it hits your pro
 ## Getting Started
 
 ```bash
-npm install cria
+npm install @fastpaca/cria
 ```
 
 Add to your `tsconfig.json`:
@@ -71,7 +71,7 @@ Add to your `tsconfig.json`:
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "cria"
+    "jsxImportSource": "@fastpaca/cria"
   }
 }
 ```
@@ -132,7 +132,7 @@ render(prompt, { tokenizer, budget: 128000 });
 Write your own eviction logic:
 
 ```tsx
-import type { Strategy } from "cria";
+import type { Strategy } from "@fastpaca/cria";
 
 const summarize: Strategy = ({ target, tokenizer }) => {
   const summary = createSummary(target.content);
@@ -145,7 +145,7 @@ const summarize: Strategy = ({ target, tokenizer }) => {
 ### Error Handling
 
 ```tsx
-import { FitError } from "cria";
+import { FitError } from "@fastpaca/cria";
 
 try {
   render(prompt, { tokenizer, budget: 1000 });
