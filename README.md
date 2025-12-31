@@ -156,6 +156,47 @@ try {
 }
 ```
 
+## Roadmap
+
+- [x] JSX
+- [x] Priority-based eviction (lower number = higher importance)
+- [x] Components 
+   - [x] Region
+   - [x] Truncate
+   - [x] Omit
+- [x] Custom strategy support (pure, deterministic, idempotent)
+- [x] Basic error handling
+
+**Ergonomics & Adapters**
+
+- [ ] Pluggable renderers
+  - [ ] OpenAI
+  - [ ] Anthropic
+  - [ ] AI SDK
+- [ ] Integrations
+  - [ ] Message storage
+  - [ ] Vector storage / search index
+- [ ] Components
+  - [ ] Summary
+  - [ ] Messages
+  - [ ] RAG/Vector-search
+  - [ ] Tools / Tool Calls 
+  - [ ] Examples
+  - [ ] Code
+  - [ ] Seperators
+- [ ] Tokenizer helpers
+- [ ] Next.js adapter (`cria/nextjs`)
+
+**Observability**
+
+- [ ] Debug mode: trace callback + summary of dropped/truncated/kept
+- [ ] Visual debug UI / demo UI
+- [ ] Traces
+  - [ ] diff viewer
+  - [ ] exportable JSON
+- [ ] Snapshots/checkpointing
+- [ ] Rendering caches based on identifiers
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
