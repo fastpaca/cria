@@ -1,6 +1,5 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
 import type { UIMessage } from "ai";
+import { expect, test } from "vitest";
 import { AiSdkMessages, aiSdkRenderer } from "./ai-sdk";
 import { render } from "./render";
 
@@ -31,16 +30,16 @@ test("AiSdkMessages: renders text + dynamic-tool output as tool-call/tool-result
     budget: 10_000,
   });
 
-  assert.ok(prompt.includes("### user"));
-  assert.ok(prompt.includes("hi"));
-  assert.ok(prompt.includes("### assistant"));
-  assert.ok(prompt.includes("checking weather"));
-  assert.ok(prompt.includes("#### Tool Call"));
-  assert.ok(prompt.includes("`getWeather`"));
-  assert.ok(prompt.includes("```json"));
-  assert.ok(prompt.includes('"city": "Paris"'));
-  assert.ok(prompt.includes("#### Tool Result"));
-  assert.ok(prompt.includes('"tempC": 10'));
+  expect(prompt).toContain("### user");
+  expect(prompt).toContain("hi");
+  expect(prompt).toContain("### assistant");
+  expect(prompt).toContain("checking weather");
+  expect(prompt).toContain("#### Tool Call");
+  expect(prompt).toContain("`getWeather`");
+  expect(prompt).toContain("```json");
+  expect(prompt).toContain('"city": "Paris"');
+  expect(prompt).toContain("#### Tool Result");
+  expect(prompt).toContain('"tempC": 10');
 });
 
 test("AiSdkMessages: includeReasoning controls reasoning rendering", async () => {
@@ -59,16 +58,16 @@ test("AiSdkMessages: includeReasoning controls reasoning rendering", async () =>
     tokenizer,
     budget: 10_000,
   });
-  assert.ok(!withoutReasoning.includes("secret reasoning"));
-  assert.ok(withoutReasoning.includes("public answer"));
+  expect(withoutReasoning).not.toContain("secret reasoning");
+  expect(withoutReasoning).toContain("public answer");
 
   const withReasoning = await render(
     <AiSdkMessages includeReasoning messages={messages} />,
     { tokenizer, budget: 10_000 }
   );
-  assert.ok(withReasoning.includes("#### Reasoning"));
-  assert.ok(withReasoning.includes("secret reasoning"));
-  assert.ok(withReasoning.includes("public answer"));
+  expect(withReasoning).toContain("#### Reasoning");
+  expect(withReasoning).toContain("secret reasoning");
+  expect(withReasoning).toContain("public answer");
 });
 
 test("aiSdkRenderer: renders semantic IR to ModelMessage[] (tool call + tool result split)", async () => {
@@ -97,8 +96,8 @@ test("aiSdkRenderer: renders semantic IR to ModelMessage[] (tool call + tool res
     renderer: aiSdkRenderer,
   });
 
-  assert.strictEqual(modelMessages.length, 3);
-  assert.strictEqual(modelMessages[0]?.role, "user");
-  assert.strictEqual(modelMessages[1]?.role, "assistant");
-  assert.strictEqual(modelMessages[2]?.role, "tool");
+  expect(modelMessages).toHaveLength(3);
+  expect(modelMessages[0]?.role).toBe("user");
+  expect(modelMessages[1]?.role).toBe("assistant");
+  expect(modelMessages[2]?.role).toBe("tool");
 });

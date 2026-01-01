@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { test } from "node:test";
+import { expect, test } from "vitest";
 import { Omit, Region, render, Truncate } from "./index";
 
 // Simple tokenizer: 1 token per 4 characters (approximates real tokenizers)
@@ -10,7 +9,7 @@ const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 test("render: basic text output", async () => {
   const element = <Region priority={0}>Hello, world!</Region>;
   const result = await render(element, { tokenizer, budget: 100 });
-  assert.strictEqual(result, "Hello, world!");
+  expect(result).toBe("Hello, world!");
 });
 
 test("render: nested regions", async () => {
@@ -20,7 +19,7 @@ test("render: nested regions", async () => {
     </Region>
   );
   const result = await render(element, { tokenizer, budget: 100 });
-  assert.strictEqual(result, "Start Middle End");
+  expect(result).toBe("Start Middle End");
 });
 
 test("render: omit removes region when over budget", async () => {
@@ -33,11 +32,11 @@ test("render: omit removes region when over budget", async () => {
   );
 
   const resultLarge = await render(element, { tokenizer, budget: 100 });
-  assert.ok(resultLarge.includes("Less important"));
+  expect(resultLarge).toContain("Less important");
 
   const resultSmall = await render(element, { tokenizer, budget: 10 });
-  assert.ok(!resultSmall.includes("Less important"));
-  assert.ok(resultSmall.includes("Important"));
+  expect(resultSmall).not.toContain("Less important");
+  expect(resultSmall).toContain("Important");
 });
 
 test("render: truncate reduces content", async () => {
@@ -52,8 +51,8 @@ test("render: truncate reduces content", async () => {
   );
 
   const result = await render(element, { tokenizer, budget: 10 });
-  assert.ok(result.length < 100);
-  assert.ok(result.includes("Header"));
+  expect(result.length).toBeLessThan(100);
+  expect(result).toContain("Header");
 });
 
 test("render: priority ordering - lower priority removed first", async () => {
@@ -66,9 +65,9 @@ test("render: priority ordering - lower priority removed first", async () => {
   );
 
   const result = await render(element, { tokenizer, budget: 5 });
-  assert.ok(result.includes("Critical"));
-  assert.ok(!result.includes("Medium"));
-  assert.ok(!result.includes("Low"));
+  expect(result).toContain("Critical");
+  expect(result).not.toContain("Medium");
+  expect(result).not.toContain("Low");
 });
 
 test("render: throws FitError when cannot fit", async () => {
@@ -78,8 +77,7 @@ test("render: throws FitError when cannot fit", async () => {
     </Region>
   );
 
-  await assert.rejects(
-    () => render(element, { tokenizer, budget: 1 }),
+  await expect(render(element, { tokenizer, budget: 1 })).rejects.toThrow(
     FIT_ERROR_PATTERN
   );
 });
@@ -97,5 +95,5 @@ test("render: multiple strategies at same priority applied together", async () =
   );
 
   const result = await render(element, { tokenizer, budget: 0 });
-  assert.strictEqual(result, "");
+  expect(result).toBe("");
 });
