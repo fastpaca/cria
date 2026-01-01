@@ -24,14 +24,30 @@
  */
 
 // biome-ignore lint/performance/noBarrelFile: Entry point for package exports
-export { Omit, Region, Truncate } from "./components";
+export {
+  Message,
+  Omit,
+  Reasoning,
+  Region,
+  ToolCall,
+  ToolResult,
+  Truncate,
+} from "./components";
+export type { RenderOptions } from "./render";
 export { render } from "./render";
+export { markdownRenderer } from "./renderers/markdown";
 export type {
+  MaybePromise,
+  PromptChild,
   PromptChildren,
   PromptElement,
-  PromptFragment,
+  PromptKind,
+  PromptNodeKind,
+  PromptRenderer,
+  PromptRole,
   Strategy,
   StrategyInput,
+  StrategyResult,
   Tokenizer,
 } from "./types";
 export { FitError } from "./types";

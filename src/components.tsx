@@ -1,10 +1,5 @@
-import type {
-  PromptChildren,
-  PromptElement,
-  PromptFragment,
-  Strategy,
-  StrategyInput,
-} from "./types";
+import type { Child } from "./jsx-runtime";
+import type { PromptChildren, PromptElement, Strategy } from "./types";
 
 /** Props for the Region component. */
 interface RegionProps {
@@ -15,7 +10,7 @@ interface RegionProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content of this region */
-  children?: PromptChildren;
+  children?: Child;
 }
 
 /**
@@ -39,7 +34,112 @@ export function Region({
 }: RegionProps): PromptElement {
   return {
     priority,
-    children: children as (PromptElement | string)[],
+    // Children are normalized by the JSX runtime into PromptChildren.
+    children: children as PromptChildren,
+    ...(strategy && { strategy }),
+    ...(id && { id }),
+  };
+}
+
+interface SemanticRegionProps {
+  /** Lower number = higher importance. Default: 0 (highest priority) */
+  priority?: number;
+  /** Optional strategy to apply when this region needs to shrink */
+  strategy?: Strategy;
+  /** Stable identifier for caching/debugging */
+  id?: string;
+}
+
+interface MessageProps extends SemanticRegionProps {
+  role: string;
+  children?: Child;
+}
+
+export function Message({
+  role,
+  priority = 0,
+  strategy,
+  id,
+  children = [],
+}: MessageProps): PromptElement {
+  return {
+    kind: "message",
+    role,
+    priority,
+    // Children are normalized by the JSX runtime into PromptChildren.
+    children: children as PromptChildren,
+    ...(strategy && { strategy }),
+    ...(id && { id }),
+  };
+}
+
+interface ReasoningProps extends SemanticRegionProps {
+  text: string;
+}
+
+export function Reasoning({
+  text,
+  priority = 0,
+  strategy,
+  id,
+}: ReasoningProps): PromptElement {
+  return {
+    kind: "reasoning",
+    text,
+    priority,
+    children: [],
+    ...(strategy && { strategy }),
+    ...(id && { id }),
+  };
+}
+
+interface ToolCallProps extends SemanticRegionProps {
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+}
+
+export function ToolCall({
+  toolCallId,
+  toolName,
+  input,
+  priority = 0,
+  strategy,
+  id,
+}: ToolCallProps): PromptElement {
+  return {
+    kind: "tool-call",
+    toolCallId,
+    toolName,
+    input,
+    priority,
+    children: [],
+    ...(strategy && { strategy }),
+    ...(id && { id }),
+  };
+}
+
+interface ToolResultProps extends SemanticRegionProps {
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+}
+
+export function ToolResult({
+  toolCallId,
+  toolName,
+  output,
+  priority = 0,
+  strategy,
+  id,
+}: ToolResultProps): PromptElement {
+  return {
+    kind: "tool-result",
+    toolCallId,
+    toolName,
+    output,
+    priority,
+    children: [],
     ...(strategy && { strategy }),
     ...(id && { id }),
   };
@@ -56,7 +156,7 @@ interface TruncateProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content to truncate */
-  children?: PromptChildren;
+  children?: Child;
 }
 
 /**
@@ -79,46 +179,38 @@ export function Truncate({
   id,
   children = [],
 }: TruncateProps): PromptElement {
-  const strategy: Strategy = (input: StrategyInput): PromptFragment[] => {
-    const { target, tokenizer } = input;
-    if (target.tokens <= budget) {
-      return [target];
+  const strategy: Strategy = (input) => {
+    const content = input.tokenString(input.target);
+    let tokens = input.tokenizer(content);
+    if (tokens <= budget) {
+      return input.target;
     }
 
-    let content = target.content;
-    let tokens = target.tokens;
+    let truncated = content;
 
     // TODO(v1): Optimize - this calls tokenizer O(n) times. Consider:
     // - Estimate chars/token ratio, binary search to target
     // - Cache intermediate token counts
-    while (tokens > budget && content.length > 0) {
-      const charsToRemove = Math.max(1, Math.floor(content.length * 0.1));
-      if (from === "start") {
-        content = content.slice(charsToRemove);
-      } else {
-        content = content.slice(0, -charsToRemove);
-      }
-      tokens = tokenizer(content);
+    while (tokens > budget && truncated.length > 0) {
+      const charsToRemove = Math.max(1, Math.floor(truncated.length * 0.1));
+      truncated =
+        from === "start"
+          ? truncated.slice(charsToRemove)
+          : truncated.slice(0, -charsToRemove);
+      tokens = input.tokenizer(truncated);
     }
 
-    if (content.length === 0) {
-      return [];
+    if (truncated.length === 0) {
+      return null;
     }
 
-    return [
-      {
-        content,
-        tokens,
-        priority: target.priority,
-        regionId: target.regionId,
-        index: target.index,
-      },
-    ];
+    return { ...input.target, children: [truncated] };
   };
 
   return {
     priority,
-    children: children as (PromptElement | string)[],
+    // Children are normalized by the JSX runtime into PromptChildren.
+    children: children as PromptChildren,
     strategy,
     ...(id && { id }),
   };
@@ -131,7 +223,7 @@ interface OmitProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content that may be omitted */
-  children?: PromptChildren;
+  children?: Child;
 }
 
 /**
@@ -152,11 +244,12 @@ export function Omit({
   id,
   children = [],
 }: OmitProps): PromptElement {
-  const strategy: Strategy = (): PromptFragment[] => [];
+  const strategy: Strategy = () => null;
 
   return {
     priority,
-    children: children as (PromptElement | string)[],
+    // Children are normalized by the JSX runtime into PromptChildren.
+    children: children as PromptChildren,
     strategy,
     ...(id && { id }),
   };

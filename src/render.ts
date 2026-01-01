@@ -1,237 +1,157 @@
+import { markdownRenderer } from "./renderers/markdown";
 import {
   FitError,
   type PromptElement,
-  type PromptFragment,
-  type Strategy,
+  type PromptRenderer,
   type StrategyInput,
   type Tokenizer,
 } from "./types";
 
-/** Options for the render function. */
-interface RenderOptions {
-  /** Function to count tokens in a string (e.g., tiktoken) */
+export interface RenderOptions {
   tokenizer: Tokenizer;
-  /** Maximum token count for the final output */
   budget: number;
+  renderer?: PromptRenderer<unknown>;
 }
 
-/**
- * Renders a PromptElement tree to a fitted string.
- *
- * This is the main entry point for Cria. Takes a JSX tree and returns a string
- * that fits within the specified token budget.
- *
- * **Pipeline:**
- * 1. `flatten`: Walks the tree, collects text into ordered PromptFragment[]
- * 2. `fitToBudget`: Applies strategies starting from lowest priority until under budget
- * 3. `join`: Concatenates fragment content into final string
- *
- * @param element - The root PromptElement (from JSX)
- * @param options - Tokenizer and budget configuration
- * @returns The fitted prompt string
- * @throws {FitError} When the prompt cannot fit within budget
- *
- * @example
- * ```tsx
- * import { render, Region, Omit } from "@fastpaca/cria";
- *
- * const prompt = (
- *   <Region priority={0}>
- *     System prompt
- *     <Omit priority={2}>Optional context</Omit>
- *   </Region>
- * );
- *
- * const result = render(prompt, {
- *   tokenizer: (text) => Math.ceil(text.length / 4),
- *   budget: 1000,
- * });
- * ```
- */
-export function render(
+type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
+  renderer: PromptRenderer<infer TOutput>;
+}
+  ? TOutput
+  : string;
+
+export async function render<TOptions extends RenderOptions>(
   element: PromptElement,
-  { tokenizer, budget }: RenderOptions
-): string {
+  { tokenizer, budget, renderer }: TOptions
+): Promise<RenderOutput<TOptions>> {
+  const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<
+    RenderOutput<TOptions>
+  >;
+
   if (budget <= 0) {
-    return "";
+    return resolvedRenderer.empty();
   }
 
-  const fragments = flatten(element, tokenizer, { counter: 0 });
-  const fitted = fitToBudget(fragments, budget, tokenizer);
-  return fitted.map((f) => f.content).join("");
-}
-
-/**
- * Turns a PromptElement tree into an ordered list of PromptFragment.
- *
- * - Preserves text order (flush text buffer before descending into child elements).
- * - Inherits priority/strategy from the emitting element.
- * - Assigns regionId: explicit id if provided, else auto-incrementing counter.
- * - Computes token counts with the provided tokenizer.
- */
-function flatten(
-  element: PromptElement,
-  tokenizer: Tokenizer,
-  ctx: { counter: number },
-  fragments: PromptFragment[] = []
-): PromptFragment[] {
-  let buffer = "";
-
-  const flushBuffer = () => {
-    if (buffer.length === 0) {
-      return;
-    }
-    const tokens = tokenizer(buffer);
-    if (tokens > 0) {
-      const fragment: PromptFragment = {
-        content: buffer,
-        tokens,
-        priority: element.priority,
-        regionId: element.id ?? `r${ctx.counter++}`,
-        index: fragments.length,
-      };
-      if (element.strategy) {
-        fragment.strategy = element.strategy;
-      }
-      fragments.push(fragment);
-    }
-    buffer = "";
-  };
-
-  for (const child of element.children) {
-    if (!child) {
-      continue;
-    }
-
-    if (typeof child === "string") {
-      buffer += child;
-    } else {
-      // Flush current text before descending to maintain order
-      flushBuffer();
-      flatten(child, tokenizer, ctx, fragments);
-    }
-  }
-
-  // Flush any trailing text
-  flushBuffer();
-
-  return fragments;
-}
-
-/**
- * Finds the highest priority number (least important) among fragments with strategies.
- */
-function findLowestImportancePriority(
-  fragments: PromptFragment[]
-): number | null {
-  const priorities = fragments
-    .filter((f) => f.strategy !== undefined)
-    .map((f) => f.priority);
-
-  if (priorities.length === 0) {
-    return null;
-  }
-
-  return Math.max(...priorities);
-}
-
-/**
- * Applies a single strategy to its target fragment.
- * Splices replacements in-place and recomputes token counts.
- */
-function applyStrategy(
-  result: PromptFragment[],
-  target: PromptFragment,
-  budget: number,
-  tokenizer: Tokenizer,
-  iteration: number
-): void {
-  const strategy = target.strategy as Strategy;
-  const targetIndex = result.findIndex((f) => f.regionId === target.regionId);
-
-  if (targetIndex === -1) {
-    return;
-  }
-
-  const currentTarget = result[targetIndex];
-  if (!currentTarget) {
-    return;
-  }
-
-  const input: StrategyInput = {
-    fragments: result,
-    target: currentTarget,
+  const fitted = await fitToBudget(
+    element,
     budget,
     tokenizer,
-    totalTokens: result.reduce((sum, f) => sum + f.tokens, 0),
-    iteration,
-  };
-
-  const replacement = strategy(input);
-
-  // Splice replacement at target position
-  result.splice(targetIndex, 1, ...replacement);
-
-  // Recompute tokens for modified fragments
-  for (const frag of replacement) {
-    frag.tokens = tokenizer(frag.content);
+    resolvedRenderer.tokenString
+  );
+  if (!fitted) {
+    return resolvedRenderer.empty();
   }
+
+  return (await resolvedRenderer.render(fitted)) as RenderOutput<TOptions>;
 }
 
-/**
- * Repeatedly applies strategies starting from the least-important priority
- * until the total token count is within budget.
- *
- * Throws FitError if:
- * - No progress is made in an iteration (strategies didn't reduce tokens)
- * - No strategies remain but still over budget
- */
-function fitToBudget(
-  fragments: PromptFragment[],
+async function fitToBudget(
+  element: PromptElement,
   budget: number,
-  tokenizer: Tokenizer
-): PromptFragment[] {
-  const result = [...fragments];
+  tokenizer: Tokenizer,
+  tokenString: (element: PromptElement) => string
+): Promise<PromptElement | null> {
+  let current: PromptElement | null = element;
   let iteration = 0;
-  const maxIterations = 1000;
+  let totalTokens = tokenizer(tokenString(element));
 
-  while (true) {
-    const totalTokens = result.reduce((sum, f) => sum + f.tokens, 0);
-
-    if (totalTokens <= budget) {
-      return result;
-    }
-
+  while (current && totalTokens > budget) {
     iteration++;
-    if (iteration > maxIterations) {
-      throw new FitError(totalTokens - budget, -1, iteration);
-    }
 
-    const lowestImportancePriority = findLowestImportancePriority(result);
+    const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
       throw new FitError(totalTokens - budget, -1, iteration);
     }
 
-    // Collect all targets at this priority
-    const targets = result.filter(
-      (f) => f.strategy !== undefined && f.priority === lowestImportancePriority
+    const ctx = {
+      budget,
+      tokenizer,
+      tokenString,
+      totalTokens,
+      iteration,
+    } satisfies Omit<StrategyInput, "target">;
+
+    const applied = await applyStrategiesAtPriority(
+      current,
+      lowestImportancePriority,
+      ctx
     );
+    current = applied.element;
 
-    const tokensBefore = totalTokens;
-
-    // Apply strategies in stable order
-    for (const target of targets) {
-      applyStrategy(result, target, budget, tokenizer, iteration);
-    }
-
-    // Check progress
-    const tokensAfter = result.reduce((sum, f) => sum + f.tokens, 0);
-    if (tokensAfter >= tokensBefore) {
+    const nextTokens = current ? tokenizer(tokenString(current)) : 0;
+    if (nextTokens >= totalTokens) {
       throw new FitError(
-        tokensAfter - budget,
+        nextTokens - budget,
         lowestImportancePriority,
         iteration
       );
     }
+
+    totalTokens = nextTokens;
   }
+
+  return current;
+}
+
+function findLowestImportancePriority(element: PromptElement): number | null {
+  let maxPriority: number | null = element.strategy ? element.priority : null;
+
+  for (const child of element.children) {
+    if (typeof child === "string") {
+      continue;
+    }
+    const childMax = findLowestImportancePriority(child);
+    maxPriority = maxNullable(maxPriority, childMax);
+  }
+
+  return maxPriority;
+}
+
+function maxNullable(a: number | null, b: number | null): number | null {
+  if (a === null) {
+    return b;
+  }
+  if (b === null) {
+    return a;
+  }
+  return Math.max(a, b);
+}
+
+async function applyStrategiesAtPriority(
+  element: PromptElement,
+  priority: number,
+  ctx: Omit<StrategyInput, "target">
+): Promise<{ element: PromptElement | null; applied: boolean }> {
+  let childrenChanged = false;
+  const nextChildren: typeof element.children = [];
+
+  for (const child of element.children) {
+    if (typeof child === "string") {
+      nextChildren.push(child);
+      continue;
+    }
+
+    const applied = await applyStrategiesAtPriority(child, priority, ctx);
+    if (applied.applied) {
+      childrenChanged = true;
+    }
+    if (applied.element) {
+      nextChildren.push(applied.element);
+    } else {
+      childrenChanged = true;
+    }
+  }
+
+  const nextElement = childrenChanged
+    ? ({ ...element, children: nextChildren } as PromptElement)
+    : element;
+
+  if (nextElement.strategy && nextElement.priority === priority) {
+    const replacement = await nextElement.strategy({
+      ...ctx,
+      target: nextElement,
+    });
+    return { element: replacement, applied: true };
+  }
+
+  return { element: nextElement, applied: childrenChanged };
 }

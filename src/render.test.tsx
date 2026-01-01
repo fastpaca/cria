@@ -7,23 +7,23 @@ const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 
-test("render: basic text output", () => {
+test("render: basic text output", async () => {
   const element = <Region priority={0}>Hello, world!</Region>;
-  const result = render(element, { tokenizer, budget: 100 });
+  const result = await render(element, { tokenizer, budget: 100 });
   assert.strictEqual(result, "Hello, world!");
 });
 
-test("render: nested regions", () => {
+test("render: nested regions", async () => {
   const element = (
     <Region priority={0}>
       Start <Region priority={1}>Middle</Region> End
     </Region>
   );
-  const result = render(element, { tokenizer, budget: 100 });
+  const result = await render(element, { tokenizer, budget: 100 });
   assert.strictEqual(result, "Start Middle End");
 });
 
-test("render: omit removes region when over budget", () => {
+test("render: omit removes region when over budget", async () => {
   const element = (
     <Region priority={0}>
       Important{" "}
@@ -32,15 +32,15 @@ test("render: omit removes region when over budget", () => {
     </Region>
   );
 
-  const resultLarge = render(element, { tokenizer, budget: 100 });
+  const resultLarge = await render(element, { tokenizer, budget: 100 });
   assert.ok(resultLarge.includes("Less important"));
 
-  const resultSmall = render(element, { tokenizer, budget: 10 });
+  const resultSmall = await render(element, { tokenizer, budget: 10 });
   assert.ok(!resultSmall.includes("Less important"));
   assert.ok(resultSmall.includes("Important"));
 });
 
-test("render: truncate reduces content", () => {
+test("render: truncate reduces content", async () => {
   const longContent = "A".repeat(100);
   const element = (
     <Region priority={0}>
@@ -51,12 +51,12 @@ test("render: truncate reduces content", () => {
     </Region>
   );
 
-  const result = render(element, { tokenizer, budget: 10 });
+  const result = await render(element, { tokenizer, budget: 10 });
   assert.ok(result.length < 100);
   assert.ok(result.includes("Header"));
 });
 
-test("render: priority ordering - lower priority removed first", () => {
+test("render: priority ordering - lower priority removed first", async () => {
   const element = (
     <Region priority={0}>
       <Region priority={0}>Critical</Region>
@@ -65,26 +65,26 @@ test("render: priority ordering - lower priority removed first", () => {
     </Region>
   );
 
-  const result = render(element, { tokenizer, budget: 5 });
+  const result = await render(element, { tokenizer, budget: 5 });
   assert.ok(result.includes("Critical"));
   assert.ok(!result.includes("Medium"));
   assert.ok(!result.includes("Low"));
 });
 
-test("render: throws FitError when cannot fit", () => {
+test("render: throws FitError when cannot fit", async () => {
   const element = (
     <Region priority={0}>
       This content has no strategy and cannot be reduced
     </Region>
   );
 
-  assert.throws(
+  await assert.rejects(
     () => render(element, { tokenizer, budget: 1 }),
     FIT_ERROR_PATTERN
   );
 });
 
-test("render: multiple strategies at same priority applied together", () => {
+test("render: multiple strategies at same priority applied together", async () => {
   const element = (
     <Region priority={0}>
       <Omit id="a" priority={1}>
@@ -96,6 +96,6 @@ test("render: multiple strategies at same priority applied together", () => {
     </Region>
   );
 
-  const result = render(element, { tokenizer, budget: 0 });
+  const result = await render(element, { tokenizer, budget: 0 });
   assert.strictEqual(result, "");
 });

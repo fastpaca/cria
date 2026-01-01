@@ -181,6 +181,7 @@ try {
   - [ ] Messages
   - [ ] RAG/Vector-search
   - [ ] Tools / Tool Calls 
+  - [ ] Reasoning
   - [ ] Examples
   - [ ] Code
   - [ ] Seperators

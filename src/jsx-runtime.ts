@@ -1,20 +1,35 @@
-import type { PromptElement } from "./types";
+import type { PromptChildren, PromptElement } from "./types";
 
 type ComponentFn = (props: Props) => PromptElement;
-type Child =
+
+/**
+ * JSX child input type (pre-normalization).
+ *
+ * Why this exists:
+ * - `PromptElement.children` (the IR) is always stored as canonical `PromptChildren`
+ *   (`PromptElement | string` flattened into an array).
+ * - But JSX syntax allows much more: numbers, booleans, null/undefined, and nested arrays.
+ *   TypeScript will type-check those against the component prop type.
+ *
+ * This type represents what JSX can pass in; `normalizeChildren()` is the only place
+ * we flatten/filter/coerce into the canonical IR representation.
+ *
+ * Keep this type local to the JSX runtime to avoid leaking JSX-specific concerns
+ * into core IR and renderer types.
+ */
+export type Child =
   | PromptElement
   | string
   | number
   | boolean
   | null
   | undefined
-  | Child[];
-type Props = Record<string, unknown> & { children?: Child | Child[] };
+  | readonly Child[];
+
+type Props = Record<string, unknown> & { children?: Child };
 
 // Normalize children: flatten arrays, filter nullish, coerce numbers to strings
-function normalizeChildren(
-  children: Child | Child[] | undefined
-): (PromptElement | string)[] {
+function normalizeChildren(children: Child | undefined): PromptChildren {
   if (children === undefined || children === null) {
     return [];
   }
@@ -28,8 +43,8 @@ function normalizeChildren(
     return [String(children)];
   }
 
-  if (Array.isArray(children)) {
-    const result: (PromptElement | string)[] = [];
+  if (isChildrenArray(children)) {
+    const result: PromptChildren = [];
     for (const child of children) {
       result.push(...normalizeChildren(child));
     }
@@ -38,6 +53,10 @@ function normalizeChildren(
 
   // It's a PromptElement
   return [children];
+}
+
+function isChildrenArray(value: Child): value is readonly Child[] {
+  return Array.isArray(value);
 }
 
 // Fragment: just returns children (inlined into parent)

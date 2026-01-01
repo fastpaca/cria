@@ -1,128 +1,48 @@
 /**
- * What can be passed as children to a Cria component.
+ * Message role used by semantic `kind: "message"` regions.
  *
- * Includes all JSX-compatible values: elements, strings, numbers, booleans,
- * null/undefined (ignored), and arrays (flattened). The jsx-runtime normalizes
- * these into `(PromptElement | string)[]` before storing in the element.
- *
- * @example
- * ```tsx
- * <Region>
- *   {"Hello"}
- *   {123}
- *   {items.map(item => <Region>{item}</Region>)}
- * </Region>
- * ```
+ * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool),
+ * while still allowing custom roles for bespoke targets.
  */
-export type PromptChildren =
-  | PromptElement
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | readonly PromptChildren[];
+export type PromptRole =
+  | "system"
+  | "user"
+  | "assistant"
+  | "tool"
+  | (string & {});
 
 /**
- * The core IR node type. All Cria components return a PromptElement.
+ * Semantic variants for a region node.
  *
- * This is the normalized representation after JSX transformation.
- * The render pipeline traverses this tree to produce fragments for fitting.
- *
- * @property priority - Lower number = higher importance (kept longer during fitting)
- * @property strategy - Optional function to reduce this region when over budget
- * @property id - Optional stable identifier for caching/debugging
- * @property children - Normalized array of child elements and text
- *
- * @example
- * ```tsx
- * // Created via JSX:
- * <Region priority={0}>System prompt</Region>
- *
- * // Produces:
- * { priority: 0, children: ["System prompt"] }
- * ```
+ * Cria’s IR is “Regions all the way down” (like a DOM tree). `PromptKind` is how we
+ * recognize certain regions as prompt parts so renderers can emit structured
+ * targets without parsing strings.
  */
-export interface PromptElement {
-  priority: number;
-  strategy?: Strategy;
-  id?: string;
-  children: (PromptElement | string)[];
-}
+export type PromptKind =
+  | { kind?: undefined }
+  | { kind: "message"; role: PromptRole }
+  | {
+      kind: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
+  | {
+      kind: "tool-result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+    }
+  | { kind: "reasoning"; text: string };
 
-/**
- * A flattened text fragment produced by the render pipeline.
- *
- * The render step walks the PromptElement tree and emits an ordered list of
- * fragments. The fit loop then applies strategies to reduce token count.
- *
- * @property content - The text content of this fragment
- * @property tokens - Token count (computed via the provided tokenizer)
- * @property priority - Inherited from the emitting element
- * @property regionId - Stable identifier (from element.id or auto-generated)
- * @property strategy - If present, this fragment can be reduced during fitting
- * @property index - Position in the fragment list (for stable ordering)
- */
-export interface PromptFragment {
-  content: string;
-  tokens: number;
-  priority: number;
-  regionId: string;
-  strategy?: Strategy;
-  index: number;
-}
+export type PromptNodeKind = PromptKind["kind"];
 
-/**
- * A strategy function that reduces a fragment when the prompt is over budget.
- *
- * Strategies are called during the fit loop, starting with the least important
- * priority (highest number). They receive context about the current state and
- * must return replacement fragments (or empty array to remove entirely).
- *
- * Strategies must be:
- * - **Pure**: Don't mutate the input fragments
- * - **Deterministic**: Same input = same output
- * - **Idempotent**: Applying twice has no additional effect
- *
- * @example
- * ```typescript
- * // A strategy that removes the fragment entirely
- * const omitStrategy: Strategy = () => [];
- *
- * // A strategy that truncates from the end
- * const truncateStrategy: Strategy = ({ target, tokenizer }) => {
- *   let content = target.content.slice(0, 100);
- *   return [{ ...target, content, tokens: tokenizer(content) }];
- * };
- * ```
- */
-export type Strategy = (input: StrategyInput) => PromptFragment[];
-
-/**
- * Context passed to strategy functions during the fit loop.
- *
- * @property fragments - All current fragments (readonly, don't mutate)
- * @property target - The specific fragment this strategy should reduce
- * @property budget - The total token budget we're trying to fit within
- * @property tokenizer - Function to count tokens in a string
- * @property totalTokens - Current total token count across all fragments
- * @property iteration - Which iteration of the fit loop (for debugging)
- */
-export interface StrategyInput {
-  fragments: readonly PromptFragment[];
-  target: PromptFragment;
-  budget: number;
-  tokenizer: Tokenizer;
-  totalTokens: number;
-  iteration: number;
-}
+// Convenience type for functions that can return a promise or a value.
+export type MaybePromise<T> = T | Promise<T>;
 
 /**
  * A function that counts tokens in a string.
- *
- * Cria doesn't bundle a tokenizer—you provide one. Common choices:
- * - `tiktoken` for OpenAI models (cl100k_base for GPT-4)
- * - Simple approximation: `text => Math.ceil(text.length / 4)`
+ * Cria doesn't bundle a tokenizer. You provide one.
  *
  * @example
  * ```typescript
@@ -133,6 +53,132 @@ export interface StrategyInput {
  * ```
  */
 export type Tokenizer = (text: string) => number;
+
+/**
+ * The core IR node type. All Cria components return a `PromptElement`.
+ *
+ * **Everything is a Region** (think: a DOM `<div>`): `priority`, `strategy`, and
+ * `children` make up the structural prompt tree.
+ *
+ * If you attach a semantic `kind` (via `PromptKind`), the node becomes a recognized
+ * prompt part (message/tool-call/tool-result/reasoning) and renderers can emit
+ * structured targets without parsing strings.
+ */
+export type PromptElement = {
+  /**
+   * Lower number = higher importance.
+   *
+   * Fitting starts reducing from the highest priority number (least important).
+   */
+  priority: number;
+
+  /**
+   * Strategy used during fitting to shrink this region.
+   *
+   * Strategies are tree-aware and may rewrite the subtree rooted at this element.
+   *
+   * If not provided, the region will never be reduced.
+   */
+  strategy?: Strategy;
+
+  /** Optional stable identifier for caching/debugging. */
+  id?: string;
+
+  /** Canonical normalized children stored in the IR. */
+  children: PromptChildren;
+} & PromptKind;
+
+/**
+ * A renderer that converts a fitted prompt tree into an output format.
+ *
+ * Renderers are used for two things:
+ * - **Token accounting / fitting** via `tokenString` (a stable string projection)
+ * - **Final output** via `render` (can be async, and can produce any type)
+ *
+ * @template TOutput - The produced output type (e.g. `string`, `ModelMessage[]`, etc.).
+ */
+export interface PromptRenderer<TOutput> {
+  /** A short identifier for debugging/observability. */
+  name: string;
+
+  /**
+   * A deterministic string projection of the prompt tree used for token counting.
+   *
+   * Important properties:
+   * - **Pure / deterministic**: same tree => same string
+   * - **Cheap**: called frequently during fitting
+   * - **Representative**: should correlate with what `render()` produces (especially for string targets)
+   *
+   * For structured targets (e.g. AI SDK messages), this can be a markdown-ish projection
+   * that approximates the effective prompt content for token budgeting.
+   */
+  tokenString: (element: PromptElement) => string;
+
+  /**
+   * Render the fitted prompt tree to the target output.
+   *
+   * May be async (e.g. when a renderer needs to fetch/resolve attachments, or when
+   * strategies summarized content during fitting).
+   */
+  render: (element: PromptElement) => MaybePromise<TOutput>;
+
+  /**
+   * The “empty” value for this renderer.
+   *
+   * Used when the budget is <= 0, or when strategies remove the entire tree.
+   */
+  empty: () => TOutput;
+}
+
+/**
+ * Canonical normalized child node type stored in the IR.
+ *
+ * This is the only type you’ll find inside `PromptElement.children` after JSX normalization.
+ */
+export type PromptChild = PromptElement | string;
+
+/**
+ * Canonical normalized children list stored on `PromptElement.children`.
+ */
+export type PromptChildren = PromptChild[];
+
+export type StrategyResult = PromptElement | null;
+
+/**
+ * Context passed to strategy functions during the fit loop.
+ *
+ * @property target - The specific region to reduce
+ * @property budget - The total token budget we're trying to fit within
+ * @property tokenizer - Function to count tokens in a string
+ * @property tokenString - Renderer-provided projection used for token counting
+ * @property totalTokens - Current total token count for the prompt
+ * @property iteration - Which iteration of the fit loop (for debugging)
+ */
+export interface StrategyInput {
+  target: PromptElement;
+  budget: number;
+  tokenizer: Tokenizer;
+  tokenString: (element: PromptElement) => string;
+  totalTokens: number;
+  iteration: number;
+}
+
+/**
+ * A Strategy function that rewrites a region subtree when the prompt is over budget.
+ *
+ * Strategies are applied during fitting, starting from the least important
+ * priority (highest number). Strategies run **bottom-up** (post-order) so nested
+ * regions get a chance to shrink before their parents.
+ *
+ * Strategies must be:
+ * - **Pure**: don't mutate the input element
+ * - **Deterministic**
+ * - **Idempotent**
+ *
+ * Strategies have full ownership of their subtree: they can replace the element
+ * and/or rewrite any children.
+ */
+export type Strategy = (input: StrategyInput) => MaybePromise<StrategyResult>;
 
 /**
  * Error thrown when the prompt cannot be fit within the budget.
