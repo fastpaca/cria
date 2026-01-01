@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import { expect, test } from "vitest";
-import { AiSdkMessages, aiSdkRenderer } from "./ai-sdk";
-import { render } from "./render";
+import { render } from "../render";
+import { AiSdkMessages, aiSdkRenderer } from "./index";
 
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
@@ -30,16 +30,27 @@ test("AiSdkMessages: renders text + dynamic-tool output as tool-call/tool-result
     budget: 10_000,
   });
 
-  expect(prompt).toContain("### user");
-  expect(prompt).toContain("hi");
-  expect(prompt).toContain("### assistant");
-  expect(prompt).toContain("checking weather");
-  expect(prompt).toContain("#### Tool Call");
-  expect(prompt).toContain("`getWeather`");
-  expect(prompt).toContain("```json");
-  expect(prompt).toContain('"city": "Paris"');
-  expect(prompt).toContain("#### Tool Result");
-  expect(prompt).toContain('"tempC": 10');
+  const expected = [
+    "User: hi",
+    "",
+    'Assistant: checking weather<tool_call name="getWeather">',
+    "{",
+    '  "city": "Paris"',
+    "}",
+    "</tool_call>",
+    '<tool_result name="getWeather">',
+    "{",
+    '  "type": "json",',
+    '  "value": {',
+    '    "tempC": 10',
+    "  }",
+    "}",
+    "</tool_result>",
+    "",
+    "",
+  ].join("\n");
+
+  expect(prompt).toBe(expected);
 });
 
 test("AiSdkMessages: includeReasoning controls reasoning rendering", async () => {
@@ -65,7 +76,7 @@ test("AiSdkMessages: includeReasoning controls reasoning rendering", async () =>
     <AiSdkMessages includeReasoning messages={messages} />,
     { tokenizer, budget: 10_000 }
   );
-  expect(withReasoning).toContain("#### Reasoning");
+  expect(withReasoning).toContain("<thinking>");
   expect(withReasoning).toContain("secret reasoning");
   expect(withReasoning).toContain("public answer");
 });

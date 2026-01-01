@@ -5,14 +5,20 @@ import type {
   ToolResultPart,
   UIMessage,
 } from "ai";
-import { Message, Reasoning, Region, ToolCall, ToolResult } from "./components";
-import { markdownRenderer } from "./renderers/markdown";
+import {
+  Message,
+  Reasoning,
+  Region,
+  ToolCall,
+  ToolResult,
+} from "../components";
+import { markdownRenderer } from "../renderers/markdown";
 import type {
   PromptChildren,
   PromptElement,
   PromptRenderer,
   Strategy,
-} from "./types";
+} from "../types";
 
 export interface AiSdkPriorities {
   system: number;
