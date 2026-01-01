@@ -13,6 +13,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./ai-sdk": {
+      "types": "./dist/ai-sdk.d.ts",
+      "import": "./dist/ai-sdk.js"
+    },
     "./jsx-runtime": {
       "types": "./dist/jsx-runtime.d.ts",
       "import": "./dist/jsx-runtime.js"
@@ -29,6 +33,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "ai": "^6.0.0",
     "@biomejs/biome": "^2.3.10",
     "@types/node": "^22.0.0",
     "husky": "^9.1.7",
