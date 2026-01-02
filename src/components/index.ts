@@ -53,18 +53,19 @@ interface SemanticRegionProps {
   id?: string;
 }
 
-interface MessagePropsBase extends SemanticRegionProps {
+interface MessageProps extends SemanticRegionProps {
+  /** The message role (user, assistant, system, etc.) */
+  messageRole: PromptRole;
   children?: Child;
 }
 
-type MessageProps =
-  | (MessagePropsBase & { messageRole: PromptRole; role?: never })
-  | (MessagePropsBase & { role: PromptRole; messageRole?: never });
-
-export function Message(props: MessageProps): PromptElement {
-  const { priority = 0, strategy, id, children = [] } = props;
-  const messageRole = "messageRole" in props ? props.messageRole : props.role;
-
+export function Message({
+  messageRole,
+  priority = 0,
+  strategy,
+  id,
+  children = [],
+}: MessageProps): PromptElement {
   return {
     kind: "message",
     role: messageRole,
