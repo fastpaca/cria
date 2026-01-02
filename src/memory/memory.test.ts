@@ -1,80 +1,80 @@
 import { expect, test } from "vitest";
-import { createMemory } from "./in-memory";
+import { InMemoryStore } from "./in-memory";
 
-test("createMemory: basic get/set operations", async () => {
-  const memory = createMemory<{ value: number }>();
+test("InMemoryStore: basic get/set operations", () => {
+  const store = new InMemoryStore<{ value: number }>();
 
-  expect(await memory.get("nonexistent")).toBeNull();
+  expect(store.get("nonexistent")).toBeNull();
 
-  await memory.set("key1", { value: 42 });
+  store.set("key1", { value: 42 });
 
-  const entry = await memory.get("key1");
+  const entry = store.get("key1");
   expect(entry).not.toBeNull();
   expect(entry?.data).toEqual({ value: 42 });
   expect(entry?.createdAt).toBeGreaterThan(0);
   expect(entry?.updatedAt).toBeGreaterThan(0);
 });
 
-test("createMemory: has() checks existence", async () => {
-  const memory = createMemory<string>();
+test("InMemoryStore: has() checks existence", () => {
+  const store = new InMemoryStore<string>();
 
-  expect(await memory.has("missing")).toBe(false);
+  expect(store.has("missing")).toBe(false);
 
-  await memory.set("exists", "hello");
+  store.set("exists", "hello");
 
-  expect(await memory.has("exists")).toBe(true);
-  expect(await memory.has("missing")).toBe(false);
+  expect(store.has("exists")).toBe(true);
+  expect(store.has("missing")).toBe(false);
 });
 
-test("createMemory: delete() removes entries", async () => {
-  const memory = createMemory<string>();
+test("InMemoryStore: delete() removes entries", () => {
+  const store = new InMemoryStore<string>();
 
-  await memory.set("key", "value");
-  expect(await memory.has("key")).toBe(true);
+  store.set("key", "value");
+  expect(store.has("key")).toBe(true);
 
-  const deleted = await memory.delete("key");
+  const deleted = store.delete("key");
   expect(deleted).toBe(true);
-  expect(await memory.has("key")).toBe(false);
+  expect(store.has("key")).toBe(false);
 
   // Delete non-existent returns false
-  const notDeleted = await memory.delete("key");
+  const notDeleted = store.delete("key");
   expect(notDeleted).toBe(false);
 });
 
-test("createMemory: update preserves createdAt, updates updatedAt", async () => {
-  const memory = createMemory<{ count: number }>();
+test("InMemoryStore: update preserves createdAt, updates updatedAt", async () => {
+  const store = new InMemoryStore<{ count: number }>();
 
-  await memory.set("key", { count: 1 });
-  const first = await memory.get("key");
+  store.set("key", { count: 1 });
+  const first = store.get("key");
 
   // Wait a tiny bit to ensure different timestamp
   await new Promise((r) => setTimeout(r, 5));
 
-  await memory.set("key", { count: 2 });
-  const second = await memory.get("key");
+  store.set("key", { count: 2 });
+  const second = store.get("key");
 
   expect(second?.data.count).toBe(2);
   expect(second?.createdAt).toBe(first?.createdAt);
   expect(second?.updatedAt).toBeGreaterThanOrEqual(first?.updatedAt ?? 0);
 });
 
-test("createMemory: set with metadata", async () => {
-  const memory = createMemory<string>();
+test("InMemoryStore: set with metadata", () => {
+  const store = new InMemoryStore<string>();
 
-  await memory.set("key", "value", { source: "test", priority: 1 });
+  store.set("key", "value", { source: "test", priority: 1 });
 
-  const entry = await memory.get("key");
+  const entry = store.get("key");
   expect(entry?.metadata).toEqual({ source: "test", priority: 1 });
 });
 
-test("createMemory: list returns all entries", async () => {
-  const memory = createMemory<number>();
+test("InMemoryStore: list returns all entries", () => {
+  const store = new InMemoryStore<number>();
 
-  await memory.set("a", 1);
-  await memory.set("b", 2);
-  await memory.set("c", 3);
+  store.set("a", 1);
+  store.set("b", 2);
+  store.set("c", 3);
 
-  const { entries, nextCursor } = await memory.list();
+  const { entries, nextCursor } = store.list();
 
   expect(entries.length).toBe(3);
   expect(entries.map((e) => e.key)).toEqual(["a", "b", "c"]);
@@ -82,47 +82,47 @@ test("createMemory: list returns all entries", async () => {
   expect(nextCursor).toBeNull();
 });
 
-test("createMemory: list with prefix filter", async () => {
-  const memory = createMemory<string>();
+test("InMemoryStore: list with prefix filter", () => {
+  const store = new InMemoryStore<string>();
 
-  await memory.set("user:1", "alice");
-  await memory.set("user:2", "bob");
-  await memory.set("session:abc", "active");
+  store.set("user:1", "alice");
+  store.set("user:2", "bob");
+  store.set("session:abc", "active");
 
-  const { entries } = await memory.list({ prefix: "user:" });
+  const { entries } = store.list({ prefix: "user:" });
 
   expect(entries.length).toBe(2);
   expect(entries.map((e) => e.key)).toEqual(["user:1", "user:2"]);
 });
 
-test("createMemory: list with limit", async () => {
-  const memory = createMemory<number>();
+test("InMemoryStore: list with limit", () => {
+  const store = new InMemoryStore<number>();
 
   for (let i = 0; i < 10; i++) {
-    await memory.set(`key-${i.toString().padStart(2, "0")}`, i);
+    store.set(`key-${i.toString().padStart(2, "0")}`, i);
   }
 
-  const { entries, nextCursor } = await memory.list({ limit: 3 });
+  const { entries, nextCursor } = store.list({ limit: 3 });
 
   expect(entries.length).toBe(3);
   expect(entries.map((e) => e.entry.data)).toEqual([0, 1, 2]);
   expect(nextCursor).toBe("key-02");
 });
 
-test("createMemory: list with cursor pagination", async () => {
-  const memory = createMemory<number>();
+test("InMemoryStore: list with cursor pagination", () => {
+  const store = new InMemoryStore<number>();
 
   for (let i = 0; i < 5; i++) {
-    await memory.set(`k${i}`, i);
+    store.set(`k${i}`, i);
   }
 
   // First page
-  const page1 = await memory.list({ limit: 2 });
+  const page1 = store.list({ limit: 2 });
   expect(page1.entries.map((e) => e.entry.data)).toEqual([0, 1]);
   expect(page1.nextCursor).toBe("k1");
 
   // Second page
-  const page2 = await memory.list({
+  const page2 = store.list({
     limit: 2,
     cursor: page1.nextCursor ?? undefined,
   });
@@ -130,7 +130,7 @@ test("createMemory: list with cursor pagination", async () => {
   expect(page2.nextCursor).toBe("k3");
 
   // Third page (last)
-  const page3 = await memory.list({
+  const page3 = store.list({
     limit: 2,
     cursor: page2.nextCursor ?? undefined,
   });
@@ -138,29 +138,29 @@ test("createMemory: list with cursor pagination", async () => {
   expect(page3.nextCursor).toBeNull();
 });
 
-test("createMemory: clear removes all entries", async () => {
-  const memory = createMemory<string>();
+test("InMemoryStore: clear removes all entries", () => {
+  const store = new InMemoryStore<string>();
 
-  await memory.set("a", "1");
-  await memory.set("b", "2");
-  expect(await memory.size()).toBe(2);
+  store.set("a", "1");
+  store.set("b", "2");
+  expect(store.size()).toBe(2);
 
-  await memory.clear();
-  expect(await memory.size()).toBe(0);
-  expect(await memory.get("a")).toBeNull();
+  store.clear();
+  expect(store.size()).toBe(0);
+  expect(store.get("a")).toBeNull();
 });
 
-test("createMemory: size returns entry count", async () => {
-  const memory = createMemory<string>();
+test("InMemoryStore: size returns entry count", () => {
+  const store = new InMemoryStore<string>();
 
-  expect(await memory.size()).toBe(0);
+  expect(store.size()).toBe(0);
 
-  await memory.set("a", "1");
-  expect(await memory.size()).toBe(1);
+  store.set("a", "1");
+  expect(store.size()).toBe(1);
 
-  await memory.set("b", "2");
-  expect(await memory.size()).toBe(2);
+  store.set("b", "2");
+  expect(store.size()).toBe(2);
 
-  await memory.delete("a");
-  expect(await memory.size()).toBe(1);
+  store.delete("a");
+  expect(store.size()).toBe(1);
 });

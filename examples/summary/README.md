@@ -6,7 +6,7 @@ Demonstrates using the `<Summary>` and `<Last>` components for progressive conve
 
 - `<Summary>` - Summarizes older messages when the prompt exceeds budget
 - `<Last N={4}>` - Keeps the last 4 messages in full
-- `memoryStore()` - In-memory storage for summaries
+- `InMemoryStore` - In-memory storage for summaries
 - Custom summarizer using OpenAI
 
 ## Running

@@ -1,8 +1,7 @@
 import { expect, test } from "vitest";
 import {
-  createMemory,
+  InMemoryStore,
   Last,
-  memoryStore,
   Region,
   render,
   type StoredSummary,
@@ -13,7 +12,7 @@ import {
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
 test("Summary: triggers summarization when over budget", async () => {
-  const store = memoryStore();
+  const store = new InMemoryStore<StoredSummary>();
   let summarizeCalled = false;
 
   const summarize = ({ content }: { content: string }) => {
@@ -41,7 +40,7 @@ test("Summary: triggers summarization when over budget", async () => {
 });
 
 test("Summary: stores summary in store", async () => {
-  const store = memoryStore();
+  const store = new InMemoryStore<StoredSummary>();
 
   const summarize = () => "This is the summary";
 
@@ -55,21 +54,20 @@ test("Summary: stores summary in store", async () => {
 
   await render(element, { tokenizer, budget: 20 });
 
-  const stored = await store.get("test-2");
-  expect(stored).not.toBeNull();
-  expect(stored?.content).toBe("This is the summary");
-  expect(stored?.tokenCount).toBeGreaterThan(0);
-  expect(stored?.lastUpdated).toBeGreaterThan(0);
+  const entry = store.get("test-2");
+  expect(entry).not.toBeNull();
+  expect(entry?.data.content).toBe("This is the summary");
+  expect(entry?.data.tokenCount).toBeGreaterThan(0);
+  expect(entry?.updatedAt).toBeGreaterThan(0);
 });
 
 test("Summary: passes existing summary to summarizer", async () => {
-  const store = memoryStore();
+  const store = new InMemoryStore<StoredSummary>();
 
   // Pre-populate store
-  await store.set("test-3", {
+  store.set("test-3", {
     content: "Previous summary",
     tokenCount: 10,
-    lastUpdated: Date.now(),
   });
 
   let receivedExisting: string | null = null;
@@ -98,7 +96,7 @@ test("Summary: passes existing summary to summarizer", async () => {
 });
 
 test("Summary: does not trigger when under budget", async () => {
-  const store = memoryStore();
+  const store = new InMemoryStore<StoredSummary>();
   let summarizeCalled = false;
 
   const summarize = () => {
@@ -153,101 +151,8 @@ test("Last: handles N larger than children count", async () => {
   expect(result).toContain("Two");
 });
 
-test("memoryStore: basic get/set operations", async () => {
-  const store = memoryStore();
-
-  expect(await store.get("nonexistent")).toBeNull();
-
-  const summary = {
-    content: "Test summary",
-    tokenCount: 5,
-    lastUpdated: Date.now(),
-  };
-
-  await store.set("key1", summary);
-
-  const retrieved = await store.get("key1");
-  expect(retrieved).toEqual(summary);
-});
-
-test("Summary: works with new createMemory interface", async () => {
-  const memory = createMemory<StoredSummary>();
-  let summarizeCalled = false;
-
-  const summarize = ({ content }: { content: string }) => {
-    summarizeCalled = true;
-    return `Summary of: ${content.slice(0, 20)}...`;
-  };
-
-  const longContent = "A".repeat(200);
-
-  const element = (
-    <Region priority={0}>
-      <Summary
-        id="test-memory"
-        priority={1}
-        store={memory}
-        summarize={summarize}
-      >
-        {longContent}
-      </Summary>
-    </Region>
-  );
-
-  const result = await render(element, { tokenizer, budget: 30 });
-
-  expect(summarizeCalled).toBe(true);
-  expect(result).toContain("Summary of:");
-
-  // Verify it stored in the new memory format
-  const stored = await memory.get("test-memory");
-  expect(stored).not.toBeNull();
-  expect(stored?.data.content).toContain("Summary of:");
-  expect(stored?.data.tokenCount).toBeGreaterThan(0);
-  expect(stored?.createdAt).toBeGreaterThan(0);
-});
-
-test("Summary: new memory interface passes existing summary", async () => {
-  const memory = createMemory<StoredSummary>();
-
-  // Pre-populate with the new interface
-  await memory.set("test-existing", {
-    content: "Previous summary",
-    tokenCount: 10,
-  });
-
-  let receivedExisting: string | null = null;
-
-  const summarize = ({
-    existingSummary,
-  }: {
-    content: string;
-    existingSummary: string | null;
-  }) => {
-    receivedExisting = existingSummary;
-    return "Updated summary";
-  };
-
-  const element = (
-    <Region priority={0}>
-      <Summary
-        id="test-existing"
-        priority={1}
-        store={memory}
-        summarize={summarize}
-      >
-        {"Content ".repeat(100)}
-      </Summary>
-    </Region>
-  );
-
-  await render(element, { tokenizer, budget: 20 });
-
-  expect(receivedExisting).toBe("Previous summary");
-});
-
 test("Summary + Last: typical usage pattern", async () => {
-  const store = memoryStore();
+  const store = new InMemoryStore<StoredSummary>();
 
   // Summarizer produces a short fixed-length output
   const summarize = () => "Discussed greetings";

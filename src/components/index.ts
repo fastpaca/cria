@@ -282,10 +282,5 @@ export function Last({
   };
 }
 
-export type {
-  StoredSummary,
-  Summarizer,
-  SummarizerContext,
-  SummaryStore,
-} from "./summary";
-export { memoryStore, Summary } from "./summary";
+export type { StoredSummary, Summarizer, SummarizerContext } from "./summary";
+export { Summary } from "./summary";

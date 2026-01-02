@@ -1,10 +1,11 @@
 import { openai } from "@ai-sdk/openai";
 import {
+  InMemoryStore,
   Last,
   Message,
-  memoryStore,
   Region,
   render,
+  type StoredSummary,
   Summary,
 } from "@fastpaca/cria";
 import { renderer } from "@fastpaca/cria/ai-sdk";
@@ -16,7 +17,7 @@ const enc = encoding_for_model("gpt-4");
 const tokenizer = (text: string): number => enc.encode(text).length;
 
 // Create a persistent store for summaries
-const store = memoryStore();
+const store = new InMemoryStore<StoredSummary>();
 
 // Simulated conversation history (imagine this grows over time)
 const conversationHistory = [
@@ -144,11 +145,11 @@ console.log("=== Rendered Messages ===");
 console.log(JSON.stringify(messages, null, 2));
 
 // Show stored summary
-const storedSummary = await store.get("conversation-summary");
-if (storedSummary) {
+const storedEntry = store.get("conversation-summary");
+if (storedEntry) {
   console.log("\n=== Stored Summary ===");
-  console.log(storedSummary.content);
-  console.log(`Token count: ${storedSummary.tokenCount}`);
+  console.log(storedEntry.data.content);
+  console.log(`Token count: ${storedEntry.data.tokenCount}`);
 }
 
 async function main() {

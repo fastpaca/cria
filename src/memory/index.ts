@@ -1,29 +1,21 @@
 /**
  * LLM Memory interfaces and implementations.
  *
- * This module provides storage abstractions for LLM-related data like
- * conversation summaries, embeddings, cached responses, and more.
- *
  * @example
  * ```typescript
- * import { createMemory } from "@fastpaca/cria";
+ * import { InMemoryStore, type StoredSummary } from "@fastpaca/cria";
  *
- * // Create an in-memory store
- * const memory = createMemory<{ content: string }>();
- *
- * // Use with Summary component
- * <Summary store={memory} ... />
+ * const store = new InMemoryStore<StoredSummary>();
  * ```
  *
  * @packageDocumentation
  */
 
-export { createMemory } from "./in-memory";
+export { InMemoryStore } from "./in-memory";
 export type {
   KVListOptions,
   KVListResult,
   KVMemory,
-  LLMMemory,
   MemoryEntry,
   VectorMemory,
   VectorSearchOptions,

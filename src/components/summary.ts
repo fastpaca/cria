@@ -1,5 +1,5 @@
 import type { Child } from "../jsx-runtime";
-import type { LLMMemory } from "../memory";
+import type { KVMemory } from "../memory";
 import type {
   MaybePromise,
   PromptChildren,
@@ -15,17 +15,6 @@ export interface StoredSummary {
   content: string;
   /** Token count of the summary */
   tokenCount: number;
-  /** Timestamp when last updated (used by legacy memoryStore) */
-  lastUpdated?: number;
-}
-
-/**
- * Legacy storage adapter for persisting summaries.
- * @deprecated Use `LLMMemory<StoredSummary>` instead
- */
-export interface SummaryStore {
-  get(id: string): MaybePromise<StoredSummary | null>;
-  set(id: string, summary: StoredSummary): MaybePromise<void>;
 }
 
 /**
@@ -43,59 +32,9 @@ export interface SummarizerContext {
  */
 export type Summarizer = (ctx: SummarizerContext) => MaybePromise<string>;
 
-/**
- * Creates an in-memory summary store.
- * @deprecated Use `createMemory<StoredSummary>()` instead
- */
-export function memoryStore(): SummaryStore {
-  const map = new Map<string, StoredSummary>();
-  return {
-    get(id) {
-      return map.get(id) ?? null;
-    },
-    set(id, summary) {
-      map.set(id, { ...summary, lastUpdated: Date.now() });
-    },
-  };
-}
-
-/**
- * Type that accepts either the new LLMMemory interface or legacy SummaryStore.
- */
-type SummaryMemory = LLMMemory<StoredSummary> | SummaryStore;
-
-/**
- * Normalizes a store to the new interface for internal use.
- */
-function normalizeSummaryStore(store: SummaryMemory): {
-  get: (id: string) => MaybePromise<StoredSummary | null>;
-  set: (id: string, summary: StoredSummary) => MaybePromise<void>;
-} {
-  // Check if it's the new LLMMemory interface (has entry wrapper)
-  // vs the legacy SummaryStore (returns data directly)
-  const isLLMMemory =
-    "has" in store && "delete" in store && typeof store.has === "function";
-
-  if (isLLMMemory) {
-    const llmMemory = store as LLMMemory<StoredSummary>;
-    return {
-      async get(id) {
-        const entry = await llmMemory.get(id);
-        return entry?.data ?? null;
-      },
-      async set(id, summary) {
-        await llmMemory.set(id, summary);
-      },
-    };
-  }
-
-  // Legacy SummaryStore - use as-is
-  return store as SummaryStore;
-}
-
 interface SummaryStrategyOptions {
   id: string;
-  store: SummaryMemory;
+  store: KVMemory<StoredSummary>;
   summarize: Summarizer;
 }
 
@@ -104,25 +43,22 @@ function createSummaryStrategy({
   store,
   summarize,
 }: SummaryStrategyOptions): Strategy {
-  const normalizedStore = normalizeSummaryStore(store);
-
   return async (input) => {
     const { target, tokenizer, tokenString } = input;
 
     const content = tokenString(target);
-    const existingSummary = await normalizedStore.get(id);
+    const existingEntry = await store.get(id);
 
     const newSummary = await summarize({
       content,
-      existingSummary: existingSummary?.content ?? null,
+      existingSummary: existingEntry?.data.content ?? null,
     });
 
     const newTokenCount = tokenizer(newSummary);
 
-    await normalizedStore.set(id, {
+    await store.set(id, {
       content: newSummary,
       tokenCount: newTokenCount,
-      lastUpdated: Date.now(),
     });
 
     // Return as an assistant message so it renders properly
@@ -138,8 +74,8 @@ function createSummaryStrategy({
 interface SummaryProps {
   /** Unique identifier for this summary in the store */
   id: string;
-  /** Storage adapter for persisting summaries (LLMMemory or legacy SummaryStore) */
-  store: SummaryMemory;
+  /** Storage adapter for persisting summaries */
+  store: KVMemory<StoredSummary>;
   /** Function that generates summaries */
   summarize: Summarizer;
   /** Priority for this region (higher number = reduced first). Default: 0 */
@@ -157,32 +93,16 @@ interface SummaryProps {
  *
  * @example
  * ```tsx
- * // Using the new LLMMemory interface
- * import { createMemory, Summary } from "@fastpaca/cria";
+ * import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
  *
- * const memory = createMemory<StoredSummary>();
+ * const store = new InMemoryStore<StoredSummary>();
  *
  * <Summary
  *   id="conv-history"
- *   store={memory}
+ *   store={store}
  *   summarize={async ({ content, existingSummary }) => {
  *     return callAI(`Summarize, building on: ${existingSummary}\n\n${content}`);
  *   }}
- *   priority={2}
- * >
- *   {conversationHistory}
- * </Summary>
- * ```
- *
- * @example
- * ```tsx
- * // Legacy memoryStore() still works
- * import { memoryStore, Summary } from "@fastpaca/cria";
- *
- * <Summary
- *   id="conv-history"
- *   store={memoryStore()}
- *   summarize={...}
  *   priority={2}
  * >
  *   {conversationHistory}

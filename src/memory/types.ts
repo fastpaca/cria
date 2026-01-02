@@ -17,28 +17,46 @@ export interface MemoryEntry<T = unknown> {
 }
 
 /**
- * Base memory interface for LLM-related storage.
+ * Options for listing entries.
+ */
+export interface KVListOptions {
+  /** Filter to keys starting with this prefix */
+  prefix?: string;
+  /** Maximum number of entries to return */
+  limit?: number;
+  /** Cursor for pagination (implementation-specific) */
+  cursor?: string;
+}
+
+/**
+ * Result of a list operation with pagination support.
+ */
+export interface KVListResult<T = unknown> {
+  /** The entries matching the query */
+  entries: Array<{ key: string; entry: MemoryEntry<T> }>;
+  /** Cursor for the next page, null if no more results */
+  nextCursor: string | null;
+}
+
+/**
+ * Key-value memory interface for LLM-related storage.
  *
- * This is the foundation interface that all memory backends implement.
- * It provides simple key-value operations suitable for storing summaries,
- * conversation state, embeddings, and other LLM-related data.
+ * This is the base interface for storing summaries, conversation state,
+ * cached responses, and other LLM-related data.
  *
  * @template T - The type of data stored in the memory
  *
  * @example
  * ```typescript
- * // Create an in-memory store for summaries
- * const summaryMemory = createMemory<StoredSummary>();
+ * import { InMemoryStore } from "@fastpaca/cria";
  *
- * await summaryMemory.set("conv-123", {
- *   content: "User asked about Paris",
- *   tokenCount: 5,
- * });
+ * const store = new InMemoryStore<{ content: string }>();
  *
- * const entry = await summaryMemory.get("conv-123");
+ * await store.set("key-1", { content: "Hello" });
+ * const entry = await store.get("key-1");
  * ```
  */
-export interface LLMMemory<T = unknown> {
+export interface KVMemory<T = unknown> {
   /**
    * Retrieve an entry by its key.
    * @returns The entry if found, null otherwise
@@ -68,6 +86,23 @@ export interface LLMMemory<T = unknown> {
    * @returns true if the entry exists, false otherwise
    */
   has(key: string): MaybePromise<boolean>;
+
+  /**
+   * List entries, optionally filtered by prefix.
+   * @param options - List options including prefix filter and pagination
+   * @returns Entries and pagination cursor
+   */
+  list(options?: KVListOptions): MaybePromise<KVListResult<T>>;
+
+  /**
+   * Delete all entries.
+   */
+  clear(): MaybePromise<void>;
+
+  /**
+   * Get the total number of entries.
+   */
+  size(): MaybePromise<number>;
 }
 
 /**
@@ -95,7 +130,7 @@ export interface VectorSearchOptions {
 /**
  * Vector memory interface for semantic search.
  *
- * Extends the base memory interface with vector-based similarity search.
+ * Extends the KV memory interface with vector-based similarity search.
  * Useful for RAG (Retrieval Augmented Generation), semantic memory,
  * and finding related content.
  *
@@ -104,19 +139,16 @@ export interface VectorSearchOptions {
  * @example
  * ```typescript
  * // Implementation would use embeddings from OpenAI, Cohere, etc.
- * const vectorMemory: VectorMemory<Document> = createVectorMemory({
- *   embedder: async (text) => await openai.embeddings.create({ input: text }),
- * });
- *
- * await vectorMemory.set("doc-1", { content: "Paris is the capital of France" });
- *
- * const results = await vectorMemory.search("What's the French capital?", {
- *   limit: 5,
- *   threshold: 0.7,
- * });
+ * class PineconeStore<T> implements VectorMemory<T> {
+ *   async search(query: string, options?: VectorSearchOptions) {
+ *     const embedding = await this.embedder(query);
+ *     return this.client.query(embedding, options);
+ *   }
+ *   // ... other methods
+ * }
  * ```
  */
-export interface VectorMemory<T = unknown> extends LLMMemory<T> {
+export interface VectorMemory<T = unknown> extends KVMemory<T> {
   /**
    * Search for entries semantically similar to the query.
    * @param query - The search query (will be embedded)
@@ -127,69 +159,4 @@ export interface VectorMemory<T = unknown> extends LLMMemory<T> {
     query: string,
     options?: VectorSearchOptions
   ): MaybePromise<VectorSearchResult<T>[]>;
-}
-
-/**
- * Options for listing entries in a KV memory.
- */
-export interface KVListOptions {
-  /** Filter to keys starting with this prefix */
-  prefix?: string;
-  /** Maximum number of entries to return */
-  limit?: number;
-  /** Cursor for pagination (implementation-specific) */
-  cursor?: string;
-}
-
-/**
- * Result of a list operation with pagination support.
- */
-export interface KVListResult<T = unknown> {
-  /** The entries matching the query */
-  entries: Array<{ key: string; entry: MemoryEntry<T> }>;
-  /** Cursor for the next page, null if no more results */
-  nextCursor: string | null;
-}
-
-/**
- * Key-value memory interface with listing capabilities.
- *
- * Extends the base memory interface with bulk operations like
- * listing and clearing. Useful for caching, session storage,
- * and scenarios where you need to iterate over entries.
- *
- * @template T - The type of data stored in the memory
- *
- * @example
- * ```typescript
- * const kvMemory: KVMemory<CachedResponse> = createKVMemory();
- *
- * // Store some entries
- * await kvMemory.set("cache:api:user-1", { result: "..." });
- * await kvMemory.set("cache:api:user-2", { result: "..." });
- *
- * // List all cache entries
- * const { entries } = await kvMemory.list({ prefix: "cache:api:" });
- *
- * // Clear all entries
- * await kvMemory.clear();
- * ```
- */
-export interface KVMemory<T = unknown> extends LLMMemory<T> {
-  /**
-   * List entries, optionally filtered by prefix.
-   * @param options - List options including prefix filter and pagination
-   * @returns Entries and pagination cursor
-   */
-  list(options?: KVListOptions): MaybePromise<KVListResult<T>>;
-
-  /**
-   * Delete all entries.
-   */
-  clear(): MaybePromise<void>;
-
-  /**
-   * Get the total number of entries.
-   */
-  size(): MaybePromise<number>;
 }

@@ -27,12 +27,10 @@ export type {
   StoredSummary,
   Summarizer,
   SummarizerContext,
-  SummaryStore,
 } from "./components";
 export {
   Last,
   Message,
-  memoryStore,
   Omit,
   Reasoning,
   Region,
@@ -45,14 +43,13 @@ export type {
   KVListOptions,
   KVListResult,
   KVMemory,
-  LLMMemory,
   MemoryEntry,
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
 } from "./memory";
-// LLM Memory interfaces and implementations
-export { createMemory } from "./memory";
+// LLM Memory
+export { InMemoryStore } from "./memory";
 export type { RenderOptions } from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
