@@ -24,6 +24,7 @@
  */
 
 export type {
+  ResultFormatter,
   StoredSummary,
   Summarizer,
   SummarizerContext,
@@ -35,11 +36,14 @@ export {
   Reasoning,
   Region,
   Summary,
+  searchAndRender,
   ToolCall,
   ToolResult,
   Truncate,
+  VectorSearch,
 } from "./components";
 export type {
+  EmbeddingFunction,
   KVMemory,
   MemoryEntry,
   VectorMemory,
@@ -47,7 +51,7 @@ export type {
   VectorSearchResult,
 } from "./memory";
 // LLM Memory
-export { InMemoryStore } from "./memory";
+export { InMemoryStore, InMemoryVectorStore } from "./memory";
 export type { RenderOptions } from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
