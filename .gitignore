@@ -26,3 +26,6 @@ pnpm-debug.log*
 
 # Test coverage
 coverage/
+
+# bv (beads viewer) local config and caches
+.bv/
