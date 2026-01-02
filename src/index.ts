@@ -23,12 +23,21 @@
  * @packageDocumentation
  */
 
+export type {
+  StoredSummary,
+  Summarizer,
+  SummarizerContext,
+  SummaryStore,
+} from "./components";
 // biome-ignore lint/performance/noBarrelFile: Entry point for package exports
 export {
+  Last,
   Message,
+  memoryStore,
   Omit,
   Reasoning,
   Region,
+  Summary,
   ToolCall,
   ToolResult,
   Truncate,
