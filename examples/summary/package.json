@@ -1,0 +1,19 @@
+{
+  "name": "cria-summary-example",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx main.tsx"
+  },
+  "dependencies": {
+    "ai": "^6.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "tiktoken": "^1.0.0",
+    "@fastpaca/cria": "link:../.."
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "@types/node": "^22.0.0"
+  }
+}

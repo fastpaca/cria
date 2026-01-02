@@ -1,7 +1,6 @@
-import type { Child } from "./jsx-runtime";
-import type { PromptChildren, PromptElement, Strategy } from "./types";
+import type { Child } from "../jsx-runtime";
+import type { PromptChildren, PromptElement, Strategy } from "../types";
 
-/** Props for the Region component. */
 interface RegionProps {
   /** Lower number = higher importance. Default: 0 (highest priority) */
   priority?: number;
@@ -34,7 +33,6 @@ export function Region({
 }: RegionProps): PromptElement {
   return {
     priority,
-    // Children are normalized by the JSX runtime into PromptChildren.
     children: children as PromptChildren,
     ...(strategy && { strategy }),
     ...(id && { id }),
@@ -66,7 +64,6 @@ export function Message({
     kind: "message",
     role,
     priority,
-    // Children are normalized by the JSX runtime into PromptChildren.
     children: children as PromptChildren,
     ...(strategy && { strategy }),
     ...(id && { id }),
@@ -145,7 +142,6 @@ export function ToolResult({
   };
 }
 
-/** Props for the Truncate component. */
 interface TruncateProps {
   /** Maximum token count for this region's content */
   budget: number;
@@ -188,9 +184,6 @@ export function Truncate({
 
     let truncated = content;
 
-    // TODO(v1): Optimize - this calls tokenizer O(n) times. Consider:
-    // - Estimate chars/token ratio, binary search to target
-    // - Cache intermediate token counts
     while (tokens > budget && truncated.length > 0) {
       const charsToRemove = Math.max(1, Math.floor(truncated.length * 0.1));
       truncated =
@@ -209,14 +202,12 @@ export function Truncate({
 
   return {
     priority,
-    // Children are normalized by the JSX runtime into PromptChildren.
     children: children as PromptChildren,
     strategy,
     ...(id && { id }),
   };
 }
 
-/** Props for the Omit component. */
 interface OmitProps {
   /** Lower number = higher importance. Default: 0 */
   priority?: number;
@@ -248,9 +239,48 @@ export function Omit({
 
   return {
     priority,
-    // Children are normalized by the JSX runtime into PromptChildren.
     children: children as PromptChildren,
     strategy,
     ...(id && { id }),
   };
 }
+
+interface LastProps {
+  /** Number of children to keep */
+  N: number;
+  /** Priority for this region. Default: 0 */
+  priority?: number;
+  /** Children to filter */
+  children?: Child;
+}
+
+/**
+ * Keeps only the last N children.
+ *
+ * @example
+ * ```tsx
+ * <Last N={50}>{messages}</Last>
+ * ```
+ */
+export function Last({
+  N,
+  priority = 0,
+  children = [],
+}: LastProps): PromptElement {
+  const normalizedChildren = children as PromptChildren;
+  const lastN = normalizedChildren.slice(-N);
+
+  return {
+    priority,
+    children: lastN,
+  };
+}
+
+export type {
+  StoredSummary,
+  Summarizer,
+  SummarizerContext,
+  SummaryStore,
+} from "./summary";
+// biome-ignore lint/performance/noBarrelFile: Entry point for components
+export { memoryStore, Summary } from "./summary";
