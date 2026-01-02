@@ -6,6 +6,7 @@
       "includes": [
         "src/index.ts",
         "src/components/index.ts",
+        "src/memory/index.ts",
         "src/jsx-dev-runtime.ts"
       ],
       "linter": {
