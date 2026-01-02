@@ -40,8 +40,6 @@ export {
   Truncate,
 } from "./components";
 export type {
-  KVListOptions,
-  KVListResult,
   KVMemory,
   MemoryEntry,
   VectorMemory,

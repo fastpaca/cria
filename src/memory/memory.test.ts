@@ -74,12 +74,10 @@ test("InMemoryStore: list returns all entries", () => {
   store.set("b", 2);
   store.set("c", 3);
 
-  const { entries, nextCursor } = store.list();
+  const entries = store.list();
 
   expect(entries.length).toBe(3);
-  expect(entries.map((e) => e.key)).toEqual(["a", "b", "c"]);
   expect(entries.map((e) => e.entry.data)).toEqual([1, 2, 3]);
-  expect(nextCursor).toBeNull();
 });
 
 test("InMemoryStore: list with prefix filter", () => {
@@ -89,53 +87,10 @@ test("InMemoryStore: list with prefix filter", () => {
   store.set("user:2", "bob");
   store.set("session:abc", "active");
 
-  const { entries } = store.list({ prefix: "user:" });
+  const entries = store.list("user:");
 
   expect(entries.length).toBe(2);
   expect(entries.map((e) => e.key)).toEqual(["user:1", "user:2"]);
-});
-
-test("InMemoryStore: list with limit", () => {
-  const store = new InMemoryStore<number>();
-
-  for (let i = 0; i < 10; i++) {
-    store.set(`key-${i.toString().padStart(2, "0")}`, i);
-  }
-
-  const { entries, nextCursor } = store.list({ limit: 3 });
-
-  expect(entries.length).toBe(3);
-  expect(entries.map((e) => e.entry.data)).toEqual([0, 1, 2]);
-  expect(nextCursor).toBe("key-02");
-});
-
-test("InMemoryStore: list with cursor pagination", () => {
-  const store = new InMemoryStore<number>();
-
-  for (let i = 0; i < 5; i++) {
-    store.set(`k${i}`, i);
-  }
-
-  // First page
-  const page1 = store.list({ limit: 2 });
-  expect(page1.entries.map((e) => e.entry.data)).toEqual([0, 1]);
-  expect(page1.nextCursor).toBe("k1");
-
-  // Second page
-  const page2 = store.list({
-    limit: 2,
-    cursor: page1.nextCursor ?? undefined,
-  });
-  expect(page2.entries.map((e) => e.entry.data)).toEqual([2, 3]);
-  expect(page2.nextCursor).toBe("k3");
-
-  // Third page (last)
-  const page3 = store.list({
-    limit: 2,
-    cursor: page2.nextCursor ?? undefined,
-  });
-  expect(page3.entries.map((e) => e.entry.data)).toEqual([4]);
-  expect(page3.nextCursor).toBeNull();
 });
 
 test("InMemoryStore: clear removes all entries", () => {

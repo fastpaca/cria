@@ -17,28 +17,6 @@ export interface MemoryEntry<T = unknown> {
 }
 
 /**
- * Options for listing entries.
- */
-export interface KVListOptions {
-  /** Filter to keys starting with this prefix */
-  prefix?: string;
-  /** Maximum number of entries to return */
-  limit?: number;
-  /** Cursor for pagination (implementation-specific) */
-  cursor?: string;
-}
-
-/**
- * Result of a list operation with pagination support.
- */
-export interface KVListResult<T = unknown> {
-  /** The entries matching the query */
-  entries: Array<{ key: string; entry: MemoryEntry<T> }>;
-  /** Cursor for the next page, null if no more results */
-  nextCursor: string | null;
-}
-
-/**
  * Key-value memory interface for LLM-related storage.
  *
  * This is the base interface for storing summaries, conversation state,
@@ -88,11 +66,13 @@ export interface KVMemory<T = unknown> {
   has(key: string): MaybePromise<boolean>;
 
   /**
-   * List entries, optionally filtered by prefix.
-   * @param options - List options including prefix filter and pagination
-   * @returns Entries and pagination cursor
+   * List all entries.
+   * @param prefix - Optional prefix to filter keys
+   * @returns Array of key-entry pairs
    */
-  list(options?: KVListOptions): MaybePromise<KVListResult<T>>;
+  list(
+    prefix?: string
+  ): MaybePromise<Array<{ key: string; entry: MemoryEntry<T> }>>;
 
   /**
    * Delete all entries.

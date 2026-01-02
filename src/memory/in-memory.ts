@@ -1,9 +1,4 @@
-import type {
-  KVListOptions,
-  KVListResult,
-  KVMemory,
-  MemoryEntry,
-} from "./types";
+import type { KVMemory, MemoryEntry } from "./types";
 
 /**
  * In-memory implementation of KVMemory.
@@ -50,46 +45,16 @@ export class InMemoryStore<T = unknown> implements KVMemory<T> {
     return this.store.has(key);
   }
 
-  list(options?: KVListOptions): KVListResult<T> {
-    const { prefix, limit, cursor } = options ?? {};
-    const allKeys = [...this.store.keys()];
+  list(prefix?: string): Array<{ key: string; entry: MemoryEntry<T> }> {
+    const entries: Array<{ key: string; entry: MemoryEntry<T> }> = [];
 
-    // Filter by prefix if provided
-    const filteredKeys = prefix
-      ? allKeys.filter((k) => k.startsWith(prefix))
-      : allKeys;
-
-    // Sort by key for consistent ordering
-    filteredKeys.sort();
-
-    // Handle cursor-based pagination
-    let startIndex = 0;
-    if (cursor) {
-      const cursorIndex = filteredKeys.indexOf(cursor);
-      if (cursorIndex >= 0) {
-        startIndex = cursorIndex + 1;
+    for (const [key, entry] of this.store) {
+      if (!prefix || key.startsWith(prefix)) {
+        entries.push({ key, entry });
       }
     }
 
-    // Apply limit
-    const pageKeys = limit
-      ? filteredKeys.slice(startIndex, startIndex + limit)
-      : filteredKeys.slice(startIndex);
-
-    const entries = pageKeys.map((key) => ({
-      key,
-      entry: this.store.get(key) as MemoryEntry<T>,
-    }));
-
-    // Determine next cursor
-    const lastKey = pageKeys.at(-1);
-    const hasMore =
-      lastKey && filteredKeys.indexOf(lastKey) < filteredKeys.length - 1;
-
-    return {
-      entries,
-      nextCursor: hasMore && lastKey ? lastKey : null,
-    };
+    return entries;
   }
 
   clear(): void {

@@ -13,8 +13,6 @@
 
 export { InMemoryStore } from "./in-memory";
 export type {
-  KVListOptions,
-  KVListResult,
   KVMemory,
   MemoryEntry,
   VectorMemory,
