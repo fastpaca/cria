@@ -18,7 +18,9 @@ const prompt = (
     {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="system">You are a helpful weather assistant.</Message>
     {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">What's the weather in Paris?</Message>
+    <Message role="user">
+      What's the weather in Paris? Should I bring a jacket?
+    </Message>
     {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="assistant">
       <ToolCall
@@ -33,10 +35,6 @@ const prompt = (
         toolCallId="call_123"
         toolName="getWeather"
       />
-    </Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="assistant">
-      The weather in Paris is sunny with a temperature of 18°C.
     </Message>
   </Region>
 );

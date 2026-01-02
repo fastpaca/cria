@@ -19,23 +19,11 @@ const tokenizer = (text: string) => Math.ceil(text.length / 4);
 const prompt = (
   <Region priority={0}>
     {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="system">
-      You are a mathematical reasoning assistant. Think step by step.
-    </Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">
-      What is the sum of all prime numbers less than 20?
-    </Message>
-  </Region>
-);
-
-// Example with tool calls (showing full Responses API capabilities)
-const toolPrompt = (
-  <Region priority={0}>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="system">You are a helpful weather assistant.</Message>
     {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">What's the weather in Paris?</Message>
+    <Message role="user">
+      What's the weather in Paris? Should I bring a jacket?
+    </Message>
     <ToolCall
       input={{ city: "Paris" }}
       priority={1}
@@ -48,15 +36,11 @@ const toolPrompt = (
       toolCallId="call_abc123"
       toolName="getWeather"
     />
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="assistant">
-      The weather in Paris is sunny with a temperature of 18°C.
-    </Message>
   </Region>
 );
 
 async function main() {
-  // Render simple prompt to OpenAI Responses format
+  // Render to OpenAI Responses format
   const input = await render(prompt, {
     tokenizer,
     budget: 128_000,
@@ -65,16 +49,6 @@ async function main() {
 
   console.log("=== Rendered Input ===");
   console.log(JSON.stringify(input, null, 2));
-
-  // Render tool prompt to show function_call/function_call_output items
-  const toolInput = await render(toolPrompt, {
-    tokenizer,
-    budget: 128_000,
-    renderer: responses,
-  });
-
-  console.log("\n=== Rendered Tool Input ===");
-  console.log(JSON.stringify(toolInput, null, 2));
 
   // Use with OpenAI SDK (Responses API)
   const openai = new OpenAI();
