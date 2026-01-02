@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { InMemoryStore } from "./in-memory";
+import { InMemoryStore } from "./key-value";
 
 test("InMemoryStore: basic get/set operations", () => {
   const store = new InMemoryStore<{ value: number }>();

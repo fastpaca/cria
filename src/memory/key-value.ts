@@ -86,57 +86,67 @@ export interface KVMemory<T = unknown> {
 }
 
 /**
- * Search result from a vector memory query.
- */
-export interface VectorSearchResult<T = unknown> {
-  /** The matching entry */
-  entry: MemoryEntry<T>;
-  /** The key of the matching entry */
-  key: string;
-  /** Similarity score (0-1, higher is more similar) */
-  score: number;
-}
-
-/**
- * Options for vector search operations.
- */
-export interface VectorSearchOptions {
-  /** Maximum number of results to return. Default: 10 */
-  limit?: number;
-  /** Minimum similarity threshold (0-1). Results below this are excluded. */
-  threshold?: number;
-}
-
-/**
- * Vector memory interface for semantic search.
+ * In-memory implementation of KVMemory.
  *
- * Extends the KV memory interface with vector-based similarity search.
- * Useful for RAG (Retrieval Augmented Generation), semantic memory,
- * and finding related content.
+ * Stores everything in a Map. Suitable for development, testing,
+ * and short-lived applications. For production, use a persistent
+ * backend like Redis or a database.
  *
- * @template T - The type of data stored in the memory
+ * @template T - The type of data to store
  *
  * @example
  * ```typescript
- * // Implementation would use embeddings from OpenAI, Cohere, etc.
- * class PineconeStore<T> implements VectorMemory<T> {
- *   async search(query: string, options?: VectorSearchOptions) {
- *     const embedding = await this.embedder(query);
- *     return this.client.query(embedding, options);
- *   }
- *   // ... other methods
- * }
+ * import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
+ *
+ * const store = new InMemoryStore<StoredSummary>();
+ *
+ * <Summary store={store} ... />
  * ```
  */
-export interface VectorMemory<T = unknown> extends KVMemory<T> {
-  /**
-   * Search for entries semantically similar to the query.
-   * @param query - The search query (will be embedded)
-   * @param options - Search options
-   * @returns Matching entries sorted by similarity (highest first)
-   */
-  search(
-    query: string,
-    options?: VectorSearchOptions
-  ): MaybePromise<VectorSearchResult<T>[]>;
+export class InMemoryStore<T = unknown> implements KVMemory<T> {
+  private readonly store = new Map<string, MemoryEntry<T>>();
+
+  get(key: string): MemoryEntry<T> | null {
+    return this.store.get(key) ?? null;
+  }
+
+  set(key: string, data: T, metadata?: Record<string, unknown>): void {
+    const now = Date.now();
+    const existing = this.store.get(key);
+
+    this.store.set(key, {
+      data,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      ...(metadata && { metadata }),
+    });
+  }
+
+  delete(key: string): boolean {
+    return this.store.delete(key);
+  }
+
+  has(key: string): boolean {
+    return this.store.has(key);
+  }
+
+  list(prefix?: string): Array<{ key: string; entry: MemoryEntry<T> }> {
+    const entries: Array<{ key: string; entry: MemoryEntry<T> }> = [];
+
+    for (const [key, entry] of this.store) {
+      if (!prefix || key.startsWith(prefix)) {
+        entries.push({ key, entry });
+      }
+    }
+
+    return entries;
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+
+  size(): number {
+    return this.store.size;
+  }
 }
