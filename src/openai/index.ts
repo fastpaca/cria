@@ -298,7 +298,7 @@ function partsToText(parts: readonly SemanticPart[]): string {
 }
 
 // ============================================================================
-// Responses API Renderer (for o1/o3 reasoning models)
+// Responses API Renderer (for reasoning models)
 // ============================================================================
 
 import type {
@@ -310,7 +310,7 @@ import type {
 
 /**
  * Renderer that outputs ResponseInputItem[] for the OpenAI Responses API.
- * Use this with o1/o3 models that support native reasoning.
+ * Use this with reasoning models that support native reasoning.
  *
  * @example
  * ```ts
