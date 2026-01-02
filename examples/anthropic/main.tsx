@@ -39,9 +39,7 @@ const prompt = (
       />
     </Message>
     {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="assistant">
-      The weather in Paris is sunny with a temperature of 18°C.
-    </Message>
+    <Message role="user">Should I bring a jacket?</Message>
   </Region>
 );
 
