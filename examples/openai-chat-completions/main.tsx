@@ -9,14 +9,17 @@ import { Message, Region, render, ToolCall, ToolResult } from "@fastpaca/cria";
 import { chatCompletions } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
-// Your tokenizer (use tiktoken or similar in production)
+// Your tokenizer (use tiktoken in production for accurate counts)
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
 // Build your prompt with Cria components
 const prompt = (
   <Region priority={0}>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="system">You are a helpful weather assistant.</Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="user">What's the weather in Paris?</Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="assistant">
       <ToolCall
         input={{ city: "Paris" }}
@@ -31,6 +34,7 @@ const prompt = (
         toolName="getWeather"
       />
     </Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="assistant">
       The weather in Paris is sunny with a temperature of 18°C.
     </Message>
@@ -38,14 +42,15 @@ const prompt = (
 );
 
 async function main() {
-  // Render to OpenAI format
+  // Render to OpenAI Chat Completions format
   const messages = await render(prompt, {
     tokenizer,
     budget: 128_000,
     renderer: chatCompletions,
   });
 
-  console.log("Rendered messages:", JSON.stringify(messages, null, 2));
+  console.log("=== Rendered Messages ===");
+  console.log(JSON.stringify(messages, null, 2));
 
   // Use with OpenAI SDK
   const openai = new OpenAI();
@@ -54,7 +59,8 @@ async function main() {
     messages,
   });
 
-  console.log("Response:", response.choices[0]?.message.content);
+  console.log("\n=== AI Response ===");
+  console.log(response.choices[0]?.message.content);
 }
 
-main();
+main().catch(console.error);

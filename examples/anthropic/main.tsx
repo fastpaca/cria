@@ -5,18 +5,22 @@
  * to Anthropic's message format. System messages are automatically
  * extracted to the separate `system` parameter.
  */
+
 import Anthropic from "@anthropic-ai/sdk";
 import { Message, Region, render, ToolCall, ToolResult } from "@fastpaca/cria";
 import { anthropic } from "@fastpaca/cria/anthropic";
 
-// Your tokenizer (use cl100k_base or similar in production)
+// Your tokenizer (use a proper tokenizer in production)
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
 // Build your prompt with Cria components
 const prompt = (
   <Region priority={0}>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="system">You are a helpful weather assistant.</Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="user">What's the weather in Paris?</Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="assistant">
       <ToolCall
         input={{ city: "Paris" }}
@@ -25,6 +29,7 @@ const prompt = (
         toolName="getWeather"
       />
     </Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="user">
       <ToolResult
         output={{ temperature: 18, condition: "sunny" }}
@@ -33,6 +38,7 @@ const prompt = (
         toolName="getWeather"
       />
     </Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="assistant">
       The weather in Paris is sunny with a temperature of 18°C.
     </Message>
@@ -48,8 +54,11 @@ async function main() {
     renderer: anthropic,
   });
 
-  console.log("System:", system);
-  console.log("Messages:", JSON.stringify(messages, null, 2));
+  console.log("=== System ===");
+  console.log(system);
+
+  console.log("\n=== Messages ===");
+  console.log(JSON.stringify(messages, null, 2));
 
   // Use with Anthropic SDK
   const client = new Anthropic();
@@ -60,10 +69,10 @@ async function main() {
     messages,
   });
 
+  console.log("\n=== AI Response ===");
   console.log(
-    "Response:",
     response.content[0]?.type === "text" ? response.content[0].text : response
   );
 }
 
-main();
+main().catch(console.error);

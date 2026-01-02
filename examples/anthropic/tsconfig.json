@@ -9,8 +9,8 @@
     "jsxImportSource": "@fastpaca/cria",
     "baseUrl": ".",
     "paths": {
-      "@fastpaca/cria": ["../dist/index.d.ts"],
-      "@fastpaca/cria/*": ["../dist/*"]
+      "@fastpaca/cria": ["../../dist/index.d.ts"],
+      "@fastpaca/cria/*": ["../../dist/*"]
     }
   },
   "include": ["*.tsx", "*.ts"]

@@ -12,15 +12,17 @@ import { Message, Region, render, ToolCall, ToolResult } from "@fastpaca/cria";
 import { responses } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
-// Your tokenizer (use tiktoken or similar in production)
+// Your tokenizer (use tiktoken in production for accurate counts)
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
 // Build your prompt with Cria components
 const prompt = (
   <Region priority={0}>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="system">
       You are a mathematical reasoning assistant. Think step by step.
     </Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="user">
       What is the sum of all prime numbers less than 20?
     </Message>
@@ -30,7 +32,9 @@ const prompt = (
 // Example with tool calls (showing full Responses API capabilities)
 const toolPrompt = (
   <Region priority={0}>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="system">You are a helpful weather assistant.</Message>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="user">What's the weather in Paris?</Message>
     <ToolCall
       input={{ city: "Paris" }}
@@ -44,6 +48,7 @@ const toolPrompt = (
       toolCallId="call_abc123"
       toolName="getWeather"
     />
+    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
     <Message role="assistant">
       The weather in Paris is sunny with a temperature of 18°C.
     </Message>
@@ -58,7 +63,8 @@ async function main() {
     renderer: responses,
   });
 
-  console.log("Rendered input:", JSON.stringify(input, null, 2));
+  console.log("=== Rendered Input ===");
+  console.log(JSON.stringify(input, null, 2));
 
   // Render tool prompt to show function_call/function_call_output items
   const toolInput = await render(toolPrompt, {
@@ -67,7 +73,8 @@ async function main() {
     renderer: responses,
   });
 
-  console.log("\nRendered tool input:", JSON.stringify(toolInput, null, 2));
+  console.log("\n=== Rendered Tool Input ===");
+  console.log(JSON.stringify(toolInput, null, 2));
 
   // Use with OpenAI SDK (Responses API)
   const openai = new OpenAI();
@@ -76,7 +83,8 @@ async function main() {
     input,
   });
 
-  console.log("\nResponse:", response.output_text);
+  console.log("\n=== AI Response ===");
+  console.log(response.output_text);
 }
 
-main();
+main().catch(console.error);
