@@ -92,62 +92,78 @@ function collectMessageNodes(
  * Key quirk: tool results must be in user messages, not assistant messages.
  */
 function convertMessages(nodes: MessageElement[]): MessageParam[] {
+  return nodes.flatMap(convertMessageNode);
+}
+
+function convertMessageNode(node: MessageElement): MessageParam[] {
+  const parts = categorizeParts(collectSemanticParts(node.children));
+
+  if (node.role === "user") {
+    return buildUserMessages(parts);
+  }
+
+  return buildAssistantMessages(parts);
+}
+
+function buildUserMessages(parts: CategorizedParts): MessageParam[] {
+  const content = buildUserContent(parts);
+  if (content.length === 0) {
+    return [];
+  }
+
+  return [{ role: "user", content }];
+}
+
+function buildUserContent({
+  textParts,
+  toolResultParts,
+  reasoningParts,
+}: CategorizedParts): ContentBlockParam[] {
+  const content: ContentBlockParam[] = toolResultParts.map(toToolResultBlock);
+  const text = combineTextParts(textParts, reasoningParts);
+
+  if (text.length > 0) {
+    content.push({ type: "text", text });
+  }
+
+  return content;
+}
+
+function buildAssistantMessages(parts: CategorizedParts): MessageParam[] {
+  const content = buildAssistantContent(parts);
   const result: MessageParam[] = [];
 
-  for (const node of nodes) {
-    const parts = collectSemanticParts(node.children);
-    const { textParts, toolCallParts, toolResultParts, reasoningParts } =
-      categorizeParts(parts);
+  if (content.length > 0) {
+    result.push({ role: "assistant", content });
+  }
 
-    if (node.role === "user") {
-      // User messages can have text and tool results
-      const content: ContentBlockParam[] = [];
-
-      // Add tool results first (from previous assistant turn)
-      for (const tr of toolResultParts) {
-        content.push(toToolResultBlock(tr));
-      }
-
-      // Add text content
-      const text = combineTextParts(textParts, reasoningParts);
-      if (text.length > 0) {
-        content.push({ type: "text", text });
-      }
-
-      if (content.length > 0) {
-        result.push({ role: "user", content });
-      }
-    } else {
-      // Assistant messages have text, reasoning, and tool calls
-      const content: ContentBlockParam[] = [];
-
-      // Add text content (reasoning included as text since we don't have signatures)
-      const text = combineTextParts(textParts, reasoningParts);
-      if (text.length > 0) {
-        content.push({ type: "text", text });
-      }
-
-      // Add tool calls
-      for (const tc of toolCallParts) {
-        content.push(toToolUseBlock(tc));
-      }
-
-      // Tool results from assistant messages need to go in the next user message
-      // For now, we'll add them as a separate user message
-      if (content.length > 0) {
-        result.push({ role: "assistant", content });
-      }
-
-      if (toolResultParts.length > 0) {
-        const userContent: ContentBlockParam[] = toolResultParts.map((tr) =>
-          toToolResultBlock(tr)
-        );
-        result.push({ role: "user", content: userContent });
-      }
-    }
+  if (parts.toolResultParts.length > 0) {
+    result.push({
+      role: "user",
+      content: parts.toolResultParts.map(toToolResultBlock),
+    });
   }
 
   return result;
+}
+
+function buildAssistantContent({
+  textParts,
+  toolCallParts,
+  reasoningParts,
+}: CategorizedParts): ContentBlockParam[] {
+  const content: ContentBlockParam[] = [];
+  const text = combineTextParts(textParts, reasoningParts);
+
+  if (text.length > 0) {
+    content.push({ type: "text", text });
+  }
+
+  for (const tc of toolCallParts) {
+    content.push(toToolUseBlock(tc));
+  }
+
+  return content;
 }
 
 type SemanticPart =
@@ -166,12 +182,14 @@ type ToolResultPart = Extract<SemanticPart, { type: "tool-result" }>;
 type TextPart = Extract<SemanticPart, { type: "text" }>;
 type ReasoningPart = Extract<SemanticPart, { type: "reasoning" }>;
 
-function categorizeParts(parts: SemanticPart[]): {
+interface CategorizedParts {
   textParts: TextPart[];
   toolCallParts: ToolCallPart[];
   toolResultParts: ToolResultPart[];
   reasoningParts: ReasoningPart[];
-} {
+}
+
+function categorizeParts(parts: SemanticPart[]): CategorizedParts {
   const textParts: TextPart[] = [];
   const toolCallParts: ToolCallPart[] = [];
   const toolResultParts: ToolResultPart[] = [];
@@ -191,10 +209,16 @@ function categorizeParts(parts: SemanticPart[]): {
       case "reasoning":
         reasoningParts.push(part);
         break;
+      default:
+        assertNever(part);
     }
   }
 
   return { textParts, toolCallParts, toolResultParts, reasoningParts };
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled semantic part: ${String(value)}`);
 }
 
 function collectSemanticParts(children: PromptChildren): SemanticPart[] {

@@ -15,14 +15,11 @@ const tokenizer = (text: string) => Math.ceil(text.length / 4);
 // Build your prompt with Cria components
 const prompt = (
   <Region priority={0}>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="system">You are a helpful weather assistant.</Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">
+    <Message messageRole="system">You are a helpful weather assistant.</Message>
+    <Message messageRole="user">
       What's the weather in Paris? Should I bring a jacket?
     </Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="assistant">
+    <Message messageRole="assistant">
       <ToolCall
         input={{ city: "Paris" }}
         priority={1}

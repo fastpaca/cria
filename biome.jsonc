@@ -1,4 +1,30 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "extends": ["ultracite/core"]
+  "extends": ["ultracite/core"],
+  "overrides": [
+    {
+      "includes": [
+        "src/index.ts",
+        "src/components/index.ts",
+        "src/jsx-dev-runtime.ts"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/jsx-runtime.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNamespace": "off"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -79,8 +79,7 @@ const summarizer = async ({
 // Build the prompt with Summary for older messages and Last for recent ones
 const prompt = (
   <Region priority={0}>
-    {/* biome-ignore lint/a11y/useValidAriaRole: LLM role, not ARIA */}
-    <Message priority={0} role="system">
+    <Message messageRole="system" priority={0}>
       You are a helpful AI assistant. You have access to a summary of earlier
       conversation and the recent messages.
     </Message>
@@ -95,8 +94,8 @@ const prompt = (
       {conversationHistory.slice(0, -4).map((msg, i) => (
         <Message
           id={`history-${i}`}
+          messageRole={msg.role as "user" | "assistant"}
           priority={2}
-          role={msg.role as "user" | "assistant"}
         >
           {msg.content}
         </Message>
@@ -108,8 +107,8 @@ const prompt = (
       {conversationHistory.map((msg, i) => (
         <Message
           id={`recent-${i}`}
+          messageRole={msg.role as "user" | "assistant"}
           priority={1}
-          role={msg.role as "user" | "assistant"}
         >
           {msg.content}
         </Message>

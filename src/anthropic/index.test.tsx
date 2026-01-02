@@ -14,8 +14,8 @@ const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 test("anthropic: extracts system message separately", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="system">You are a helpful assistant.</Message>
-      <Message role="user">Hello!</Message>
+      <Message messageRole="system">You are a helpful assistant.</Message>
+      <Message messageRole="user">Hello!</Message>
     </Region>
   );
 
@@ -36,8 +36,8 @@ test("anthropic: extracts system message separately", async () => {
 test("anthropic: renders user and assistant messages", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="user">Hello!</Message>
-      <Message role="assistant">Hi there!</Message>
+      <Message messageRole="user">Hello!</Message>
+      <Message messageRole="assistant">Hi there!</Message>
     </Region>
   );
 
@@ -62,7 +62,7 @@ test("anthropic: renders user and assistant messages", async () => {
 test("anthropic: renders tool calls as tool_use blocks", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         <ToolCall
           input={{ city: "Paris" }}
           priority={1}
@@ -96,7 +96,7 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
 test("anthropic: renders tool results in user messages", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         <ToolCall
           input={{ city: "Paris" }}
           priority={1}
@@ -138,9 +138,9 @@ test("anthropic: renders tool results in user messages", async () => {
 test("anthropic: full conversation with tool use", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="system">You are a weather assistant.</Message>
-      <Message role="user">What's the weather in Paris?</Message>
-      <Message role="assistant">
+      <Message messageRole="system">You are a weather assistant.</Message>
+      <Message messageRole="user">What's the weather in Paris?</Message>
+      <Message messageRole="assistant">
         Let me check.
         <ToolCall
           input={{ city: "Paris" }}
@@ -149,7 +149,7 @@ test("anthropic: full conversation with tool use", async () => {
           toolName="getWeather"
         />
       </Message>
-      <Message role="user">
+      <Message messageRole="user">
         <ToolResult
           output={{ temp: 18 }}
           priority={1}
@@ -157,7 +157,9 @@ test("anthropic: full conversation with tool use", async () => {
           toolName="getWeather"
         />
       </Message>
-      <Message role="assistant">The temperature in Paris is 18°C.</Message>
+      <Message messageRole="assistant">
+        The temperature in Paris is 18°C.
+      </Message>
     </Region>
   );
 
@@ -178,7 +180,7 @@ test("anthropic: full conversation with tool use", async () => {
 test("anthropic: includes reasoning as text with thinking tags", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         <Reasoning priority={1} text="Let me think about this..." />
         The answer is 4.
       </Message>
