@@ -49,7 +49,7 @@ const conversationHistory = [
   { role: "user", content: "Now tell me about Berlin." },
 ];
 
-// The summarizer uses an LLM to create running summaries
+// The summarizer uses Cria to build its own prompt!
 const summarizer = async ({
   content,
   existingSummary,
@@ -57,21 +57,38 @@ const summarizer = async ({
   content: string;
   existingSummary: string | null;
 }) => {
+  const summarizerPrompt = (
+    <Region priority={0}>
+      <Message messageRole="system">
+        You are a conversation summarizer. Create a concise summary that
+        captures the key information discussed. If there's an existing summary,
+        build upon it with the new information.
+      </Message>
+      <Message messageRole="user">
+        {existingSummary && (
+          <Region priority={0}>
+            {"Existing summary:\n"}
+            {existingSummary}
+            {"\n\n"}
+          </Region>
+        )}
+        {existingSummary
+          ? "New conversation to incorporate:\n"
+          : "Summarize this conversation:\n"}
+        {content}
+        {existingSummary && "\n\nCreate an updated summary:"}
+      </Message>
+    </Region>
+  );
+
+  const messages = await render(summarizerPrompt, {
+    tokenizer,
+    budget: 4000,
+    renderer,
+  });
   const { text } = await generateText({
     model: openai("gpt-4o-mini"),
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a conversation summarizer. Create a concise summary that captures the key information discussed. If there's an existing summary, build upon it with the new information.",
-      },
-      {
-        role: "user",
-        content: existingSummary
-          ? `Existing summary:\n${existingSummary}\n\nNew conversation to incorporate:\n${content}\n\nCreate an updated summary:`
-          : `Summarize this conversation:\n${content}`,
-      },
-    ],
+    messages,
   });
   return text;
 };
