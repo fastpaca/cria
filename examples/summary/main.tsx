@@ -60,9 +60,8 @@ const summarizer = async ({
   const summarizerPrompt = (
     <Region priority={0}>
       <Message messageRole="system">
-        You are a conversation summarizer. Create a concise summary that
-        captures the key information discussed. If there's an existing summary,
-        build upon it with the new information.
+        You are a conversation summarizer. Create a VERY brief summary (2-3
+        sentences max) capturing only the key facts. Be extremely concise.
       </Message>
       <Message messageRole="user">
         {existingSummary && (
@@ -81,10 +80,13 @@ const summarizer = async ({
     </Region>
   );
 
-  const messages = await render(summarizerPrompt, { tokenizer, renderer });
+  const summarizerMessages = await render(summarizerPrompt, {
+    tokenizer,
+    renderer,
+  });
   const { text } = await generateText({
     model: openai("gpt-4o-mini"),
-    messages,
+    messages: summarizerMessages,
   });
   return text;
 };
@@ -131,7 +133,7 @@ const prompt = (
 );
 
 // Render with a tight budget to trigger summarization
-const budget = 300; // Small budget to force summarization
+const budget = 220; // Budget that triggers summarization (full content ~233 tokens)
 const messages = await render(prompt, {
   tokenizer,
   budget,
@@ -149,7 +151,6 @@ if (storedSummary) {
   console.log(`Token count: ${storedSummary.tokenCount}`);
 }
 
-// Call OpenAI
 async function main() {
   const { text } = await generateText({
     model: openai("gpt-4o-mini"),

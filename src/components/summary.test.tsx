@@ -24,7 +24,8 @@ test("Summary: triggers summarization when over budget", async () => {
   );
 
   // Render with small budget to trigger summarization
-  const result = await render(element, { tokenizer, budget: 20 });
+  // Budget needs to fit the summary output + "[Summary of earlier conversation]\n" prefix
+  const result = await render(element, { tokenizer, budget: 30 });
 
   expect(summarizeCalled).toBe(true);
   expect(result).toContain("Summary of:");
@@ -164,16 +165,16 @@ test("memoryStore: basic get/set operations", async () => {
 test("Summary + Last: typical usage pattern", async () => {
   const store = memoryStore();
 
-  const summarize = ({ content }: { content: string }) => {
-    return `[Summary: ${content.length} chars]`;
-  };
+  // Summarizer produces a short fixed-length output
+  const summarize = () => "Discussed greetings";
 
+  // Use longer messages so the summary provides real compression
   const messages = [
-    "Message 1: Hello",
-    "Message 2: How are you?",
-    "Message 3: Fine thanks",
-    "Message 4: Great!",
-    "Message 5: Goodbye",
+    "Message 1: Hello there, how are you doing today?",
+    "Message 2: I am doing great, thanks for asking!",
+    "Message 3: That is wonderful to hear from you.",
+    "Message 4: Recent message here",
+    "Message 5: Final message",
   ];
 
   const element = (
@@ -185,13 +186,15 @@ test("Summary + Last: typical usage pattern", async () => {
     </Region>
   );
 
-  // Small budget forces summarization
-  const result = await render(element, { tokenizer, budget: 15 });
+  // Full content: ~180 chars = 45 tokens
+  // Summarized: prefix (34) + summary (19) + last 2 msgs (~50) = ~103 chars = 26 tokens
+  const result = await render(element, { tokenizer, budget: 30 });
 
-  // Should have summary of older messages
-  expect(result).toContain("[Summary:");
+  // Should have summary of older messages (wrapped with prefix)
+  expect(result).toContain("[Summary of earlier conversation]");
+  expect(result).toContain("Discussed greetings");
 
   // Should have recent messages in full
-  expect(result).toContain("Message 4: Great!");
-  expect(result).toContain("Message 5: Goodbye");
+  expect(result).toContain("Message 4: Recent message here");
+  expect(result).toContain("Message 5: Final message");
 });

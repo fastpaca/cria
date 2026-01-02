@@ -9,7 +9,8 @@ import {
 
 export interface RenderOptions {
   tokenizer: Tokenizer;
-  budget: number;
+  /** Token budget. Omit for unlimited. */
+  budget?: number;
   renderer?: PromptRenderer<unknown>;
 }
 
@@ -26,6 +27,11 @@ export async function render<TOptions extends RenderOptions>(
   const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<
     RenderOutput<TOptions>
   >;
+
+  // Skip fitting if no budget specified (unlimited)
+  if (budget === undefined || budget === null) {
+    return (await resolvedRenderer.render(element)) as RenderOutput<TOptions>;
+  }
 
   if (budget <= 0) {
     return resolvedRenderer.empty();

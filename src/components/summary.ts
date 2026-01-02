@@ -86,10 +86,12 @@ function createSummaryStrategy({
       lastUpdated: Date.now(),
     });
 
-    const { strategy: _, ...rest } = target;
+    // Return as an assistant message so it renders properly
     return {
-      ...rest,
-      children: [newSummary],
+      kind: "message",
+      role: "assistant",
+      priority: target.priority,
+      children: [`[Summary of earlier conversation]\n${newSummary}`],
     };
   };
 }
