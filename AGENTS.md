@@ -1,3 +1,39 @@
+# Beads Issue Tracking
+# BEGIN BEADS INTEGRATION
+
+This project uses [Beads (bd)](https://github.com/steveyegge/beads) for issue tracking.
+
+## Core Rules
+- Track ALL work in bd (never use markdown TODOs or comment-based task lists)
+- Use `bd ready` to find available work
+- Use `bd create` to track new issues/tasks/bugs
+- Use `bd sync` at end of session to sync with git remote
+- Git hooks auto-sync on commit/merge
+
+## Quick Reference
+```bash
+bd prime                              # Load complete workflow context
+bd ready                              # Show issues ready to work (no blockers)
+bd list --status=open                 # List all open issues
+bd create --title="..." --type=task  # Create new issue
+bd update <id> --status=in_progress  # Claim work
+bd close <id>                         # Mark complete
+bd dep add <issue> <depends-on>       # Add dependency (issue depends on depends-on)
+bd sync                               # Sync with git remote
+```
+
+## Workflow
+1. Check for ready work: `bd ready`
+2. Claim an issue: `bd update <id> --status=in_progress`
+3. Do the work
+4. Mark complete: `bd close <id>`
+5. Sync: `bd sync` (or let git hooks handle it)
+
+## Context Loading
+Run `bd prime` to get complete workflow documentation in AI-optimized format (~1-2k tokens).
+
+# END BEADS INTEGRATION
+
 # Ultracite Code Standards
 
 This project uses **Ultracite**, a zero-config Biome preset that enforces strict code quality standards through automated formatting and linting.
