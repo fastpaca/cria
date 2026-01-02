@@ -1,10 +1,4 @@
-import type {
-  ModelMessage,
-  TextPart,
-  ToolCallPart,
-  ToolResultPart,
-  UIMessage,
-} from "ai";
+import type { ModelMessage, ToolResultPart, UIMessage } from "ai";
 import {
   Message,
   Reasoning,
@@ -20,7 +14,11 @@ import type {
   Strategy,
 } from "../types";
 
-export interface AiSdkPriorities {
+/**
+ * Priority configuration for message types when rendering prompts.
+ * Lower numbers = higher priority (less likely to be dropped).
+ */
+export interface Priorities {
   system: number;
   user: number;
   assistant: number;
@@ -29,34 +27,38 @@ export interface AiSdkPriorities {
   reasoning: number;
 }
 
-export const DEFAULT_AI_SDK_PRIORITIES: AiSdkPriorities = {
+export const DEFAULT_PRIORITIES: Priorities = {
   system: 0,
   user: 1,
-  assistant: 2,
+  assistant: 1,
   toolCall: 3,
-  toolResult: 1,
+  toolResult: 2,
   reasoning: 3,
-} as const;
+};
 
-export interface AiSdkMessagesProps {
+export interface MessagesProps {
   messages: readonly UIMessage[];
   includeReasoning?: boolean;
-  priorities?: Partial<AiSdkPriorities>;
+  priorities?: Partial<Priorities>;
   id?: string;
 }
 
-export function AiSdkMessages({
+/**
+ * Converts AI SDK UIMessages into Cria prompt elements.
+ * Use this to include conversation history in your prompts.
+ */
+export function Messages({
   messages,
   includeReasoning = false,
   priorities,
   id,
-}: AiSdkMessagesProps): PromptElement {
+}: MessagesProps): PromptElement {
   const resolvedPriorities = resolvePriorities(priorities);
 
   return (
     <Region priority={0} {...(id === undefined ? {} : { id })}>
       {messages.map((message) => (
-        <AiSdkMessage
+        <UIMessageElement
           includeReasoning={includeReasoning}
           message={message}
           priorities={resolvedPriorities}
@@ -66,19 +68,19 @@ export function AiSdkMessages({
   );
 }
 
-const omitStrategy: Strategy = async () => null;
+const omitStrategy: Strategy = () => null;
 
-interface AiSdkMessageProps {
+interface UIMessageElementProps {
   message: UIMessage;
-  priorities: AiSdkPriorities;
+  priorities: Priorities;
   includeReasoning: boolean;
 }
 
-function AiSdkMessage({
+function UIMessageElement({
   message,
   priorities,
   includeReasoning,
-}: AiSdkMessageProps): PromptElement {
+}: UIMessageElementProps): PromptElement {
   const messagePriority = rolePriority(message.role, priorities);
 
   return (
@@ -96,6 +98,7 @@ function AiSdkMessage({
           if (!includeReasoning) {
             return null;
           }
+
           return (
             <Reasoning
               priority={priorities.reasoning}
@@ -106,65 +109,64 @@ function AiSdkMessage({
         }
 
         const toolInvocation = parseToolInvocationPart(part);
-        if (toolInvocation) {
-          return [
-            <ToolCall
-              input={toolInvocation.input}
-              priority={priorities.toolCall}
-              strategy={omitStrategy}
-              toolCallId={toolInvocation.toolCallId}
-              toolName={toolInvocation.toolName}
-            />,
-            toolInvocation.output === undefined ? null : (
-              <ToolResult
-                output={toolInvocation.output}
-                priority={priorities.toolResult}
-                strategy={omitStrategy}
-                toolCallId={toolInvocation.toolCallId}
-                toolName={toolInvocation.toolName}
-              />
-            ),
-          ];
+        if (!toolInvocation) {
+          return null;
         }
 
-        return null;
+        const toolCall = (
+          <ToolCall
+            input={toolInvocation.input}
+            priority={priorities.toolCall}
+            strategy={omitStrategy}
+            toolCallId={toolInvocation.toolCallId}
+            toolName={toolInvocation.toolName}
+          />
+        );
+
+        if (toolInvocation.output === undefined) {
+          return toolCall;
+        }
+
+        return [
+          toolCall,
+          <ToolResult
+            output={toolInvocation.output}
+            priority={priorities.toolResult}
+            strategy={omitStrategy}
+            toolCallId={toolInvocation.toolCallId}
+            toolName={toolInvocation.toolName}
+          />,
+        ];
       })}
     </Message>
   );
 }
 
 function resolvePriorities(
-  priorities: Partial<AiSdkPriorities> | undefined
-): AiSdkPriorities {
+  priorities: Partial<Priorities> | undefined
+): Priorities {
   if (!priorities) {
-    return DEFAULT_AI_SDK_PRIORITIES;
+    return DEFAULT_PRIORITIES;
   }
 
   return {
-    system: priorities.system ?? DEFAULT_AI_SDK_PRIORITIES.system,
-    user: priorities.user ?? DEFAULT_AI_SDK_PRIORITIES.user,
-    assistant: priorities.assistant ?? DEFAULT_AI_SDK_PRIORITIES.assistant,
-    toolCall: priorities.toolCall ?? DEFAULT_AI_SDK_PRIORITIES.toolCall,
-    toolResult: priorities.toolResult ?? DEFAULT_AI_SDK_PRIORITIES.toolResult,
-    reasoning: priorities.reasoning ?? DEFAULT_AI_SDK_PRIORITIES.reasoning,
+    system: priorities.system ?? DEFAULT_PRIORITIES.system,
+    user: priorities.user ?? DEFAULT_PRIORITIES.user,
+    assistant: priorities.assistant ?? DEFAULT_PRIORITIES.assistant,
+    toolCall: priorities.toolCall ?? DEFAULT_PRIORITIES.toolCall,
+    toolResult: priorities.toolResult ?? DEFAULT_PRIORITIES.toolResult,
+    reasoning: priorities.reasoning ?? DEFAULT_PRIORITIES.reasoning,
   };
 }
 
-function rolePriority(
-  role: UIMessage["role"],
-  priorities: AiSdkPriorities
-): number {
-  switch (role) {
-    case "system":
-      return priorities.system;
-    case "user":
-      return priorities.user;
-    case "assistant":
-      return priorities.assistant;
-    default: {
-      return priorities.assistant;
-    }
+function rolePriority(role: UIMessage["role"], priorities: Priorities): number {
+  if (role === "system") {
+    return priorities.system;
   }
+  if (role === "user") {
+    return priorities.user;
+  }
+  return priorities.assistant;
 }
 
 interface ToolInvocation {
@@ -174,11 +176,17 @@ interface ToolInvocation {
   output?: unknown;
 }
 
-function parseToolInvocationPart(
-  part: UIMessage["parts"][number]
-): ToolInvocation | null {
+type UIMessagePart = UIMessage["parts"][number];
+
+const TOOL_PART_PREFIX = "tool-" as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseToolInvocationPart(part: UIMessagePart): ToolInvocation | null {
   if (part.type === "dynamic-tool") {
-    const output = toolOutputFromDynamicTool(part);
+    const output = toolOutputFromPart(part);
     return {
       toolCallId: part.toolCallId,
       toolName: part.toolName,
@@ -187,8 +195,8 @@ function parseToolInvocationPart(
     };
   }
 
-  if (part.type.startsWith("tool-")) {
-    const toolName = part.type.slice("tool-".length);
+  if (part.type.startsWith(TOOL_PART_PREFIX)) {
+    const toolName = part.type.slice(TOOL_PART_PREFIX.length);
     if (!("toolCallId" in part)) {
       return null;
     }
@@ -198,7 +206,7 @@ function parseToolInvocationPart(
     }
 
     const input = "input" in part ? part.input : undefined;
-    const output = toolOutputFromStaticTool(part);
+    const output = toolOutputFromPart(part);
     return {
       toolCallId,
       toolName,
@@ -210,25 +218,7 @@ function parseToolInvocationPart(
   return null;
 }
 
-function toolOutputFromDynamicTool(
-  part: Extract<UIMessage["parts"][number], { type: "dynamic-tool" }>
-): unknown {
-  if (part.state === "output-available") {
-    return part.output;
-  }
-  if (part.state === "output-error") {
-    return { type: "error-text", value: part.errorText };
-  }
-  if (part.state === "output-denied") {
-    const reason = part.approval.reason;
-    return reason
-      ? { type: "execution-denied", reason }
-      : { type: "execution-denied" };
-  }
-  return undefined;
-}
-
-function toolOutputFromStaticTool(part: UIMessage["parts"][number]): unknown {
+function toolOutputFromPart(part: UIMessagePart): unknown | undefined {
   if (!("state" in part)) {
     return undefined;
   }
@@ -241,50 +231,50 @@ function toolOutputFromStaticTool(part: UIMessage["parts"][number]): unknown {
   }
 
   if (part.state === "output-error") {
-    return toolOutputErrorText(part);
+    const errorText =
+      "errorText" in part && typeof part.errorText === "string"
+        ? part.errorText
+        : "Tool error";
+    return { type: "error-text", value: errorText };
   }
 
   if (part.state === "output-denied") {
-    return toolOutputDenied(part);
-  }
-
-  return undefined;
-}
-
-function toolOutputErrorText(part: UIMessage["parts"][number]): unknown {
-  if ("errorText" in part) {
-    return { type: "error-text", value: part.errorText };
-  }
-
-  return { type: "error-text", value: "Tool error" };
-}
-
-function toolOutputDenied(part: UIMessage["parts"][number]): unknown {
-  if (
-    "approval" in part &&
-    typeof part.approval === "object" &&
-    part.approval !== null
-  ) {
-    const maybeReason = (part.approval as { reason?: unknown }).reason;
-    const reason = typeof maybeReason === "string" ? maybeReason : undefined;
+    const reason = deniedReasonFromPart(part);
     return reason
       ? { type: "execution-denied", reason }
       : { type: "execution-denied" };
   }
 
-  return { type: "execution-denied" };
+  return undefined;
 }
 
-export const aiSdkRenderer: PromptRenderer<readonly ModelMessage[]> = {
+function deniedReasonFromPart(part: UIMessagePart): string | undefined {
+  if (!("approval" in part)) {
+    return undefined;
+  }
+  const approval = part.approval;
+  if (!isRecord(approval)) {
+    return undefined;
+  }
+  const reason = approval.reason;
+  if (typeof reason !== "string") {
+    return undefined;
+  }
+  return reason.length === 0 ? undefined : reason;
+}
+
+/**
+ * Renderer that outputs ModelMessage[] for use with the Vercel AI SDK.
+ * Pass this to render() to get messages compatible with generateText/streamText.
+ */
+export const renderer: PromptRenderer<ModelMessage[]> = {
   name: "ai-sdk",
   tokenString: markdownRenderer.tokenString,
-  render: (element) => renderToAiSdkModelMessages(element),
+  render: (element) => renderToModelMessages(element),
   empty: () => [],
 };
 
-function renderToAiSdkModelMessages(
-  root: PromptElement
-): readonly ModelMessage[] {
+function renderToModelMessages(root: PromptElement): ModelMessage[] {
   const messageNodes = collectMessageNodes(root);
   const result: ModelMessage[] = [];
 
@@ -327,47 +317,56 @@ type SemanticPart =
       output: unknown;
     };
 
+type ToolResultSemanticPart = Extract<SemanticPart, { type: "tool-result" }>;
+type NonToolSemanticPart = Exclude<SemanticPart, { type: "tool-result" }>;
+
+type SemanticPartGroup =
+  | { kind: "non-tool"; parts: NonToolSemanticPart[] }
+  | { kind: "tool-result"; parts: ToolResultSemanticPart[] };
+
 function messageNodeToModelMessages(
   messageNode: MessageElement
 ): ModelMessage[] {
-  const role = messageNode.role;
   const parts = coalesceTextParts(collectSemanticParts(messageNode.children));
+  const groups = groupSemanticParts(parts);
 
   const result: ModelMessage[] = [];
-  let pendingNonTool: SemanticPart[] = [];
-  let pendingToolResults: SemanticPart[] = [];
-
-  const flushNonTool = () => {
-    if (pendingNonTool.length === 0) {
-      return;
+  for (const group of groups) {
+    if (group.kind === "tool-result") {
+      result.push(toToolModelMessage(group.parts));
+      continue;
     }
-    result.push(toModelMessage(role, pendingNonTool));
-    pendingNonTool = [];
-  };
+    result.push(toModelMessage(messageNode.role, group.parts));
+  }
 
-  const flushTool = () => {
-    if (pendingToolResults.length === 0) {
-      return;
-    }
-    result.push(toToolModelMessage(pendingToolResults));
-    pendingToolResults = [];
-  };
+  return result;
+}
+
+function groupSemanticParts(
+  parts: readonly SemanticPart[]
+): SemanticPartGroup[] {
+  const groups: SemanticPartGroup[] = [];
 
   for (const part of parts) {
+    const lastGroup = groups.at(-1);
+
     if (part.type === "tool-result") {
-      flushNonTool();
-      pendingToolResults.push(part);
+      if (lastGroup?.kind === "tool-result") {
+        lastGroup.parts.push(part);
+      } else {
+        groups.push({ kind: "tool-result", parts: [part] });
+      }
       continue;
     }
 
-    flushTool();
-    pendingNonTool.push(part);
+    if (lastGroup?.kind === "non-tool") {
+      lastGroup.parts.push(part);
+    } else {
+      groups.push({ kind: "non-tool", parts: [part] });
+    }
   }
 
-  flushTool();
-  flushNonTool();
-
-  return result;
+  return groups;
 }
 
 function collectSemanticParts(children: PromptChildren): SemanticPart[] {
@@ -447,7 +446,7 @@ function coalesceTextParts(parts: readonly SemanticPart[]): SemanticPart[] {
 
 function toModelMessage(
   role: string,
-  parts: readonly SemanticPart[]
+  parts: readonly NonToolSemanticPart[]
 ): ModelMessage {
   if (role === "system") {
     return { role: "system", content: partsToText(parts) };
@@ -457,12 +456,14 @@ function toModelMessage(
     return { role: "user", content: partsToText(parts) };
   }
 
-  interface ModelReasoningPart {
-    type: "reasoning";
-    text: string;
-  }
+  type AssistantModelMessage = Extract<ModelMessage, { role: "assistant" }>;
+  type AssistantContent = AssistantModelMessage["content"];
+  type AssistantContentPart =
+    Exclude<AssistantContent, string> extends readonly (infer Part)[]
+      ? Part
+      : never;
 
-  const content: Array<TextPart | ModelReasoningPart | ToolCallPart> = [];
+  const content: AssistantContentPart[] = [];
   for (const part of parts) {
     if (part.type === "text") {
       content.push({ type: "text", text: part.text });
@@ -481,12 +482,11 @@ function toModelMessage(
   return { role: "assistant", content };
 }
 
-function toToolModelMessage(parts: readonly SemanticPart[]): ModelMessage {
+function toToolModelMessage(
+  parts: readonly ToolResultSemanticPart[]
+): ModelMessage {
   const content: ToolResultPart[] = [];
   for (const part of parts) {
-    if (part.type !== "tool-result") {
-      continue;
-    }
     content.push({
       type: "tool-result",
       toolCallId: part.toolCallId,
@@ -495,16 +495,6 @@ function toToolModelMessage(parts: readonly SemanticPart[]): ModelMessage {
     });
   }
   return { role: "tool", content };
-}
-
-function partsToText(parts: readonly SemanticPart[]): string {
-  let result = "";
-  for (const part of parts) {
-    if (part.type === "text") {
-      result += part.text;
-    }
-  }
-  return result;
 }
 
 function coerceToolResultOutput(output: unknown): ToolResultPart["output"] {
@@ -516,45 +506,40 @@ function coerceToolResultOutput(output: unknown): ToolResultPart["output"] {
     return output;
   }
 
-  if (isJsonValue(output)) {
-    return { type: "json", value: output };
-  }
+  return { type: "json", value: safeJsonValue(output) };
+}
 
-  return { type: "text", value: safeJsonStringify(output) };
+interface ToolResultOutputLike {
+  type: unknown;
+  value?: unknown;
+  reason?: unknown;
 }
 
 function isToolResultOutput(value: unknown): value is ToolResultPart["output"] {
-  if (!isRecord(value)) {
+  if (typeof value !== "object" || value === null) {
     return false;
-  }
-  interface ToolResultOutputLike {
-    type?: unknown;
-    value?: unknown;
-    reason?: unknown;
   }
 
   const output = value as ToolResultOutputLike;
+
   if (typeof output.type !== "string") {
     return false;
   }
 
-  if (output.type === "text") {
-    return typeof output.value === "string";
+  switch (output.type) {
+    case "text":
+    case "error-text":
+      return typeof output.value === "string";
+    case "json":
+    case "error-json":
+      return output.value !== undefined;
+    case "execution-denied":
+      return output.reason === undefined || typeof output.reason === "string";
+    case "content":
+      return Array.isArray(output.value);
+    default:
+      return false;
   }
-  if (output.type === "json") {
-    return isJsonValue(output.value);
-  }
-  if (output.type === "execution-denied") {
-    return output.reason === undefined || typeof output.reason === "string";
-  }
-  if (output.type === "error-text") {
-    return typeof output.value === "string";
-  }
-  if (output.type === "error-json") {
-    return isJsonValue(output.value);
-  }
-
-  return false;
 }
 
 type JsonValue =
@@ -565,63 +550,37 @@ type JsonValue =
   | { [key: string]: JsonValue }
   | JsonValue[];
 
-function isJsonValue(
-  value: unknown,
-  seen: Set<unknown> = new Set()
-): value is JsonValue {
+function safeJsonValue(value: unknown): JsonValue {
   if (
     value === null ||
     typeof value === "string" ||
     typeof value === "number" ||
     typeof value === "boolean"
   ) {
-    return true;
-  }
-
-  if (typeof value !== "object") {
-    return false;
-  }
-
-  if (seen.has(value)) {
-    return false;
-  }
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (!isJsonValue(item, seen)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof key !== "string") {
-      return false;
-    }
-    if (!isJsonValue(entry, seen)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function safeJsonStringify(value: unknown): string {
-  if (typeof value === "string") {
     return value;
   }
-  if (value === undefined) {
-    return "undefined";
+
+  if (Array.isArray(value)) {
+    return value.map(safeJsonValue);
   }
-  try {
-    return JSON.stringify(value, null, 2) ?? "null";
-  } catch {
-    return String(value);
+
+  if (typeof value === "object") {
+    const result: Record<string, JsonValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      result[key] = safeJsonValue(entry);
+    }
+    return result;
   }
+
+  return String(value);
+}
+
+function partsToText(parts: readonly SemanticPart[]): string {
+  let result = "";
+  for (const part of parts) {
+    if (part.type === "text") {
+      result += part.text;
+    }
+  }
+  return result;
 }

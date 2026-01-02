@@ -178,10 +178,10 @@ try {
   - [ ] Vector storage / search index
 - [ ] Components
   - [ ] Summary
-  - [ ] Messages
+  - [x] Messages
   - [ ] RAG/Vector-search
-  - [ ] Tools / Tool Calls 
-  - [ ] Reasoning
+  - [x] Tools / Tool Calls / Tool Result
+  - [x] Reasoning
   - [ ] Examples
   - [ ] Code
   - [ ] Seperators

@@ -1,5 +1,6 @@
 import { openai } from "@ai-sdk/openai";
-import { Omit, Region, render, Truncate } from "@fastpaca/cria";
+import { Message, Omit, Region, render, Truncate } from "@fastpaca/cria";
+import { renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
 
@@ -33,59 +34,85 @@ const documents = [
 
 const userQuestion = "Can you summarize Berlin's key facts?";
 
-// Build the prompt using Cria JSX
+// Build the prompt using Cria JSX with Message components for structured output
 const prompt = (
   <Region priority={0}>
-    {/* System prompt - highest priority, never dropped */}
-    <Region id="system" priority={0}>
+    {/* System message - highest priority, never dropped */}
+    {/* biome-ignore lint/a11y/useValidAriaRole: Cria's Message `role` prop is an LLM role, not an ARIA role. */}
+    <Message id="system" priority={0} role="system">
       {systemPrompt}
-      {"\n\n"}
-    </Region>
+    </Message>
 
-    {/* Documents - can be omitted if over budget */}
+    {/* Assistant message with reference documents - can be omitted if over budget */}
     <Omit id="documents" priority={3}>
-      {"## Reference Documents\n\n"}
-      {documents.map((doc, i) => (
-        <Region id={`doc-${i}`} priority={3}>
-          {`### ${doc.title}\n${doc.content}\n\n`}
-        </Region>
-      ))}
+      {/* biome-ignore lint/a11y/useValidAriaRole: Cria's Message `role` prop is an LLM role, not an ARIA role. */}
+      <Message priority={3} role="assistant">
+        {"Here are some reference documents:\n\n"}
+        {documents.map((doc, i) => (
+          <Region id={`doc-${i}`} priority={3}>
+            {`### ${doc.title}\n${doc.content}\n\n`}
+          </Region>
+        ))}
+      </Message>
     </Omit>
 
     {/* Conversation history - truncate from start if needed */}
     <Truncate budget={500} from="start" id="history" priority={2}>
-      {"## Conversation History\n\n"}
       {conversationHistory.map((msg, i) => (
-        <Region id={`msg-${i}`} priority={2}>
-          {`${msg.role}: ${msg.content}\n`}
-        </Region>
+        <Message
+          id={`msg-${i}`}
+          priority={2}
+          role={msg.role as "user" | "assistant"}
+        >
+          {msg.content}
+        </Message>
       ))}
-      {"\n"}
     </Truncate>
 
     {/* Current question - high priority */}
-    <Region id="question" priority={1}>
-      {"## Current Question\n\n"}
-      {`user: ${userQuestion}`}
-    </Region>
+    {/* biome-ignore lint/a11y/useValidAriaRole: Cria's Message `role` prop is an LLM role, not an ARIA role. */}
+    <Message id="question" priority={1} role="user">
+      {userQuestion}
+    </Message>
   </Region>
 );
 
-// Render with a token budget
+// Render with a token budget using the AI SDK renderer
 const budget = 1000; // tokens
-const renderedPrompt = render(prompt, { tokenizer, budget });
+const messages = await render(prompt, {
+  tokenizer,
+  budget,
+  renderer,
+});
 
-console.log("=== Rendered Prompt ===");
-console.log(renderedPrompt);
+console.log("=== Rendered Messages ===");
+console.log(JSON.stringify(messages, null, 2));
+
+// Calculate approximate token count from messages
+const messageText = messages
+  .map((m) => {
+    if (typeof m.content === "string") {
+      return m.content;
+    }
+    return m.content
+      .map((p) => {
+        if ("text" in p) {
+          return p.text;
+        }
+        return JSON.stringify(p);
+      })
+      .join("");
+  })
+  .join("\n");
 console.log(
-  `\n=== Token count: ${tokenizer(renderedPrompt)} / ${budget} ===\n`
+  `\n=== Approximate token count: ${tokenizer(messageText)} / ${budget} ===\n`
 );
 
-// Call OpenAI using Vercel AI SDK
+// Call OpenAI using Vercel AI SDK with structured messages
 async function main() {
   const { text } = await generateText({
     model: openai("gpt-4o-mini"),
-    prompt: renderedPrompt,
+    messages,
   });
 
   console.log("=== AI Response ===");

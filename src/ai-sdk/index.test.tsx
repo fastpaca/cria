@@ -1,11 +1,11 @@
 import type { UIMessage } from "ai";
 import { expect, test } from "vitest";
 import { render } from "../render";
-import { AiSdkMessages, aiSdkRenderer } from "./index";
+import { Messages, renderer } from "./index";
 
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
-test("AiSdkMessages: renders text + dynamic-tool output as tool-call/tool-result", async () => {
+test("Messages: renders text + dynamic-tool output as tool-call/tool-result", async () => {
   const messages: readonly UIMessage[] = [
     { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
     {
@@ -25,7 +25,7 @@ test("AiSdkMessages: renders text + dynamic-tool output as tool-call/tool-result
     },
   ];
 
-  const prompt = await render(<AiSdkMessages messages={messages} />, {
+  const prompt = await render(<Messages messages={messages} />, {
     tokenizer,
     budget: 10_000,
   });
@@ -53,7 +53,7 @@ test("AiSdkMessages: renders text + dynamic-tool output as tool-call/tool-result
   expect(prompt).toBe(expected);
 });
 
-test("AiSdkMessages: includeReasoning controls reasoning rendering", async () => {
+test("Messages: includeReasoning controls reasoning rendering", async () => {
   const messages: readonly UIMessage[] = [
     {
       id: "a1",
@@ -65,7 +65,7 @@ test("AiSdkMessages: includeReasoning controls reasoning rendering", async () =>
     },
   ];
 
-  const withoutReasoning = await render(<AiSdkMessages messages={messages} />, {
+  const withoutReasoning = await render(<Messages messages={messages} />, {
     tokenizer,
     budget: 10_000,
   });
@@ -73,7 +73,7 @@ test("AiSdkMessages: includeReasoning controls reasoning rendering", async () =>
   expect(withoutReasoning).toContain("public answer");
 
   const withReasoning = await render(
-    <AiSdkMessages includeReasoning messages={messages} />,
+    <Messages includeReasoning messages={messages} />,
     { tokenizer, budget: 10_000 }
   );
   expect(withReasoning).toContain("<thinking>");
@@ -81,7 +81,7 @@ test("AiSdkMessages: includeReasoning controls reasoning rendering", async () =>
   expect(withReasoning).toContain("public answer");
 });
 
-test("aiSdkRenderer: renders semantic IR to ModelMessage[] (tool call + tool result split)", async () => {
+test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result split)", async () => {
   const messages: readonly UIMessage[] = [
     { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
     {
@@ -101,10 +101,10 @@ test("aiSdkRenderer: renders semantic IR to ModelMessage[] (tool call + tool res
     },
   ];
 
-  const modelMessages = await render(<AiSdkMessages messages={messages} />, {
+  const modelMessages = await render(<Messages messages={messages} />, {
     tokenizer,
     budget: 10_000,
-    renderer: aiSdkRenderer,
+    renderer,
   });
 
   expect(modelMessages).toHaveLength(3);
