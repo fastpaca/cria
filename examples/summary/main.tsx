@@ -81,11 +81,7 @@ const summarizer = async ({
     </Region>
   );
 
-  const messages = await render(summarizerPrompt, {
-    tokenizer,
-    budget: 4000,
-    renderer,
-  });
+  const messages = await render(summarizerPrompt, { tokenizer, renderer });
   const { text } = await generateText({
     model: openai("gpt-4o-mini"),
     messages,
