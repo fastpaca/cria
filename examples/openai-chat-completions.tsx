@@ -50,7 +50,7 @@ async function main() {
   // Use with OpenAI SDK
   const openai = new OpenAI();
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-5",
     messages,
   });
 

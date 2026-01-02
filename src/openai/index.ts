@@ -384,7 +384,7 @@ function collectResponseItems(
       // Native reasoning support in Responses API
       if (element.text.length > 0) {
         const reasoningItem: ResponseReasoningItem = {
-          id: element.id ?? `reasoning-${Date.now()}`,
+          id: element.id ?? `rs_${Date.now()}`,
           type: "reasoning",
           summary: [{ type: "summary_text", text: element.text }],
         };

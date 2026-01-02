@@ -1,11 +1,14 @@
 /**
- * Example: Using Cria with OpenAI Responses API (o1/o3 models)
+ * Example: Using Cria with OpenAI Responses API (reasoning models)
  *
- * This example shows how to build a prompt with native reasoning support
- * and render it to ResponseInputItem[] for use with the OpenAI Responses API.
+ * This example shows how to build a prompt and render it to
+ * ResponseInputItem[] for use with the OpenAI Responses API.
+ *
+ * Note: The Reasoning component is used to replay reasoning from previous
+ * API responses. For fresh requests, the model generates its own reasoning.
  */
 
-import { Message, Reasoning, Region, render } from "@fastpaca/cria";
+import { Message, Region, render, ToolCall, ToolResult } from "@fastpaca/cria";
 import { responses } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
@@ -13,7 +16,6 @@ import OpenAI from "openai";
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
 // Build your prompt with Cria components
-// The Reasoning component renders as native reasoning blocks for o1/o3
 const prompt = (
   <Region priority={0}>
     <Message role="system">
@@ -22,18 +24,34 @@ const prompt = (
     <Message role="user">
       What is the sum of all prime numbers less than 20?
     </Message>
-    <Reasoning
+  </Region>
+);
+
+// Example with tool calls (showing full Responses API capabilities)
+const toolPrompt = (
+  <Region priority={0}>
+    <Message role="system">You are a helpful weather assistant.</Message>
+    <Message role="user">What's the weather in Paris?</Message>
+    <ToolCall
+      input={{ city: "Paris" }}
       priority={1}
-      text="Let me identify all primes less than 20: 2, 3, 5, 7, 11, 13, 17, 19. Now I'll sum them: 2+3+5+7+11+13+17+19 = 77"
+      toolCallId="call_abc123"
+      toolName="getWeather"
+    />
+    <ToolResult
+      output={{ temperature: 18, condition: "sunny" }}
+      priority={1}
+      toolCallId="call_abc123"
+      toolName="getWeather"
     />
     <Message role="assistant">
-      The sum of all prime numbers less than 20 is 77.
+      The weather in Paris is sunny with a temperature of 18°C.
     </Message>
   </Region>
 );
 
 async function main() {
-  // Render to OpenAI Responses format
+  // Render simple prompt to OpenAI Responses format
   const input = await render(prompt, {
     tokenizer,
     budget: 128_000,
@@ -42,14 +60,23 @@ async function main() {
 
   console.log("Rendered input:", JSON.stringify(input, null, 2));
 
+  // Render tool prompt to show function_call/function_call_output items
+  const toolInput = await render(toolPrompt, {
+    tokenizer,
+    budget: 128_000,
+    renderer: responses,
+  });
+
+  console.log("\nRendered tool input:", JSON.stringify(toolInput, null, 2));
+
   // Use with OpenAI SDK (Responses API)
   const openai = new OpenAI();
   const response = await openai.responses.create({
-    model: "o3",
+    model: "gpt-5",
     input,
   });
 
-  console.log("Response:", response.output_text);
+  console.log("\nResponse:", response.output_text);
 }
 
 main();
