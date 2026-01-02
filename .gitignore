@@ -32,3 +32,6 @@ coverage/
 
 # Git worktrees
 .worktrees/
+
+# Local design docs
+.design-docs/

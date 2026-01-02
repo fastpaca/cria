@@ -24,6 +24,30 @@
     "./jsx-dev-runtime": {
       "types": "./dist/jsx-dev-runtime.d.ts",
       "import": "./dist/jsx-dev-runtime.js"
+    },
+    "./openai": {
+      "types": "./dist/openai/index.d.ts",
+      "import": "./dist/openai/index.js"
+    },
+    "./anthropic": {
+      "types": "./dist/anthropic/index.d.ts",
+      "import": "./dist/anthropic/index.js"
+    }
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "ai": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
+    "openai": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
     }
   },
   "files": [
@@ -38,10 +62,12 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "ai": "^6.0.0",
+    "@anthropic-ai/sdk": "^0.39.0",
     "@biomejs/biome": "^2.3.10",
     "@types/node": "^22.0.0",
+    "ai": "^6.0.0",
     "husky": "^9.1.7",
+    "openai": "^4.104.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "ultracite": "^6.5.0",
