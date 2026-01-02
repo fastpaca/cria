@@ -85,11 +85,11 @@ export function jsxs(
   return jsx(type, props);
 }
 
-// biome-ignore lint/style/noNamespace: Required for JSX type definitions
 export namespace JSX {
   export type Element = PromptElement;
-  // biome-ignore lint/complexity/noBannedTypes lint/style/useConsistentTypeDefinitions: Required empty type for JSX
-  export type IntrinsicElements = {};
+  export interface IntrinsicElements {
+    [key: string]: never;
+  }
   export interface ElementChildrenAttribute {
     children: unknown;
   }

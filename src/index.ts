@@ -29,7 +29,6 @@ export type {
   SummarizerContext,
   SummaryStore,
 } from "./components";
-// biome-ignore lint/performance/noBarrelFile: Entry point for package exports
 export {
   Last,
   Message,

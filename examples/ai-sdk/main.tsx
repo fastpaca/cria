@@ -38,15 +38,13 @@ const userQuestion = "Can you summarize Berlin's key facts?";
 const prompt = (
   <Region priority={0}>
     {/* System message - highest priority, never dropped */}
-    {/* biome-ignore lint/a11y/useValidAriaRole: Cria's Message `role` prop is an LLM role, not an ARIA role. */}
-    <Message id="system" priority={0} role="system">
+    <Message id="system" messageRole="system" priority={0}>
       {systemPrompt}
     </Message>
 
     {/* Assistant message with reference documents - can be omitted if over budget */}
     <Omit id="documents" priority={3}>
-      {/* biome-ignore lint/a11y/useValidAriaRole: Cria's Message `role` prop is an LLM role, not an ARIA role. */}
-      <Message priority={3} role="assistant">
+      <Message messageRole="assistant" priority={3}>
         {"Here are some reference documents:\n\n"}
         {documents.map((doc, i) => (
           <Region id={`doc-${i}`} priority={3}>
@@ -61,8 +59,8 @@ const prompt = (
       {conversationHistory.map((msg, i) => (
         <Message
           id={`msg-${i}`}
+          messageRole={msg.role as "user" | "assistant"}
           priority={2}
-          role={msg.role as "user" | "assistant"}
         >
           {msg.content}
         </Message>
@@ -70,8 +68,7 @@ const prompt = (
     </Truncate>
 
     {/* Current question - high priority */}
-    {/* biome-ignore lint/a11y/useValidAriaRole: Cria's Message `role` prop is an LLM role, not an ARIA role. */}
-    <Message id="question" priority={1} role="user">
+    <Message id="question" messageRole="user" priority={1}>
       {userQuestion}
     </Message>
   </Region>

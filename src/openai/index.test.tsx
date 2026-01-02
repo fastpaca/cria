@@ -14,7 +14,7 @@ const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 test("chatCompletions: renders system message", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="system">You are a helpful assistant.</Message>
+      <Message messageRole="system">You are a helpful assistant.</Message>
     </Region>
   );
 
@@ -34,8 +34,8 @@ test("chatCompletions: renders system message", async () => {
 test("chatCompletions: renders user and assistant messages", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="user">Hello!</Message>
-      <Message role="assistant">Hi there! How can I help?</Message>
+      <Message messageRole="user">Hello!</Message>
+      <Message messageRole="assistant">Hi there! How can I help?</Message>
     </Region>
   );
 
@@ -56,7 +56,7 @@ test("chatCompletions: renders user and assistant messages", async () => {
 test("chatCompletions: renders tool calls on assistant message", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         Let me check the weather.
         <ToolCall
           input={{ city: "Paris" }}
@@ -94,7 +94,7 @@ test("chatCompletions: renders tool calls on assistant message", async () => {
 test("chatCompletions: renders tool results as separate tool messages", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         <ToolCall
           input={{ city: "Paris" }}
           priority={1}
@@ -141,9 +141,9 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
 test("chatCompletions: full conversation flow", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="system">You are a weather assistant.</Message>
-      <Message role="user">What's the weather in Paris?</Message>
-      <Message role="assistant">
+      <Message messageRole="system">You are a weather assistant.</Message>
+      <Message messageRole="user">What's the weather in Paris?</Message>
+      <Message messageRole="assistant">
         <ToolCall
           input={{ city: "Paris" }}
           priority={1}
@@ -157,7 +157,7 @@ test("chatCompletions: full conversation flow", async () => {
           toolName="getWeather"
         />
       </Message>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         The weather in Paris is sunny with a temperature of 18°C.
       </Message>
     </Region>
@@ -184,8 +184,8 @@ test("chatCompletions: full conversation flow", async () => {
 test("responses: renders messages as EasyInputMessage", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="system">You are a helpful assistant.</Message>
-      <Message role="user">Hello!</Message>
+      <Message messageRole="system">You are a helpful assistant.</Message>
+      <Message messageRole="user">Hello!</Message>
     </Region>
   );
 
@@ -209,7 +209,7 @@ test("responses: renders messages as EasyInputMessage", async () => {
 test("responses: renders tool calls as function_call items", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="assistant">
+      <Message messageRole="assistant">
         <ToolCall
           input={{ city: "Paris" }}
           priority={1}
@@ -284,10 +284,10 @@ test("responses: renders reasoning as native reasoning item", async () => {
 test("responses: full conversation with reasoning", async () => {
   const prompt = (
     <Region priority={0}>
-      <Message role="system">You are a helpful assistant.</Message>
-      <Message role="user">What is 2+2?</Message>
+      <Message messageRole="system">You are a helpful assistant.</Message>
+      <Message messageRole="user">What is 2+2?</Message>
       <Reasoning priority={1} text="This is basic arithmetic." />
-      <Message role="assistant">The answer is 4.</Message>
+      <Message messageRole="assistant">The answer is 4.</Message>
     </Region>
   );
 

@@ -1,5 +1,10 @@
 import type { Child } from "../jsx-runtime";
-import type { PromptChildren, PromptElement, Strategy } from "../types";
+import type {
+  PromptChildren,
+  PromptElement,
+  PromptRole,
+  Strategy,
+} from "../types";
 
 interface RegionProps {
   /** Lower number = higher importance. Default: 0 (highest priority) */
@@ -48,21 +53,21 @@ interface SemanticRegionProps {
   id?: string;
 }
 
-interface MessageProps extends SemanticRegionProps {
-  role: string;
+interface MessagePropsBase extends SemanticRegionProps {
   children?: Child;
 }
 
-export function Message({
-  role,
-  priority = 0,
-  strategy,
-  id,
-  children = [],
-}: MessageProps): PromptElement {
+type MessageProps =
+  | (MessagePropsBase & { messageRole: PromptRole; role?: never })
+  | (MessagePropsBase & { role: PromptRole; messageRole?: never });
+
+export function Message(props: MessageProps): PromptElement {
+  const { priority = 0, strategy, id, children = [] } = props;
+  const messageRole = "messageRole" in props ? props.messageRole : props.role;
+
   return {
     kind: "message",
-    role,
+    role: messageRole,
     priority,
     children: children as PromptChildren,
     ...(strategy && { strategy }),
@@ -282,5 +287,4 @@ export type {
   SummarizerContext,
   SummaryStore,
 } from "./summary";
-// biome-ignore lint/performance/noBarrelFile: Entry point for components
 export { memoryStore, Summary } from "./summary";

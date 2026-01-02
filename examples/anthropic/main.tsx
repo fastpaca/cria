@@ -16,12 +16,9 @@ const tokenizer = (text: string) => Math.ceil(text.length / 4);
 // Build your prompt with Cria components
 const prompt = (
   <Region priority={0}>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="system">You are a helpful weather assistant.</Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">What's the weather in Paris?</Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="assistant">
+    <Message messageRole="system">You are a helpful weather assistant.</Message>
+    <Message messageRole="user">What's the weather in Paris?</Message>
+    <Message messageRole="assistant">
       <ToolCall
         input={{ city: "Paris" }}
         priority={1}
@@ -29,8 +26,7 @@ const prompt = (
         toolName="getWeather"
       />
     </Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">
+    <Message messageRole="user">
       <ToolResult
         output={{ temperature: 18, condition: "sunny" }}
         priority={1}
@@ -38,8 +34,7 @@ const prompt = (
         toolName="getWeather"
       />
     </Message>
-    {/* biome-ignore lint/a11y/useValidAriaRole: Message role is an LLM role, not ARIA */}
-    <Message role="user">Should I bring a jacket?</Message>
+    <Message messageRole="user">Should I bring a jacket?</Message>
   </Region>
 );
 

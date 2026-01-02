@@ -86,8 +86,8 @@ function UIMessageElement({
   return (
     <Message
       id={`message:${message.id}`}
+      messageRole={message.role}
       priority={messagePriority}
-      role={message.role}
     >
       {message.parts.map((part) => {
         if (part.type === "text") {
