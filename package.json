@@ -32,12 +32,22 @@
     "./anthropic": {
       "types": "./dist/anthropic/index.d.ts",
       "import": "./dist/anthropic/index.js"
+    },
+    "./memory/redis": {
+      "types": "./dist/memory/redis.d.ts",
+      "import": "./dist/memory/redis.js"
+    },
+    "./memory/postgres": {
+      "types": "./dist/memory/postgres.d.ts",
+      "import": "./dist/memory/postgres.js"
     }
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
     "ai": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
-    "openai": "^4.0.0"
+    "ioredis": "^5.0.0",
+    "openai": "^4.0.0",
+    "pg": "^8.0.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
@@ -46,7 +56,13 @@
     "ai": {
       "optional": true
     },
+    "ioredis": {
+      "optional": true
+    },
     "openai": {
+      "optional": true
+    },
+    "pg": {
       "optional": true
     }
   },
@@ -65,9 +81,12 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@biomejs/biome": "^2.3.10",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.16.0",
     "ai": "^6.0.0",
     "husky": "^9.1.7",
+    "ioredis": "^5.8.2",
     "openai": "^4.104.0",
+    "pg": "^8.16.3",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "ultracite": "^6.5.0",
