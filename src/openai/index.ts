@@ -1,3 +1,4 @@
+import type OpenAI from "openai";
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionMessageParam,
@@ -6,6 +7,12 @@ import type {
   ChatCompletionToolMessageParam,
   ChatCompletionUserMessageParam,
 } from "openai/resources/chat/completions";
+import type { Child } from "../jsx-runtime";
+import type {
+  CompletionRequest,
+  CompletionResult,
+  ModelProvider,
+} from "../providers/types";
 import { markdownRenderer } from "../renderers/markdown";
 import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
 
@@ -476,4 +483,81 @@ function partsToTextForResponses(
     // We don't include them as text here since Responses API has native reasoning
   }
   return result;
+}
+
+interface OpenAIProviderProps {
+  /** OpenAI client instance */
+  client: OpenAI;
+  /** Model to use (e.g. "gpt-4o", "gpt-4o-mini") */
+  model: string;
+  /** Child components that will have access to this provider */
+  children?: Child;
+}
+
+/**
+ * Provider component that injects an OpenAI client into the component tree.
+ *
+ * Child components like `<Summary>` will automatically use this provider
+ * for AI-powered operations when no explicit function is provided.
+ *
+ * @example
+ * ```tsx
+ * import OpenAI from "openai";
+ * import { OpenAIProvider } from "@fastpaca/cria/openai";
+ * import { Summary, render } from "@fastpaca/cria";
+ *
+ * const client = new OpenAI();
+ *
+ * const prompt = (
+ *   <OpenAIProvider client={client} model="gpt-4o">
+ *     <Summary id="conv-history" store={store} priority={2}>
+ *       {conversationHistory}
+ *     </Summary>
+ *   </OpenAIProvider>
+ * );
+ *
+ * const result = await render(prompt, { tokenizer, budget: 4000 });
+ * ```
+ */
+export function OpenAIProvider({
+  client,
+  model,
+  children = [],
+}: OpenAIProviderProps): PromptElement {
+  const provider: ModelProvider = {
+    name: "openai",
+    async completion(request: CompletionRequest): Promise<CompletionResult> {
+      const messages: ChatCompletionMessageParam[] = [];
+
+      // Handle system message
+      if (request.system) {
+        messages.push({ role: "system", content: request.system });
+      }
+
+      // Convert request messages to OpenAI format
+      for (const msg of request.messages) {
+        if (msg.role === "user") {
+          messages.push({ role: "user", content: msg.content });
+        } else if (msg.role === "assistant") {
+          messages.push({ role: "assistant", content: msg.content });
+        } else if (msg.role === "system") {
+          messages.push({ role: "system", content: msg.content });
+        }
+      }
+
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+      });
+
+      const text = response.choices[0]?.message?.content ?? "";
+      return { text };
+    },
+  };
+
+  return {
+    priority: 0,
+    children: children as PromptChildren,
+    context: { provider },
+  };
 }

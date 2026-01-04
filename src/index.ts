@@ -52,7 +52,12 @@ export type { RenderOptions } from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
 export type {
+  CompletionMessage,
+  CompletionRequest,
+  CompletionResult,
+  CriaContext,
   MaybePromise,
+  ModelProvider,
   PromptChild,
   PromptChildren,
   PromptElement,

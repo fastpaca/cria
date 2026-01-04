@@ -1,9 +1,17 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import type {
   ContentBlockParam,
   MessageParam,
+  Model,
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import type { Child } from "../jsx-runtime";
+import type {
+  CompletionRequest,
+  CompletionResult,
+  ModelProvider,
+} from "../providers/types";
 import { markdownRenderer } from "../renderers/markdown";
 import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
 
@@ -356,4 +364,97 @@ function stringifyOutput(output: unknown): string {
   } catch {
     return String(output);
   }
+}
+
+function convertToAnthropicMessages(
+  request: CompletionRequest
+): MessageParam[] {
+  const messages: MessageParam[] = [];
+  for (const msg of request.messages) {
+    if (msg.role === "user") {
+      messages.push({ role: "user", content: msg.content });
+    } else if (msg.role === "assistant") {
+      messages.push({ role: "assistant", content: msg.content });
+    }
+    // System messages are handled separately in Anthropic's API
+  }
+  return messages;
+}
+
+function extractTextFromResponse(
+  content: Anthropic.Messages.ContentBlock[]
+): string {
+  let text = "";
+  for (const block of content) {
+    if (block.type === "text") {
+      text += block.text;
+    }
+  }
+  return text;
+}
+
+interface AnthropicProviderProps {
+  /** Anthropic client instance */
+  client: Anthropic;
+  /** Model to use (e.g. "claude-sonnet-4-20250514", "claude-3-5-haiku-latest") */
+  model: Model;
+  /** Maximum tokens to generate. Defaults to 1024. */
+  maxTokens?: number;
+  /** Child components that will have access to this provider */
+  children?: Child;
+}
+
+/**
+ * Provider component that injects an Anthropic client into the component tree.
+ *
+ * Child components like `<Summary>` will automatically use this provider
+ * for AI-powered operations when no explicit function is provided.
+ *
+ * @example
+ * ```tsx
+ * import Anthropic from "@anthropic-ai/sdk";
+ * import { AnthropicProvider } from "@fastpaca/cria/anthropic";
+ * import { Summary, render } from "@fastpaca/cria";
+ *
+ * const client = new Anthropic();
+ *
+ * const prompt = (
+ *   <AnthropicProvider client={client} model="claude-sonnet-4-20250514">
+ *     <Summary id="conv-history" store={store} priority={2}>
+ *       {conversationHistory}
+ *     </Summary>
+ *   </AnthropicProvider>
+ * );
+ *
+ * const result = await render(prompt, { tokenizer, budget: 4000 });
+ * ```
+ */
+export function AnthropicProvider({
+  client,
+  model,
+  maxTokens = 1024,
+  children = [],
+}: AnthropicProviderProps): PromptElement {
+  const provider: ModelProvider = {
+    name: "anthropic",
+    async completion(request: CompletionRequest): Promise<CompletionResult> {
+      const messages = convertToAnthropicMessages(request);
+
+      const response = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        ...(request.system ? { system: request.system } : {}),
+        messages,
+      });
+
+      const text = extractTextFromResponse(response.content);
+      return { text };
+    },
+  };
+
+  return {
+    priority: 0,
+    children: children as PromptChildren,
+    context: { provider },
+  };
 }

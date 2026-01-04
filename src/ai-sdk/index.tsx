@@ -1,4 +1,10 @@
-import type { ModelMessage, ToolResultPart, UIMessage } from "ai";
+import type {
+  LanguageModel,
+  ModelMessage,
+  ToolResultPart,
+  UIMessage,
+} from "ai";
+import { generateText } from "ai";
 import {
   Message,
   Reasoning,
@@ -6,6 +12,12 @@ import {
   ToolCall,
   ToolResult,
 } from "../components";
+import type { Child } from "../jsx-runtime";
+import type {
+  CompletionRequest,
+  CompletionResult,
+  ModelProvider,
+} from "../providers/types";
 import { markdownRenderer } from "../renderers/markdown";
 import type {
   PromptChildren,
@@ -583,4 +595,75 @@ function partsToText(parts: readonly SemanticPart[]): string {
     }
   }
   return result;
+}
+
+interface AISDKProviderProps {
+  /** The language model to use (e.g. openai("gpt-4o"), anthropic("claude-sonnet-4-20250514")) */
+  model: LanguageModel;
+  /** Child components that will have access to this provider */
+  children?: Child;
+}
+
+/**
+ * Provider component that injects an AI SDK model into the component tree.
+ *
+ * Child components like `<Summary>` will automatically use this provider
+ * for AI-powered operations when no explicit function is provided.
+ *
+ * @example
+ * ```tsx
+ * import { AISDKProvider } from "@fastpaca/cria/ai-sdk";
+ * import { Summary, render } from "@fastpaca/cria";
+ * import { openai } from "@ai-sdk/openai";
+ *
+ * const prompt = (
+ *   <AISDKProvider model={openai("gpt-4o")}>
+ *     <Summary id="conv-history" store={store} priority={2}>
+ *       {conversationHistory}
+ *     </Summary>
+ *   </AISDKProvider>
+ * );
+ *
+ * const result = await render(prompt, { tokenizer, budget: 4000 });
+ * ```
+ */
+export function AISDKProvider({
+  model,
+  children = [],
+}: AISDKProviderProps): PromptElement {
+  const provider: ModelProvider = {
+    name: "ai-sdk",
+    async completion(request: CompletionRequest): Promise<CompletionResult> {
+      const messages: ModelMessage[] = [];
+
+      // Handle system message
+      if (request.system) {
+        messages.push({ role: "system", content: request.system });
+      }
+
+      // Convert request messages to AI SDK format
+      for (const msg of request.messages) {
+        if (msg.role === "user") {
+          messages.push({ role: "user", content: msg.content });
+        } else if (msg.role === "assistant") {
+          messages.push({ role: "assistant", content: msg.content });
+        } else if (msg.role === "system") {
+          messages.push({ role: "system", content: msg.content });
+        }
+      }
+
+      const { text } = await generateText({
+        model,
+        messages,
+      });
+
+      return { text };
+    },
+  };
+
+  return {
+    priority: 0,
+    children: children as PromptChildren,
+    context: { provider },
+  };
 }
