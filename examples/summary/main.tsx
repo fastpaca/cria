@@ -8,7 +8,7 @@ import {
   type StoredSummary,
   Summary,
 } from "@fastpaca/cria";
-import { renderer } from "@fastpaca/cria/ai-sdk";
+import { AISDKProvider, renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
 
@@ -50,87 +50,43 @@ const conversationHistory = [
   { role: "user", content: "Now tell me about Berlin." },
 ];
 
-// The summarizer uses Cria to build its own prompt!
-const summarizer = async ({
-  content,
-  existingSummary,
-}: {
-  content: string;
-  existingSummary: string | null;
-}) => {
-  const summarizerPrompt = (
-    <Region priority={0}>
-      <Message messageRole="system">
-        You are a conversation summarizer. Create a VERY brief summary (2-3
-        sentences max) capturing only the key facts. Be extremely concise.
-      </Message>
-      <Message messageRole="user">
-        {existingSummary && (
-          <Region priority={0}>
-            {"Existing summary:\n"}
-            {existingSummary}
-            {"\n\n"}
-          </Region>
-        )}
-        {existingSummary
-          ? "New conversation to incorporate:\n"
-          : "Summarize this conversation:\n"}
-        {content}
-        {existingSummary && "\n\nCreate an updated summary:"}
-      </Message>
-    </Region>
-  );
-
-  const summarizerMessages = await render(summarizerPrompt, {
-    tokenizer,
-    renderer,
-  });
-  const { text } = await generateText({
-    model: openai("gpt-4o-mini"),
-    messages: summarizerMessages,
-  });
-  return text;
-};
-
 // Build the prompt with Summary for older messages and Last for recent ones
+// The AISDKProvider wraps the tree and provides the model for auto-summarization
 const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system" priority={0}>
-      You are a helpful AI assistant. You have access to a summary of earlier
-      conversation and the recent messages.
-    </Message>
+  <AISDKProvider model={openai("gpt-4o-mini")}>
+    <Region priority={0}>
+      <Message messageRole="system" priority={0}>
+        You are a helpful AI assistant. You have access to a summary of earlier
+        conversation and the recent messages.
+      </Message>
 
-    {/* Older messages get summarized when over budget */}
-    <Summary
-      id="conversation-summary"
-      priority={2}
-      store={store}
-      summarize={summarizer}
-    >
-      {conversationHistory.slice(0, -4).map((msg, i) => (
-        <Message
-          id={`history-${i}`}
-          messageRole={msg.role as "user" | "assistant"}
-          priority={2}
-        >
-          {msg.content}
-        </Message>
-      ))}
-    </Summary>
+      {/* Older messages get summarized when over budget - no summarize prop needed! */}
+      <Summary id="conversation-summary" priority={2} store={store}>
+        {conversationHistory.slice(0, -4).map((msg, i) => (
+          <Message
+            id={`history-${i}`}
+            messageRole={msg.role as "user" | "assistant"}
+            priority={2}
+          >
+            {msg.content}
+          </Message>
+        ))}
+      </Summary>
 
-    {/* Recent messages kept in full */}
-    <Last N={4}>
-      {conversationHistory.map((msg, i) => (
-        <Message
-          id={`recent-${i}`}
-          messageRole={msg.role as "user" | "assistant"}
-          priority={1}
-        >
-          {msg.content}
-        </Message>
-      ))}
-    </Last>
-  </Region>
+      {/* Recent messages kept in full */}
+      <Last N={4}>
+        {conversationHistory.map((msg, i) => (
+          <Message
+            id={`recent-${i}`}
+            messageRole={msg.role as "user" | "assistant"}
+            priority={1}
+          >
+            {msg.content}
+          </Message>
+        ))}
+      </Last>
+    </Region>
+  </AISDKProvider>
 );
 
 // Render with a tight budget to trigger summarization

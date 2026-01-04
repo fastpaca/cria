@@ -12,6 +12,59 @@ export type PromptRole =
   | (string & {});
 
 /**
+ * A message in a completion request.
+ */
+export interface CompletionMessage {
+  role: PromptRole;
+  content: string;
+}
+
+/**
+ * Request parameters for a completion.
+ */
+export interface CompletionRequest {
+  /** Messages to send to the model */
+  messages: CompletionMessage[];
+  /** Optional system prompt (some providers handle this separately) */
+  system?: string;
+}
+
+/**
+ * Result from a completion request.
+ */
+export interface CompletionResult {
+  /** The generated text response */
+  text: string;
+}
+
+/**
+ * A model provider that can generate completions.
+ *
+ * This abstraction allows Cria components to call AI models without
+ * being coupled to a specific SDK.
+ */
+export interface ModelProvider {
+  /** Provider identifier for debugging */
+  name: string;
+
+  /**
+   * Generate a completion from the model.
+   */
+  completion(request: CompletionRequest): MaybePromise<CompletionResult>;
+}
+
+/**
+ * Context that can be provided through the component tree.
+ *
+ * Provider components (like `<AISDKProvider>`) inject context that
+ * child components can access during rendering and strategy execution.
+ */
+export interface CriaContext {
+  /** Model provider for AI-powered operations */
+  provider?: ModelProvider | undefined;
+}
+
+/**
  * Semantic variants for a region node.
  *
  * Cria’s IR is “Regions all the way down” (like a DOM tree). `PromptKind` is how we
@@ -86,6 +139,14 @@ export type PromptElement = {
 
   /** Canonical normalized children stored in the IR. */
   children: PromptChildren;
+
+  /**
+   * Context provided by this element to its descendants.
+   *
+   * Provider components set this to inject context (like a ModelProvider)
+   * that child components can access during strategy execution.
+   */
+  context?: CriaContext | undefined;
 } & PromptKind;
 
 /**
@@ -153,6 +214,7 @@ export type StrategyResult = PromptElement | null;
  * @property tokenString - Renderer-provided projection used for token counting
  * @property totalTokens - Current total token count for the prompt
  * @property iteration - Which iteration of the fit loop (for debugging)
+ * @property context - Inherited context from ancestor provider components
  */
 export interface StrategyInput {
   target: PromptElement;
@@ -161,6 +223,8 @@ export interface StrategyInput {
   tokenString: (element: PromptElement) => string;
   totalTokens: number;
   iteration: number;
+  /** Context inherited from ancestor provider components */
+  context: CriaContext;
 }
 
 /**

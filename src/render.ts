@@ -1,5 +1,6 @@
 import { markdownRenderer } from "./renderers/markdown";
 import {
+  type CriaContext,
   FitError,
   type PromptElement,
   type PromptRenderer,
@@ -68,18 +69,19 @@ async function fitToBudget(
       throw new FitError(totalTokens - budget, -1, iteration);
     }
 
-    const ctx = {
+    const baseCtx = {
       budget,
       tokenizer,
       tokenString,
       totalTokens,
       iteration,
-    } satisfies Omit<StrategyInput, "target">;
+    };
 
     const applied = await applyStrategiesAtPriority(
       current,
       lowestImportancePriority,
-      ctx
+      baseCtx,
+      {} // Start with empty context at the root
     );
     current = applied.element;
 
@@ -122,11 +124,20 @@ function maxNullable(a: number | null, b: number | null): number | null {
   return Math.max(a, b);
 }
 
+type BaseContext = Omit<StrategyInput, "target" | "context">;
+
 async function applyStrategiesAtPriority(
   element: PromptElement,
   priority: number,
-  ctx: Omit<StrategyInput, "target">
+  baseCtx: BaseContext,
+  inheritedContext: CriaContext
 ): Promise<{ element: PromptElement | null; applied: boolean }> {
+  // Merge this element's context with inherited context
+  // Element context overrides inherited context
+  const mergedContext: CriaContext = element.context
+    ? { ...inheritedContext, ...element.context }
+    : inheritedContext;
+
   let childrenChanged = false;
   const nextChildren: typeof element.children = [];
 
@@ -136,7 +147,13 @@ async function applyStrategiesAtPriority(
       continue;
     }
 
-    const applied = await applyStrategiesAtPriority(child, priority, ctx);
+    // Pass merged context to children
+    const applied = await applyStrategiesAtPriority(
+      child,
+      priority,
+      baseCtx,
+      mergedContext
+    );
     if (applied.applied) {
       childrenChanged = true;
     }
@@ -153,8 +170,9 @@ async function applyStrategiesAtPriority(
 
   if (nextElement.strategy && nextElement.priority === priority) {
     const replacement = await nextElement.strategy({
-      ...ctx,
+      ...baseCtx,
       target: nextElement,
+      context: mergedContext,
     });
     return { element: replacement, applied: true };
   }
