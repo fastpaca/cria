@@ -56,9 +56,9 @@ interface VectorSearchProps<T = unknown> {
  * @example
  * ```tsx
  * import { VectorSearch } from "@fastpaca/cria";
- * import { PineconeStore } from "@fastpaca/cria/memory/pinecone"; // adapter
+ * import { ChromaStore } from "@fastpaca/cria/memory/chroma"; // adapter
  *
- * const store = new PineconeStore({ index: "my-index", ... });
+ * const store = new ChromaStore({ collection: "my-collection", ... });
  * const results = await store.search(userQuestion, { limit: 5, threshold: 0.7 });
  *
  * <VectorSearch results={results} priority={1} />
@@ -120,7 +120,7 @@ interface SearchAndRenderOptions<T = unknown> {
  * // In an async context:
  * const element = await searchAndRender({
  *   query: userQuestion,
- *   store: pineconeStore,
+ *   store: chromaStore,
  *   limit: 5,
  *   threshold: 0.7,
  *   priority: 1,

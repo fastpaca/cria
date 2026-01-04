@@ -35,7 +35,7 @@ export interface VectorSearchOptions {
  * @example
  * ```typescript
  * // Implementation would use embeddings from OpenAI, Cohere, etc.
- * class PineconeStore<T> implements VectorMemory<T> {
+ * class MyVectorStore<T> implements VectorMemory<T> {
  *   async search(query: string, options?: VectorSearchOptions) {
  *     const embedding = await this.embedder(query);
  *     return this.client.query(embedding, options);

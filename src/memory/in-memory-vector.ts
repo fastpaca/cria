@@ -64,7 +64,7 @@ interface InMemoryVectorStoreOptions {
  * In-memory vector store implementation for testing and development.
  *
  * This store uses cosine similarity for semantic search. For production use,
- * consider using a dedicated vector database like Pinecone, Chroma, or Qdrant.
+ * consider using a dedicated vector database like Chroma or Qdrant.
  *
  * @template T - The type of data stored in the entries
  *
