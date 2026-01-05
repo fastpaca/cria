@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { VectorMemory, VectorSearchResult } from "../memory";
-import { searchAndRender, VectorSearch } from "./vector-search";
+import type { CompletionMessage } from "../types";
+import { searchAndRender, VectorSearch, vectorSearch } from "./vector-search";
 
 // Mock data for testing
 interface TestDocument {
@@ -172,5 +173,212 @@ describe("searchAndRender", () => {
 
     expect(element.priority).toBe(3);
     expect(element.id).toBe("my-search");
+  });
+});
+
+describe("vectorSearch", () => {
+  // Create a mock VectorMemory store that captures the query
+  function createMockStoreWithCapture<T>(results: VectorSearchResult<T>[]) {
+    let capturedQuery: string | undefined;
+    const store: VectorMemory<T> = {
+      get: () => null,
+      set: () => {
+        /* no-op for mock */
+      },
+      delete: () => false,
+      search: (query) => {
+        capturedQuery = query;
+        return results;
+      },
+    };
+    return { store, getCapturedQuery: () => capturedQuery };
+  }
+
+  describe("query patterns", () => {
+    it("uses explicit query string", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+
+      await vectorSearch({
+        store,
+        query: "explicit query",
+      });
+
+      expect(getCapturedQuery()).toBe("explicit query");
+    });
+
+    it("uses children as query", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+
+      await vectorSearch({
+        store,
+        children: ["Find docs about: ", "TypeScript"],
+      });
+
+      expect(getCapturedQuery()).toBe("Find docs about: TypeScript");
+    });
+
+    it("uses last user message from messages", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+      const messages: CompletionMessage[] = [
+        { role: "system", content: "You are helpful" },
+        { role: "user", content: "First question" },
+        { role: "assistant", content: "First answer" },
+        { role: "user", content: "Second question" },
+      ];
+
+      await vectorSearch({
+        store,
+        messages,
+      });
+
+      expect(getCapturedQuery()).toBe("Second question");
+    });
+
+    it("query takes precedence over children", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+
+      await vectorSearch({
+        store,
+        query: "explicit wins",
+        children: ["children ignored"],
+      });
+
+      expect(getCapturedQuery()).toBe("explicit wins");
+    });
+
+    it("children takes precedence over messages", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+      const messages: CompletionMessage[] = [
+        { role: "user", content: "message ignored" },
+      ];
+
+      await vectorSearch({
+        store,
+        children: ["children wins"],
+        messages,
+      });
+
+      expect(getCapturedQuery()).toBe("children wins");
+    });
+  });
+
+  describe("custom query extractor", () => {
+    it("uses custom extractQuery function", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+      const messages: CompletionMessage[] = [
+        { role: "user", content: "First" },
+        { role: "user", content: "Second" },
+        { role: "user", content: "Third" },
+      ];
+
+      await vectorSearch({
+        store,
+        messages,
+        extractQuery: (msgs) =>
+          msgs
+            .filter((m) => m.role === "user")
+            .map((m) => m.content)
+            .join(" | "),
+      });
+
+      expect(getCapturedQuery()).toBe("First | Second | Third");
+    });
+  });
+
+  describe("edge cases", () => {
+    it("returns empty results when no query is provided", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+
+      const element = await vectorSearch({ store });
+
+      expect(getCapturedQuery()).toBeUndefined();
+      expect(element.children[0]).toBe("[No relevant results found]");
+    });
+
+    it("returns empty results when messages has no user messages", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+      const messages: CompletionMessage[] = [
+        { role: "system", content: "System message" },
+        { role: "assistant", content: "Assistant message" },
+      ];
+
+      const element = await vectorSearch({ store, messages });
+
+      expect(getCapturedQuery()).toBeUndefined();
+      expect(element.children[0]).toBe("[No relevant results found]");
+    });
+
+    it("handles empty children array", async () => {
+      const { store, getCapturedQuery } =
+        createMockStoreWithCapture(mockResults);
+
+      const element = await vectorSearch({
+        store,
+        children: [],
+      });
+
+      expect(getCapturedQuery()).toBeUndefined();
+      expect(element.children[0]).toBe("[No relevant results found]");
+    });
+  });
+
+  describe("options passthrough", () => {
+    it("passes limit and threshold to store", async () => {
+      let capturedOptions: { limit?: number; threshold?: number } | undefined;
+      const store: VectorMemory<TestDocument> = {
+        get: () => null,
+        set: () => {
+          /* no-op */
+        },
+        delete: () => false,
+        search: (_query, options) => {
+          capturedOptions = options;
+          return [];
+        },
+      };
+
+      await vectorSearch({
+        store,
+        query: "test",
+        limit: 10,
+        threshold: 0.8,
+      });
+
+      expect(capturedOptions).toEqual({ limit: 10, threshold: 0.8 });
+    });
+
+    it("applies custom formatter", async () => {
+      const { store } = createMockStoreWithCapture(mockResults);
+
+      const element = await vectorSearch({
+        store,
+        query: "test",
+        formatResults: (results) => `Found ${results.length} results`,
+      });
+
+      expect(element.children[0]).toBe("Found 2 results");
+    });
+
+    it("sets priority and id on element", async () => {
+      const { store } = createMockStoreWithCapture(mockResults);
+
+      const element = await vectorSearch({
+        store,
+        query: "test",
+        priority: 5,
+        id: "vector-context",
+      });
+
+      expect(element.priority).toBe(5);
+      expect(element.id).toBe("vector-context");
+    });
   });
 });
