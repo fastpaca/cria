@@ -42,7 +42,6 @@ export {
   VectorSearch,
 } from "./components";
 export type {
-  EmbeddingFunction,
   KVMemory,
   MemoryEntry,
   VectorMemory,

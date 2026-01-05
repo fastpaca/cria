@@ -1,11 +1,15 @@
 import { type Collection, IncludeEnum, type Metadata } from "chromadb";
 import type { MemoryEntry } from "../key-value";
 import type {
-  EmbeddingFunction,
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
 } from "../vector";
+
+/**
+ * Function to generate embeddings for text.
+ */
+export type EmbeddingFunction = (text: string) => Promise<number[]>;
 
 /**
  * Options for creating a ChromaStore.
