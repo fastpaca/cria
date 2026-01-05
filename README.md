@@ -169,34 +169,37 @@ try {
 
 **Ergonomics & Adapters**
 
-- [ ] Pluggable renderers
-  - [ ] OpenAI
-  - [ ] Anthropic
-  - [ ] AI SDK
+- [x] Pluggable renderers
+  - [x] OpenAI
+  - [x] Anthropic
+  - [x] AI SDK
 - [ ] Integrations
   - [ ] Message storage
-  - [ ] Vector storage / search index
+  - [ ] Vector storage / search index (WIP: feature/rag branch)
 - [ ] Components
-  - [ ] Summary
+  - [x] Summary
   - [x] Messages
-  - [ ] RAG/Vector-search
+  - [ ] RAG/Vector-search (WIP: feature/rag branch)
   - [x] Tools / Tool Calls / Tool Result
   - [x] Reasoning
   - [ ] Examples
   - [ ] Code
-  - [ ] Seperators
+  - [ ] Separators
 - [ ] Tokenizer helpers
 - [ ] Next.js adapter (`cria/nextjs`)
 
-**Observability**
+**Observability** (Priority)
 
-- [ ] Debug mode: trace callback + summary of dropped/truncated/kept
-- [ ] Visual debug UI / demo UI
-- [ ] Traces
-  - [ ] diff viewer
-  - [ ] exportable JSON
-- [ ] Snapshots/checkpointing
-- [ ] Rendering caches based on identifiers
+- [ ] OpenTelemetry instrumentation (`@fastpaca/cria/instrumentation`)
+  - [ ] Span hierarchy matching prompt tree
+  - [ ] IR snapshots (before/after fitting) for diffing
+  - [ ] Per-node decision metadata (kept/truncated/omitted)
+  - [ ] GenAI semantic convention compatibility
+- [ ] Snapshots/checkpointing (builds on OTel traces)
+- [ ] Visualization tool (separate package, future)
+  - [ ] Tree view with expand/collapse
+  - [ ] Diff view (compare traces)
+  - [ ] Timeline view
 
 ## Contributing
 
