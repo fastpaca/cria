@@ -1,22 +1,21 @@
 /**
- * Example: RAG (Retrieval Augmented Generation) with Cria
+ * Example: RAG (Retrieval Augmented Generation) with Cria + ChromaDB
  *
  * This example demonstrates how easy it is to add vector search to your prompts.
  * The VectorSearch component automatically retrieves relevant context at render time,
  * making your AI responses more accurate and grounded in your knowledge base.
  *
+ * Prerequisites:
+ *   1. Run ChromaDB: docker run -p 8000:8000 chromadb/chroma
+ *   2. Set OPENAI_API_KEY environment variable
+ *
  * Run with: pnpm start
- * Requires: OPENAI_API_KEY environment variable
  */
 
-import {
-  InMemoryVectorStore,
-  Message,
-  Region,
-  render,
-  VectorSearch,
-} from "@fastpaca/cria";
+import { Message, Region, render, VectorSearch } from "@fastpaca/cria";
+import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 import { chatCompletions } from "@fastpaca/cria/openai";
+import { ChromaClient } from "chromadb";
 import OpenAI from "openai";
 
 const openai = new OpenAI();
@@ -25,10 +24,20 @@ const openai = new OpenAI();
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
 // ============================================================================
-// Step 1: Create a vector store with your embedding function
+// Step 1: Connect to ChromaDB and create a collection
 // ============================================================================
 
-const knowledgeBase = new InMemoryVectorStore<string>({
+const chroma = new ChromaClient({ path: "http://localhost:8000" });
+const collection = await chroma.getOrCreateCollection({
+  name: "fastpaca-docs",
+});
+
+// ============================================================================
+// Step 2: Create a ChromaStore with your embedding function
+// ============================================================================
+
+const knowledgeBase = new ChromaStore<string>({
+  collection,
   embed: async (text) => {
     const response = await openai.embeddings.create({
       model: "text-embedding-3-small",
@@ -39,7 +48,7 @@ const knowledgeBase = new InMemoryVectorStore<string>({
 });
 
 // ============================================================================
-// Step 2: Populate your knowledge base
+// Step 3: Populate your knowledge base
 // ============================================================================
 
 // Imagine these are documents from your database, PDFs, or any data source
@@ -86,14 +95,14 @@ const documents = [
   },
 ];
 
-console.log("📚 Loading knowledge base...");
+console.log("📚 Loading knowledge base into ChromaDB...");
 await Promise.all(
   documents.map((doc) => knowledgeBase.set(doc.id, doc.content))
 );
-console.log(`✅ Loaded ${knowledgeBase.size()} documents\n`);
+console.log(`✅ Loaded ${documents.length} documents\n`);
 
 // ============================================================================
-// Step 3: Build your prompt with VectorSearch - that's it!
+// Step 4: Build your prompt with VectorSearch - that's it!
 // ============================================================================
 
 // The user's question
@@ -118,7 +127,7 @@ const prompt = (
 );
 
 // ============================================================================
-// Step 4: Render and use with OpenAI
+// Step 5: Render and use with OpenAI
 // ============================================================================
 
 console.log("🔍 User Question:", userQuestion);

@@ -1,6 +1,6 @@
 # RAG (Retrieval Augmented Generation) Example
 
-This example shows how **ridiculously easy** it is to add semantic search to your AI prompts with Cria.
+This example shows how **ridiculously easy** it is to add semantic search to your AI prompts with Cria + ChromaDB.
 
 ## The Magic
 
@@ -16,22 +16,31 @@ No manual embedding. No async orchestration. No context window juggling. Just de
 
 ## What This Example Does
 
-1. **Creates a vector store** with OpenAI embeddings
-2. **Loads documents** into the knowledge base (imagine these are from your DB, PDFs, etc.)
-3. **Uses VectorSearch** in a prompt to automatically retrieve relevant context
-4. **Renders** the prompt with retrieved context baked in
-5. **Calls OpenAI** with the enriched prompt
+1. **Connects to ChromaDB** and creates a collection
+2. **Creates a ChromaStore** with OpenAI embeddings
+3. **Loads documents** into the knowledge base
+4. **Uses VectorSearch** in a prompt to automatically retrieve relevant context
+5. **Renders** the prompt with retrieved context baked in
+6. **Calls OpenAI** with the enriched prompt
+
+## Prerequisites
+
+- **Docker** - for running ChromaDB
+- **OpenAI API Key** - for embeddings and chat completions
 
 ## Running the Example
 
 ```bash
-# Install dependencies
+# 1. Start ChromaDB (in a separate terminal)
+docker run -p 8000:8000 chromadb/chroma
+
+# 2. Install dependencies
 pnpm install
 
-# Set your OpenAI API key
+# 3. Set your OpenAI API key
 export OPENAI_API_KEY="sk-..."
 
-# Run it
+# 4. Run it
 pnpm start
 ```
 
@@ -54,12 +63,19 @@ The `VectorSearch` component does semantic search at render time:
 <VectorSearch store={store} messages={conversationHistory} />
 ```
 
-### InMemoryVectorStore
+### ChromaStore
 
-A simple in-memory vector store for development and testing:
+A production-ready vector store backed by ChromaDB:
 
 ```typescript
-const store = new InMemoryVectorStore<string>({
+import { ChromaClient } from "chromadb";
+import { ChromaStore } from "@fastpaca/cria/memory/chroma";
+
+const chroma = new ChromaClient({ path: "http://localhost:8000" });
+const collection = await chroma.getOrCreateCollection({ name: "my-docs" });
+
+const store = new ChromaStore<string>({
+  collection,
   embed: async (text) => {
     // Use any embedding provider: OpenAI, Cohere, local models, etc.
     const response = await openai.embeddings.create({
@@ -77,17 +93,15 @@ await store.set("doc-1", "Your document content here");
 const results = await store.search("query", { limit: 5 });
 ```
 
-### Production Vector Stores
+### Other Vector Stores
 
-For production, use a real vector database:
+Cria also supports Qdrant:
 
 ```typescript
-// Chroma
-import { ChromaVectorStore } from "@fastpaca/cria/memory/chroma";
-
-// Qdrant
-import { QdrantVectorStore } from "@fastpaca/cria/memory/qdrant";
+import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
 ```
+
+Or implement your own by satisfying the `VectorMemory` interface.
 
 ## Why This Matters
 
@@ -104,4 +118,3 @@ With Cria, you just declare `<VectorSearch>` in your prompt and it **just works*
 - Uses priority-based reduction when context is too large
 
 **Focus on your product, not infrastructure.**
-

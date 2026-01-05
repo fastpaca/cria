@@ -42,7 +42,6 @@ export {
   VectorSearch,
 } from "./components";
 export type {
-  EmbedFunction,
   KVMemory,
   MemoryEntry,
   VectorMemory,
@@ -50,7 +49,7 @@ export type {
   VectorSearchResult,
 } from "./memory";
 // LLM Memory
-export { InMemoryStore, InMemoryVectorStore } from "./memory";
+export { InMemoryStore } from "./memory";
 export type { RenderOptions } from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
