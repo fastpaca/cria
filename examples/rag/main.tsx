@@ -117,7 +117,9 @@ const prompt = (
       based on the knowledge base context provided. Be concise and helpful. If
       information isn't in the context, say you don't know. ## Relevant
       Knowledge Base Articles
-      <VectorSearch limit={3} query={userQuestion} store={knowledgeBase} />
+      <VectorSearch limit={3} store={knowledgeBase}>
+        {userQuestion}
+      </VectorSearch>
     </Message>
 
     <Message messageRole="user" priority={0}>

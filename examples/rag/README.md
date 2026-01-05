@@ -8,7 +8,9 @@ This example shows how **ridiculously easy** it is to add semantic search to you
 // That's it. VectorSearch automatically retrieves relevant context at render time.
 <Message messageRole="system">
   Here's the relevant context:
-  <VectorSearch store={knowledgeBase} limit={3} query={userQuestion} />
+  <VectorSearch store={knowledgeBase} limit={3}>
+    {userQuestion}
+  </VectorSearch>
 </Message>
 ```
 
