@@ -1,4 +1,9 @@
-import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
+import type {
+  MaybePromise,
+  PromptChildren,
+  PromptElement,
+  PromptRenderer,
+} from "../types";
 
 export const markdownRenderer: PromptRenderer<string> = {
   name: "markdown",
@@ -13,7 +18,13 @@ const ROLE_LABELS: Record<string, string> = {
   assistant: "Assistant",
 };
 
-function renderToMarkdown(element: PromptElement): string {
+function renderToMarkdown(element: MaybePromise<PromptElement>): string {
+  if (element instanceof Promise) {
+    throw new Error(
+      "renderToMarkdown received a Promise. Ensure prompts are awaited before rendering."
+    );
+  }
+
   switch (element.kind) {
     case "message": {
       const content = renderChildrenToMarkdown(element.children).trimEnd();

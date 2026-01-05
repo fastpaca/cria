@@ -284,5 +284,5 @@ export function Last({
 
 export type { StoredSummary, Summarizer, SummarizerContext } from "./summary";
 export { Summary } from "./summary";
-export type { QueryExtractor, ResultFormatter } from "./vector-search";
-export { searchAndRender, VectorSearch, vectorSearch } from "./vector-search";
+export type { ResultFormatter } from "./vector-search";
+export { VectorSearch } from "./vector-search";

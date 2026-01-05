@@ -20,11 +20,13 @@ import type {
 } from "../providers/types";
 import { markdownRenderer } from "../renderers/markdown";
 import type {
+  MaybePromise,
   PromptChildren,
   PromptElement,
   PromptRenderer,
   Strategy,
 } from "../types";
+import { resolvePromptElement } from "../utils/resolve-element";
 
 /**
  * Priority configuration for message types when rendering prompts.
@@ -64,7 +66,7 @@ export function Messages({
   includeReasoning = false,
   priorities,
   id,
-}: MessagesProps): PromptElement {
+}: MessagesProps): MaybePromise<PromptElement> {
   const resolvedPriorities = resolvePriorities(priorities);
 
   return (
@@ -92,7 +94,7 @@ function UIMessageElement({
   message,
   priorities,
   includeReasoning,
-}: UIMessageElementProps): PromptElement {
+}: UIMessageElementProps): MaybePromise<PromptElement> {
   const messagePriority = rolePriority(message.role, priorities);
 
   return (
@@ -286,8 +288,11 @@ export const renderer: PromptRenderer<ModelMessage[]> = {
   empty: () => [],
 };
 
-function renderToModelMessages(root: PromptElement): ModelMessage[] {
-  const messageNodes = collectMessageNodes(root);
+async function renderToModelMessages(
+  root: MaybePromise<PromptElement>
+): Promise<ModelMessage[]> {
+  const resolvedRoot = await resolvePromptElement(root);
+  const messageNodes = collectMessageNodes(resolvedRoot);
   const result: ModelMessage[] = [];
 
   for (const messageNode of messageNodes) {
@@ -298,6 +303,15 @@ function renderToModelMessages(root: PromptElement): ModelMessage[] {
 }
 
 type MessageElement = Extract<PromptElement, { kind: "message" }>;
+
+function ensureElement(
+  element: PromptElement | Promise<PromptElement>
+): PromptElement {
+  if (element instanceof Promise) {
+    throw new Error("Prompt tree contains unresolved async elements");
+  }
+  return element;
+}
 
 function collectMessageNodes(
   element: PromptElement,
@@ -312,7 +326,7 @@ function collectMessageNodes(
     if (typeof child === "string") {
       continue;
     }
-    collectMessageNodes(child, acc);
+    collectMessageNodes(ensureElement(child), acc);
   }
 
   return acc;
@@ -392,7 +406,7 @@ function collectSemanticParts(children: PromptChildren): SemanticPart[] {
       continue;
     }
 
-    parts.push(...semanticPartsFromElement(child));
+    parts.push(...semanticPartsFromElement(ensureElement(child)));
   }
 
   return parts;
@@ -630,7 +644,7 @@ interface AISDKProviderProps {
 export function AISDKProvider({
   model,
   children = [],
-}: AISDKProviderProps): PromptElement {
+}: AISDKProviderProps): MaybePromise<PromptElement> {
   const provider: ModelProvider = {
     name: "ai-sdk",
     async completion(request: CompletionRequest): Promise<CompletionResult> {

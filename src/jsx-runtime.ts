@@ -1,6 +1,6 @@
-import type { PromptChildren, PromptElement } from "./types";
+import type { MaybePromise, PromptChildren, PromptElement } from "./types";
 
-type ComponentFn = (props: Props) => PromptElement;
+type ComponentFn = (props: Props) => MaybePromise<PromptElement>;
 
 /**
  * JSX child input type (pre-normalization).
@@ -19,6 +19,7 @@ type ComponentFn = (props: Props) => PromptElement;
  */
 export type Child =
   | PromptElement
+  | Promise<PromptElement>
   | string
   | number
   | boolean
@@ -29,7 +30,9 @@ export type Child =
 type Props = Record<string, unknown> & { children?: Child };
 
 // Normalize children: flatten arrays, filter nullish, coerce numbers to strings
-function normalizeChildren(children: Child | undefined): PromptChildren {
+async function normalizeChildren(
+  children: Child | undefined
+): Promise<PromptChildren> {
   if (children === undefined || children === null) {
     return [];
   }
@@ -46,13 +49,13 @@ function normalizeChildren(children: Child | undefined): PromptChildren {
   if (isChildrenArray(children)) {
     const result: PromptChildren = [];
     for (const child of children) {
-      result.push(...normalizeChildren(child));
+      result.push(...(await normalizeChildren(child)));
     }
     return result;
   }
 
-  // It's a PromptElement
-  return [children];
+  // It's a PromptElement (or a promise for one)
+  return [await children];
 }
 
 function isChildrenArray(value: Child): value is readonly Child[] {
@@ -63,30 +66,30 @@ function isChildrenArray(value: Child): value is readonly Child[] {
 export const Fragment = Symbol.for("cria.fragment");
 
 // jsx: called by TypeScript for single child
-export function jsx(
+export async function jsx(
   type: ComponentFn | typeof Fragment,
   props: Props
-): PromptElement {
-  const children = normalizeChildren(props.children);
+): Promise<PromptElement> {
+  const children = await normalizeChildren(props.children);
 
   if (type === Fragment) {
     // Fragment returns a wrapper element that just holds children
     return { priority: 0, children };
   }
 
-  return type({ ...props, children });
+  return await type({ ...props, children });
 }
 
 // jsxs: called by TypeScript for multiple children (same behavior)
-export function jsxs(
+export async function jsxs(
   type: ComponentFn | typeof Fragment,
   props: Props
-): PromptElement {
+): Promise<PromptElement> {
   return jsx(type, props);
 }
 
 export namespace JSX {
-  export type Element = PromptElement;
+  export type Element = MaybePromise<PromptElement>;
   export interface IntrinsicElements {
     [key: string]: never;
   }

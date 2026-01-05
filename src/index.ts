@@ -36,7 +36,6 @@ export {
   Reasoning,
   Region,
   Summary,
-  searchAndRender,
   ToolCall,
   ToolResult,
   Truncate,
