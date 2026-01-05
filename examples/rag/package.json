@@ -1,0 +1,17 @@
+{
+  "name": "cria-rag-example",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx main.tsx"
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "@fastpaca/cria": "link:../.."
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "@types/node": "^22.0.0"
+  }
+}

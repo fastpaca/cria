@@ -128,7 +128,7 @@ function deriveQuery(props: QuerySources): string | null | undefined {
 /**
  * Renders vector search results into the prompt.
  *
- * The query is resolved at render time—no pre-fetching needed. Query sources, in
+ * The query is resolved at render time. No pre-fetching needed. Query sources, in
  * order of precedence:
  * 1) Children text: `<VectorSearch store={store}>find docs about RAG</VectorSearch>`
  * 2) `query` prop: `<VectorSearch store={store} query="find docs about RAG" />`
