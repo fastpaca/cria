@@ -196,7 +196,7 @@ export interface PromptRenderer<TOutput> {
  *
  * This is the only type you’ll find inside `PromptElement.children` after JSX normalization.
  */
-export type PromptChild = PromptElement | Promise<PromptElement> | string;
+export type PromptChild = PromptElement | string;
 
 /**
  * Canonical normalized children list stored on `PromptElement.children`.

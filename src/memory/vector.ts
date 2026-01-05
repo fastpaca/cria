@@ -2,6 +2,11 @@ import type { MaybePromise } from "../types";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
+ * An embedding function that converts text to a vector.
+ */
+export type EmbeddingFunction = (text: string) => Promise<number[]>;
+
+/**
  * Search result from a vector memory query.
  */
 export interface VectorSearchResult<T = unknown> {
