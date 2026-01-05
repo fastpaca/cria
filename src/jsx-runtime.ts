@@ -85,7 +85,7 @@ export async function jsxs(
   type: ComponentFn | typeof Fragment,
   props: Props
 ): Promise<PromptElement> {
-  return jsx(type, props);
+  return await jsx(type, props);
 }
 
 export namespace JSX {

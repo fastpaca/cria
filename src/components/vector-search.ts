@@ -94,14 +94,14 @@ function defaultExtractQuery(messages: CompletionMessage[]): string | null {
   return content === "" ? null : content;
 }
 
-interface QuerySources<T> {
+interface QuerySources {
   query?: string | undefined;
   messages?: CompletionMessage[] | undefined;
   extractQuery?: QueryExtractor | undefined;
   children?: PromptChildren | undefined;
 }
 
-function deriveQuery<T>(props: QuerySources<T>): string | null | undefined {
+function deriveQuery(props: QuerySources): string | null | undefined {
   const childQuery = queryFromChildren(props.children);
   if (childQuery) {
     return childQuery;
@@ -168,7 +168,7 @@ export async function VectorSearch<T = unknown>({
   id,
   children,
 }: VectorSearchProps<T>): Promise<PromptElement> {
-  const finalQuery = deriveQuery<T>({
+  const finalQuery = deriveQuery({
     query,
     messages,
     extractQuery,

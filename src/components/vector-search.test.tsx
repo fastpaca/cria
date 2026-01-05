@@ -43,7 +43,7 @@ function createMockStore<T>(results: VectorSearchResult<T>[]) {
       /* no-op */
     },
     delete: () => false,
-    search: async (query, options) => {
+    search: (query, options) => {
       lastQuery = query;
       lastOptions = options;
       return results;
@@ -56,6 +56,8 @@ function createMockStore<T>(results: VectorSearchResult<T>[]) {
     getLastOptions: () => lastOptions,
   };
 }
+
+const PLAIN_TEXT_REGEX = /plain text/;
 
 describe("VectorSearch", () => {
   it("uses children as the query and renders results", async () => {
@@ -143,6 +145,6 @@ describe("VectorSearch", () => {
         store,
         children: [badChild],
       })
-    ).rejects.toThrow(/plain text/);
+    ).rejects.toThrow(PLAIN_TEXT_REGEX);
   });
 });
