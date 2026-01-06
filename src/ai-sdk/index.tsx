@@ -26,7 +26,6 @@ import type {
   PromptRenderer,
   Strategy,
 } from "../types";
-import { resolvePromptElement } from "../utils/resolve-element";
 
 /**
  * Priority configuration for message types when rendering prompts.
@@ -288,11 +287,8 @@ export const renderer: PromptRenderer<ModelMessage[]> = {
   empty: () => [],
 };
 
-async function renderToModelMessages(
-  root: MaybePromise<PromptElement>
-): Promise<ModelMessage[]> {
-  const resolvedRoot = await resolvePromptElement(root);
-  const messageNodes = collectMessageNodes(resolvedRoot);
+function renderToModelMessages(root: PromptElement): ModelMessage[] {
+  const messageNodes = collectMessageNodes(root);
   const result: ModelMessage[] = [];
 
   for (const messageNode of messageNodes) {
@@ -303,15 +299,6 @@ async function renderToModelMessages(
 }
 
 type MessageElement = Extract<PromptElement, { kind: "message" }>;
-
-function ensureElement(
-  element: PromptElement | Promise<PromptElement>
-): PromptElement {
-  if (element instanceof Promise) {
-    throw new Error("Prompt tree contains unresolved async elements");
-  }
-  return element;
-}
 
 function collectMessageNodes(
   element: PromptElement,
@@ -326,7 +313,7 @@ function collectMessageNodes(
     if (typeof child === "string") {
       continue;
     }
-    collectMessageNodes(ensureElement(child), acc);
+    collectMessageNodes(child, acc);
   }
 
   return acc;
@@ -406,7 +393,7 @@ function collectSemanticParts(children: PromptChildren): SemanticPart[] {
       continue;
     }
 
-    parts.push(...semanticPartsFromElement(ensureElement(child)));
+    parts.push(...semanticPartsFromElement(child));
   }
 
   return parts;

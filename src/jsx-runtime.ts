@@ -90,6 +90,12 @@ export async function jsxs(
 
 export namespace JSX {
   export type Element = MaybePromise<PromptElement>;
+  // Allow JSX children to use raw Child inputs even if props expect PromptChildren.
+  export type LibraryManagedAttributes<_C, P> = P extends {
+    children?: PromptChildren;
+  }
+    ? Omit<P, "children"> & { children?: Child }
+    : P;
   export interface IntrinsicElements {
     [key: string]: never;
   }

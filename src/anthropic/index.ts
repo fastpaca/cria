@@ -13,13 +13,7 @@ import type {
   ModelProvider,
 } from "../providers/types";
 import { markdownRenderer } from "../renderers/markdown";
-import type {
-  MaybePromise,
-  PromptChildren,
-  PromptElement,
-  PromptRenderer,
-} from "../types";
-import { resolvePromptElement } from "../utils/resolve-element";
+import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
 
 /**
  * Result of rendering to Anthropic format.
@@ -60,20 +54,8 @@ export const anthropic: PromptRenderer<AnthropicRenderResult> = {
 
 type MessageElement = Extract<PromptElement, { kind: "message" }>;
 
-function ensureElement(
-  element: PromptElement | Promise<PromptElement>
-): PromptElement {
-  if (element instanceof Promise) {
-    throw new Error("Prompt tree contains unresolved async elements");
-  }
-  return element;
-}
-
-async function renderToAnthropic(
-  root: MaybePromise<PromptElement>
-): Promise<AnthropicRenderResult> {
-  const resolvedRoot = await resolvePromptElement(root);
-  const messageNodes = collectMessageNodes(resolvedRoot);
+function renderToAnthropic(root: PromptElement): AnthropicRenderResult {
+  const messageNodes = collectMessageNodes(root);
 
   // Extract system messages
   const systemNodes = messageNodes.filter((m) => m.role === "system");
@@ -107,7 +89,7 @@ function collectMessageNodes(
     if (typeof child === "string") {
       continue;
     }
-    collectMessageNodes(ensureElement(child), acc);
+    collectMessageNodes(child, acc);
   }
 
   return acc;
@@ -258,7 +240,7 @@ function collectSemanticParts(children: PromptChildren): SemanticPart[] {
       continue;
     }
 
-    parts.push(...semanticPartsFromElement(ensureElement(child)));
+    parts.push(...semanticPartsFromElement(child));
   }
 
   return coalesceTextParts(parts);
@@ -330,11 +312,10 @@ function collectTextContent(children: PromptChildren): string {
       continue;
     }
 
-    const element = ensureElement(child);
-    if (element.kind === undefined) {
-      result += collectTextContent(element.children);
-    } else if (element.kind === "reasoning") {
-      result += `<thinking>\n${element.text}\n</thinking>\n`;
+    if (child.kind === undefined) {
+      result += collectTextContent(child.children);
+    } else if (child.kind === "reasoning") {
+      result += `<thinking>\n${child.text}\n</thinking>\n`;
     }
   }
 

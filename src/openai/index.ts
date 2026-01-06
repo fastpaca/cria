@@ -14,13 +14,7 @@ import type {
   ModelProvider,
 } from "../providers/types";
 import { markdownRenderer } from "../renderers/markdown";
-import type {
-  MaybePromise,
-  PromptChildren,
-  PromptElement,
-  PromptRenderer,
-} from "../types";
-import { resolvePromptElement } from "../utils/resolve-element";
+import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
 
 /**
  * Renderer that outputs ChatCompletionMessageParam[] for the OpenAI Chat Completions API.
@@ -44,20 +38,10 @@ export const chatCompletions: PromptRenderer<ChatCompletionMessageParam[]> = {
 
 type MessageElement = Extract<PromptElement, { kind: "message" }>;
 
-function ensureElement(
-  element: PromptElement | Promise<PromptElement>
-): PromptElement {
-  if (element instanceof Promise) {
-    throw new Error("Prompt tree contains unresolved async elements");
-  }
-  return element;
-}
-
-async function renderToChatCompletions(
-  root: MaybePromise<PromptElement>
-): Promise<ChatCompletionMessageParam[]> {
-  const resolvedRoot = await resolvePromptElement(root);
-  const messageNodes = collectMessageNodes(resolvedRoot);
+function renderToChatCompletions(
+  root: PromptElement
+): ChatCompletionMessageParam[] {
+  const messageNodes = collectMessageNodes(root);
   const result: ChatCompletionMessageParam[] = [];
 
   for (const messageNode of messageNodes) {
@@ -80,7 +64,7 @@ function collectMessageNodes(
     if (typeof child === "string") {
       continue;
     }
-    collectMessageNodes(ensureElement(child), acc);
+    collectMessageNodes(child, acc);
   }
 
   return acc;
@@ -156,7 +140,7 @@ function collectSemanticParts(children: PromptChildren): SemanticPart[] {
       continue;
     }
 
-    parts.push(...semanticPartsFromElement(ensureElement(child)));
+    parts.push(...semanticPartsFromElement(child));
   }
 
   return parts;
@@ -351,13 +335,11 @@ export const responses: PromptRenderer<ResponseInputItem[]> = {
   empty: () => [],
 };
 
-async function renderToResponses(
-  root: MaybePromise<PromptElement>
-): Promise<ResponseInputItem[]> {
+function renderToResponses(root: PromptElement): ResponseInputItem[] {
   const result: ResponseInputItem[] = [];
 
   // Collect all semantic items from the tree
-  collectResponseItems(await resolvePromptElement(root), result);
+  collectResponseItems(root, result);
 
   return result;
 }
@@ -443,7 +425,7 @@ function collectResponseItems(
       // Recurse into children for regions without semantic kind
       for (const child of element.children) {
         if (typeof child !== "string") {
-          collectResponseItems(ensureElement(child), acc);
+          collectResponseItems(child, acc);
         }
       }
     }

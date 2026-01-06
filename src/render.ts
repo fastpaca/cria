@@ -8,7 +8,6 @@ import {
   type StrategyInput,
   type Tokenizer,
 } from "./types";
-import { resolvePromptElement } from "./utils/resolve-element";
 
 export interface RenderOptions {
   tokenizer: Tokenizer;
@@ -23,20 +22,12 @@ type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
   ? TOutput
   : string;
 
-function ensureElement(
-  element: PromptElement | Promise<PromptElement>
-): PromptElement {
-  if (element instanceof Promise) {
-    throw new Error("Prompt tree contains unresolved async elements");
-  }
-  return element;
-}
-
 export async function render<TOptions extends RenderOptions>(
   element: MaybePromise<PromptElement>,
   { tokenizer, budget, renderer }: TOptions
 ): Promise<RenderOutput<TOptions>> {
-  const resolvedElement = await resolvePromptElement(element);
+  // Support sync or async roots from JSX/runtime components.
+  const resolvedElement = element instanceof Promise ? await element : element;
 
   const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<
     RenderOutput<TOptions>
@@ -122,7 +113,7 @@ function findLowestImportancePriority(element: PromptElement): number | null {
     if (typeof child === "string") {
       continue;
     }
-    const childMax = findLowestImportancePriority(ensureElement(child));
+    const childMax = findLowestImportancePriority(child);
     maxPriority = maxNullable(maxPriority, childMax);
   }
 
@@ -164,7 +155,7 @@ async function applyStrategiesAtPriority(
 
     // Pass merged context to children
     const applied = await applyStrategiesAtPriority(
-      ensureElement(child),
+      child,
       priority,
       baseCtx,
       mergedContext
