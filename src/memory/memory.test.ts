@@ -59,5 +59,3 @@ test("InMemoryStore: delete returns false for missing key", () => {
   const store = new InMemoryStore<string>();
   expect(store.delete("nonexistent")).toBe(false);
 });
-
-// Vector store tests removed (in-memory vector store not included)
