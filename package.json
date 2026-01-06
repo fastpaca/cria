@@ -40,11 +40,21 @@
     "./memory/postgres": {
       "types": "./dist/memory/postgres.d.ts",
       "import": "./dist/memory/postgres.js"
+    },
+    "./memory/chroma": {
+      "types": "./dist/memory/chroma/index.d.ts",
+      "import": "./dist/memory/chroma/index.js"
+    },
+    "./memory/qdrant": {
+      "types": "./dist/memory/qdrant/index.d.ts",
+      "import": "./dist/memory/qdrant/index.js"
     }
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
+    "@qdrant/js-client-rest": "^1.0.0",
     "ai": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0",
+    "chromadb": "^1.0.0 || ^2.0.0",
     "ioredis": "^5.0.0",
     "openai": "^4.0.0",
     "pg": "^8.0.0"
@@ -53,7 +63,13 @@
     "@anthropic-ai/sdk": {
       "optional": true
     },
+    "@qdrant/js-client-rest": {
+      "optional": true
+    },
     "ai": {
+      "optional": true
+    },
+    "chromadb": {
       "optional": true
     },
     "ioredis": {
@@ -80,9 +96,11 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@biomejs/biome": "^2.3.10",
+    "@qdrant/js-client-rest": "^1.13.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.16.0",
     "ai": "^6.0.0",
+    "chromadb": "^2.0.0",
     "husky": "^9.1.7",
     "ioredis": "^5.8.2",
     "openai": "^4.104.0",

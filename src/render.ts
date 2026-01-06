@@ -2,6 +2,7 @@ import { markdownRenderer } from "./renderers/markdown";
 import {
   type CriaContext,
   FitError,
+  type MaybePromise,
   type PromptElement,
   type PromptRenderer,
   type StrategyInput,
@@ -22,16 +23,25 @@ type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
   : string;
 
 export async function render<TOptions extends RenderOptions>(
-  element: PromptElement,
+  element: MaybePromise<PromptElement>,
   { tokenizer, budget, renderer }: TOptions
 ): Promise<RenderOutput<TOptions>> {
+  /*
+   * The JSX runtime normalizes children and returns either a PromptElement or a
+   * native Promise. Render only awaits that root value and does not walk the tree.
+   * Non-Promise thenables are intentionally unsupported.
+   */
+  const resolvedElement = element instanceof Promise ? await element : element;
+
   const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<
     RenderOutput<TOptions>
   >;
 
   // Skip fitting if no budget specified (unlimited)
   if (budget === undefined || budget === null) {
-    return (await resolvedRenderer.render(element)) as RenderOutput<TOptions>;
+    return (await resolvedRenderer.render(
+      resolvedElement
+    )) as RenderOutput<TOptions>;
   }
 
   if (budget <= 0) {
@@ -39,7 +49,7 @@ export async function render<TOptions extends RenderOptions>(
   }
 
   const fitted = await fitToBudget(
-    element,
+    resolvedElement,
     budget,
     tokenizer,
     resolvedRenderer.tokenString

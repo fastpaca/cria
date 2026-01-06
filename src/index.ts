@@ -24,6 +24,7 @@
  */
 
 export type {
+  ResultFormatter,
   StoredSummary,
   Summarizer,
   SummarizerContext,
@@ -38,6 +39,7 @@ export {
   ToolCall,
   ToolResult,
   Truncate,
+  VectorSearch,
 } from "./components";
 export type {
   KVMemory,

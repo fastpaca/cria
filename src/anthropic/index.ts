@@ -309,7 +309,10 @@ function collectTextContent(children: PromptChildren): string {
   for (const child of children) {
     if (typeof child === "string") {
       result += child;
-    } else if (child.kind === undefined) {
+      continue;
+    }
+
+    if (child.kind === undefined) {
       result += collectTextContent(child.children);
     } else if (child.kind === "reasoning") {
       result += `<thinking>\n${child.text}\n</thinking>\n`;
