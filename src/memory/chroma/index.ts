@@ -22,20 +22,20 @@ export interface ChromaStoreOptions {
 }
 
 /**
- * Parse a document string as JSON, falling back to the raw string.
+ * Parse a document string. Tries JSON.parse first, returns raw string on failure.
+ * Throws if document is missing.
  */
-function parseDocument<T>(
-  document: string | null | undefined,
-  fallback: Metadata | null | undefined
-): T {
-  if (document) {
-    try {
-      return JSON.parse(document) as T;
-    } catch {
-      return document as T;
-    }
+function parseDocument<T>(document: string | null | undefined): T {
+  if (!document) {
+    throw new Error("ChromaStore: document is missing from entry");
   }
-  return (fallback ?? {}) as T;
+
+  try {
+    return JSON.parse(document) as T;
+  } catch {
+    // Document was stored as a raw string (T is string)
+    return document as T;
+  }
 }
 
 /**
@@ -72,17 +72,28 @@ function distanceToScore(distance: number): number {
  * });
  *
  * // Use with VectorSearch
- * const results = await store.search("What is RAG?", { limit: 5 });
- * <VectorSearch results={results} />
+ * <VectorSearch store={store} limit={5}>
+ *   What is RAG?
+ * </VectorSearch>
  * ```
  */
 export class ChromaStore<T = unknown> implements VectorMemory<T> {
   private readonly collection: Collection;
-  private readonly embed: EmbeddingFunction;
+  private readonly embedFn: EmbeddingFunction;
 
   constructor(options: ChromaStoreOptions) {
     this.collection = options.collection;
-    this.embed = options.embed;
+    this.embedFn = options.embed;
+  }
+
+  private async embed(text: string, context: string): Promise<number[]> {
+    try {
+      return await this.embedFn(text);
+    } catch (error) {
+      throw new Error(`ChromaStore: embedding failed during ${context}`, {
+        cause: error,
+      });
+    }
   }
 
   async get(key: string): Promise<MemoryEntry<T> | null> {
@@ -97,12 +108,17 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
 
     const document = response.documents?.[0];
     const metadata = response.metadatas?.[0];
-    const data = parseDocument<T>(document, metadata);
+    const data = parseDocument<T>(document);
+
+    const createdAt =
+      typeof metadata?._createdAt === "number" ? metadata._createdAt : 0;
+    const updatedAt =
+      typeof metadata?._updatedAt === "number" ? metadata._updatedAt : 0;
 
     return {
       data,
-      createdAt: Date.now(), // Chroma doesn't store timestamps by default
-      updatedAt: Date.now(),
+      createdAt,
+      updatedAt,
       ...(metadata && { metadata: metadata as Record<string, unknown> }),
     };
   }
@@ -112,32 +128,38 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     data: T,
     metadata?: Record<string, unknown>
   ): Promise<void> {
+    const now = Date.now();
+
+    // Check if entry exists to preserve createdAt
+    const existing = await this.get(key);
+    const createdAt = existing?.createdAt ?? now;
+
     // Convert data to text for embedding and storage
     const document = typeof data === "string" ? data : JSON.stringify(data);
-    const vector = await this.embed(document);
+    const vector = await this.embed(document, `set("${key}")`);
 
-    // Convert metadata to Chroma's expected type
-    const chromaMetadata = metadata as Metadata | undefined;
+    // Merge user metadata with timestamps
+    const chromaMetadata: Metadata = {
+      ...metadata,
+      _createdAt: createdAt,
+      _updatedAt: now,
+    };
 
-    if (chromaMetadata) {
-      await this.collection.upsert({
-        ids: [key],
-        embeddings: [vector],
-        documents: [document],
-        metadatas: [chromaMetadata],
-      });
-    } else {
-      await this.collection.upsert({
-        ids: [key],
-        embeddings: [vector],
-        documents: [document],
-      });
-    }
+    await this.collection.upsert({
+      ids: [key],
+      embeddings: [vector],
+      documents: [document],
+      metadatas: [chromaMetadata],
+    });
   }
 
   async delete(key: string): Promise<boolean> {
+    const existing = await this.get(key);
+    if (!existing) {
+      return false;
+    }
     await this.collection.delete({ ids: [key] });
-    return true; // Chroma doesn't return whether the record existed
+    return true;
   }
 
   async search(
@@ -147,7 +169,7 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold;
 
-    const queryVector = await this.embed(query);
+    const queryVector = await this.embed(query, "search");
 
     const response = await this.collection.query({
       queryEmbeddings: [queryVector],
@@ -197,15 +219,20 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
 
       const document = documents[i];
       const metadata = metadatas[i];
-      const data = parseDocument<T>(document, metadata);
+      const data = parseDocument<T>(document);
+
+      const createdAt =
+        typeof metadata?._createdAt === "number" ? metadata._createdAt : 0;
+      const updatedAt =
+        typeof metadata?._updatedAt === "number" ? metadata._updatedAt : 0;
 
       results.push({
         key: id,
         score,
         entry: {
           data,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          createdAt,
+          updatedAt,
           ...(metadata && { metadata: metadata as Record<string, unknown> }),
         },
       });

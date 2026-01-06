@@ -20,10 +20,11 @@ export type ResultFormatter<T = unknown> = (
 
 /**
  * Default formatter that renders results as a numbered list.
+ * Throws if no results found - provide a custom formatter to handle empty results differently.
  */
 function defaultFormatter<T>(results: VectorSearchResult<T>[]): string {
   if (results.length === 0) {
-    return "[No relevant results found]";
+    throw new Error("VectorSearch: no results found");
   }
 
   return results
@@ -176,11 +177,9 @@ export async function VectorSearch<T = unknown>({
   });
 
   if (!finalQuery) {
-    return {
-      priority,
-      children: ["[VectorSearch: no query provided]"],
-      ...(id && { id }),
-    };
+    throw new Error(
+      "VectorSearch: no query provided. Pass a query via children, the query prop, or messages."
+    );
   }
 
   const searchOptions: VectorSearchOptions = {
@@ -188,20 +187,8 @@ export async function VectorSearch<T = unknown>({
     ...(threshold !== undefined && { threshold }),
   };
 
-  let results: VectorSearchResult<T>[] | undefined;
-  try {
-    results = await store.search(finalQuery, searchOptions);
-  } catch (error) {
-    const reason =
-      error instanceof Error ? error.message : JSON.stringify(error);
-    return {
-      priority,
-      children: [`[VectorSearch error: ${reason}]`],
-      ...(id && { id }),
-    };
-  }
-
-  const content = formatResults(results ?? []);
+  const results = await store.search(finalQuery, searchOptions);
+  const content = formatResults(results);
 
   return {
     priority,

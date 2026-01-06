@@ -26,7 +26,11 @@ export async function render<TOptions extends RenderOptions>(
   element: MaybePromise<PromptElement>,
   { tokenizer, budget, renderer }: TOptions
 ): Promise<RenderOutput<TOptions>> {
-  // Support sync or async roots from JSX/runtime components.
+  /*
+   * The JSX runtime normalizes children and returns either a PromptElement or a
+   * native Promise. Render only awaits that root value and does not walk the tree.
+   * Non-Promise thenables are intentionally unsupported.
+   */
   const resolvedElement = element instanceof Promise ? await element : element;
 
   const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<

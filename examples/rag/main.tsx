@@ -17,11 +17,13 @@ import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 import { chatCompletions } from "@fastpaca/cria/openai";
 import { ChromaClient } from "chromadb";
 import OpenAI from "openai";
+import { get_encoding } from "tiktoken";
 
 const openai = new OpenAI();
 
-// Simple tokenizer (use tiktoken in production for accurate counts)
-const tokenizer = (text: string) => Math.ceil(text.length / 4);
+// Initialize tiktoken with cl100k_base encoding (used by GPT-4 class models)
+const encoding = get_encoding("cl100k_base");
+const tokenizer = (text: string) => encoding.encode(text).length;
 
 // ============================================================================
 // Step 1: Connect to ChromaDB and create a collection

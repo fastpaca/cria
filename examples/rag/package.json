@@ -9,6 +9,7 @@
   "dependencies": {
     "chromadb": "^2.0.0",
     "openai": "^4.0.0",
+    "tiktoken": "^1.0.0",
     "@fastpaca/cria": "link:../.."
   },
   "devDependencies": {

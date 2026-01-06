@@ -105,23 +105,21 @@ describe("VectorSearch", () => {
     expect(element.children[0]).toContain("First Document");
   });
 
-  it("renders empty results message", async () => {
+  it("throws when no results found", async () => {
     const { store } = createMockStore<TestDocument>([]);
 
-    const element = await VectorSearch({
-      store,
-      query: "nothing here",
-    });
-
-    expect(element.children[0]).toBe("[No relevant results found]");
+    await expect(
+      VectorSearch({
+        store,
+        query: "nothing here",
+      })
+    ).rejects.toThrow("no results found");
   });
 
-  it("renders placeholder when no query is available", async () => {
+  it("throws when no query is available", async () => {
     const { store } = createMockStore<TestDocument>([]);
 
-    const element = await VectorSearch({ store });
-
-    expect(element.children[0]).toBe("[VectorSearch: no query provided]");
+    await expect(VectorSearch({ store })).rejects.toThrow("no query provided");
   });
 
   it("uses custom formatter", async () => {

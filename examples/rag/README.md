@@ -1,85 +1,59 @@
-# RAG (Retrieval Augmented Generation) Example
+# RAG Example
 
-This example shows how **ridiculously easy** it is to add semantic search to your AI prompts with Cria + ChromaDB.
+Vector search with Cria and ChromaDB.
 
-## The Magic
+## Setup
+
+```bash
+# Start ChromaDB
+docker run -p 8000:8000 chromadb/chroma
+
+# Install and run
+pnpm install
+export OPENAI_API_KEY="sk-..."
+pnpm start
+```
+
+## Usage
+
+`VectorSearch` retrieves context at render time:
 
 ```tsx
-// That's it. VectorSearch automatically retrieves relevant context at render time.
 <Message messageRole="system">
-  Here's the relevant context:
+  Relevant context:
   <VectorSearch store={knowledgeBase} limit={3}>
     {userQuestion}
   </VectorSearch>
 </Message>
 ```
 
-No manual embedding. No async orchestration. No context window juggling. Just declare what you want and Cria handles the rest.
-
-## What This Example Does
-
-1. **Connects to ChromaDB** and creates a collection
-2. **Creates a ChromaStore** with OpenAI embeddings
-3. **Loads documents** into the knowledge base
-4. **Uses VectorSearch** in a prompt to automatically retrieve relevant context
-5. **Renders** the prompt with retrieved context baked in
-6. **Calls OpenAI** with the enriched prompt
-
-## Prerequisites
-
-- **Docker** - for running ChromaDB
-- **OpenAI API Key** - for embeddings and chat completions
-
-## Running the Example
-
-```bash
-# 1. Start ChromaDB (in a separate terminal)
-docker run -p 8000:8000 chromadb/chroma
-
-# 2. Install dependencies
-pnpm install
-
-# 3. Set your OpenAI API key
-export OPENAI_API_KEY="sk-..."
-
-# 4. Run it
-pnpm start
-```
-
-## Key Concepts
-
-### VectorSearch Component
-
-The `VectorSearch` component does semantic search at render time:
+Query options:
 
 ```tsx
-// Query from prop
-<VectorSearch store={store} query="how do I reset my password?" limit={5} />
+// Explicit query
+<VectorSearch store={store} query="password reset" limit={5} />
 
-// Query from children (great for dynamic queries)
+// Query from children
 <VectorSearch store={store} limit={5}>
   {userQuestion}
 </VectorSearch>
 
-// Query from messages (uses last user message)
+// Query from last user message
 <VectorSearch store={store} messages={conversationHistory} />
 ```
 
-### ChromaStore
-
-A production-ready vector store backed by ChromaDB:
+## ChromaStore
 
 ```typescript
 import { ChromaClient } from "chromadb";
 import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 
 const chroma = new ChromaClient({ path: "http://localhost:8000" });
-const collection = await chroma.getOrCreateCollection({ name: "my-docs" });
+const collection = await chroma.getOrCreateCollection({ name: "docs" });
 
 const store = new ChromaStore<string>({
   collection,
   embed: async (text) => {
-    // Use any embedding provider: OpenAI, Cohere, local models, etc.
     const response = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: text,
@@ -88,35 +62,14 @@ const store = new ChromaStore<string>({
   },
 });
 
-// Add documents
-await store.set("doc-1", "Your document content here");
-
-// Search returns results sorted by similarity
+await store.set("doc-1", "Document content");
 const results = await store.search("query", { limit: 5 });
 ```
 
-### Other Vector Stores
-
-Cria also supports Qdrant:
+## Other Stores
 
 ```typescript
 import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
 ```
 
-Or implement your own by satisfying the `VectorMemory` interface.
-
-## Why This Matters
-
-Traditional RAG implementations require:
-- Manual embedding calls
-- Async orchestration
-- Context window math
-- Token budget management
-
-With Cria, you just declare `<VectorSearch>` in your prompt and it **just works**. The component:
-- Executes the search at render time
-- Formats results into the prompt
-- Integrates with Cria's token budget management
-- Uses priority-based reduction when context is too large
-
-**Focus on your product, not infrastructure.**
+Or implement the `VectorMemory` interface.

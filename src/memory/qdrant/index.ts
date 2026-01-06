@@ -61,21 +61,32 @@ interface QdrantPayload<T> {
  * });
  *
  * // Use with VectorSearch
- * const results = await store.search("What is RAG?", { limit: 5 });
- * <VectorSearch results={results} />
+ * <VectorSearch store={store} limit={5}>
+ *   What is RAG?
+ * </VectorSearch>
  * ```
  */
 export class QdrantStore<T = unknown> implements VectorMemory<T> {
   private readonly client: QdrantClient;
   private readonly collectionName: string;
-  private readonly embed: EmbeddingFunction;
+  private readonly embedFn: EmbeddingFunction;
   private readonly vectorName: string | undefined;
 
   constructor(options: QdrantStoreOptions) {
     this.client = options.client;
     this.collectionName = options.collectionName;
-    this.embed = options.embed;
+    this.embedFn = options.embed;
     this.vectorName = options.vectorName;
+  }
+
+  private async embed(text: string, context: string): Promise<number[]> {
+    try {
+      return await this.embedFn(text);
+    } catch (error) {
+      throw new Error(`QdrantStore: embedding failed during ${context}`, {
+        cause: error,
+      });
+    }
   }
 
   async get(key: string): Promise<MemoryEntry<T> | null> {
@@ -112,7 +123,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
 
     // Convert data to text for embedding
     const textToEmbed = typeof data === "string" ? data : JSON.stringify(data);
-    const vector = await this.embed(textToEmbed);
+    const vector = await this.embed(textToEmbed, `set("${key}")`);
 
     const payload: QdrantPayload<T> = {
       data,
@@ -134,11 +145,15 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
   }
 
   async delete(key: string): Promise<boolean> {
+    const existing = await this.get(key);
+    if (!existing) {
+      return false;
+    }
     await this.client.delete(this.collectionName, {
       wait: true,
       points: [key],
     });
-    return true; // Qdrant doesn't return whether the record existed
+    return true;
   }
 
   async search(
@@ -148,7 +163,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold;
 
-    const queryVector = await this.embed(query);
+    const queryVector = await this.embed(query, "search");
 
     const response = await this.client.search(this.collectionName, {
       vector: this.vectorName
