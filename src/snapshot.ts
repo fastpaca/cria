@@ -11,6 +11,8 @@ import type {
 export interface SnapshotNode {
   nodeType: "element" | "text";
   path: readonly number[];
+  /** Prefer explicit ids for stable identity; fall back to positional path. */
+  id?: string;
   kind?: PromptNodeKind;
   priority?: number;
   role?: PromptRole;
@@ -18,7 +20,6 @@ export interface SnapshotNode {
   toolCallId?: string;
   toolName?: string;
   content?: string;
-  id?: string;
   tokens: number;
 }
 
@@ -60,15 +61,15 @@ export function diffSnapshots(
   before: Snapshot,
   after: Snapshot
 ): SnapshotDiff {
-  const beforeMap = mapByPath(before.nodes);
-  const afterMap = mapByPath(after.nodes);
+  const beforeMap = mapByKey(before.nodes);
+  const afterMap = mapByKey(after.nodes);
 
   const added: SnapshotNode[] = [];
   const removed: SnapshotNode[] = [];
   const changed: SnapshotDiff["changed"] = [];
 
-  for (const [path, node] of afterMap.entries()) {
-    const prev = beforeMap.get(path);
+  for (const [key, node] of afterMap.entries()) {
+    const prev = beforeMap.get(key);
     if (!prev) {
       added.push(node);
       continue;
@@ -82,8 +83,8 @@ export function diffSnapshots(
     }
   }
 
-  for (const [path, node] of beforeMap.entries()) {
-    if (!afterMap.has(path)) {
+  for (const [key, node] of beforeMap.entries()) {
+    if (!afterMap.has(key)) {
       removed.push(node);
     }
   }
@@ -154,10 +155,11 @@ function hashSnapshot(nodes: SnapshotNode[]): string {
   return hash.digest("hex");
 }
 
-function mapByPath(nodes: SnapshotNode[]): Map<string, SnapshotNode> {
+function mapByKey(nodes: SnapshotNode[]): Map<string, SnapshotNode> {
   const map = new Map<string, SnapshotNode>();
   for (const node of nodes) {
-    map.set(node.path.join("."), node);
+    const key = node.id ? `id:${node.id}` : `path:${node.path.join(".")}`;
+    map.set(key, node);
   }
   return map;
 }
