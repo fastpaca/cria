@@ -82,6 +82,9 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
   "files": [
     "dist"
   ],
@@ -94,6 +97,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@biomejs/biome": "^2.3.10",
     "@qdrant/js-client-rest": "^1.13.0",

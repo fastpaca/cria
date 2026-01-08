@@ -97,3 +97,173 @@ test("render: multiple strategies at same priority applied together", async () =
   const result = await render(element, { tokenizer, budget: 0 });
   expect(result).toBe("");
 });
+
+test("render: hooks fire in expected order", async () => {
+  const calls: string[] = [];
+  const element = (
+    <Region priority={0}>
+      A<Omit priority={1}>BBBB</Omit>
+    </Region>
+  );
+
+  const result = await render(element, {
+    tokenizer,
+    budget: 1,
+    hooks: {
+      onFitStart: () => {
+        calls.push("start");
+      },
+      onFitIteration: () => {
+        calls.push("iteration");
+      },
+      onStrategyApplied: () => {
+        calls.push("strategy");
+      },
+      onFitComplete: () => {
+        calls.push("complete");
+      },
+    },
+  });
+
+  expect(result).toBe("A");
+  expect(calls).toEqual(["start", "iteration", "strategy", "complete"]);
+});
+
+test("render: onFitError fires before FitError throws", async () => {
+  const element = <Region priority={0}>Too long</Region>;
+  let errorEvent: { priority: number } | null = null;
+
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitError: (event) => {
+          errorEvent = { priority: event.priority };
+        },
+      },
+    })
+  ).rejects.toThrow(FIT_ERROR_PATTERN);
+
+  expect(errorEvent?.priority).toBe(-1);
+});
+
+test("render: hook errors bubble (sync error)", async () => {
+  const element = (
+    <Region priority={0}>
+      A<Omit priority={1}>BBBB</Omit>
+    </Region>
+  );
+
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitStart: () => {
+          throw new Error("Hook error");
+        },
+      },
+    })
+  ).rejects.toThrow("Hook error");
+});
+
+test("render: hook errors bubble (async error)", async () => {
+  const element = (
+    <Region priority={0}>
+      A<Omit priority={1}>BBBB</Omit>
+    </Region>
+  );
+
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitComplete: async () => {
+          await Promise.resolve();
+          throw new Error("Async hook error");
+        },
+      },
+    })
+  ).rejects.toThrow("Async hook error");
+});
+
+test("render: onFitError hook errors bubble", async () => {
+  const element = <Region priority={0}>Too long</Region>;
+
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitError: () => {
+          throw new Error("Error hook failed");
+        },
+      },
+    })
+  ).rejects.toThrow("Error hook failed");
+});
+
+test("render: fit decisions are deterministic", async () => {
+  const buildTree = () => (
+    <Region priority={0}>
+      Head <Omit priority={3}>Drop</Omit>
+      <Truncate budget={4} priority={2}>
+        LongTail
+      </Truncate>
+      <Region priority={1}>End</Region>
+    </Region>
+  );
+
+  type EventLog =
+    | { type: "start"; totalTokens: number }
+    | { type: "iteration"; iteration: number; priority: number; totalTokens: number }
+    | { type: "strategy"; iteration: number; priority: number; resultType: "node" | "null" }
+    | { type: "complete"; iterations: number; totalTokens: number };
+
+  const runOnce = async (): Promise<{ result: string; events: EventLog[] }> => {
+    const events: EventLog[] = [];
+
+    const result = await render(buildTree(), {
+      tokenizer,
+      budget: 12,
+      hooks: {
+        onFitStart: (event) => {
+          events.push({ type: "start", totalTokens: event.totalTokens });
+        },
+        onFitIteration: (event) => {
+          events.push({
+            type: "iteration",
+            iteration: event.iteration,
+            priority: event.priority,
+            totalTokens: event.totalTokens,
+          });
+        },
+        onStrategyApplied: (event) => {
+          events.push({
+            type: "strategy",
+            iteration: event.iteration,
+            priority: event.priority,
+            resultType: event.result ? "node" : "null",
+          });
+        },
+        onFitComplete: (event) => {
+          events.push({
+            type: "complete",
+            iterations: event.iterations,
+            totalTokens: event.totalTokens,
+          });
+        },
+      },
+    });
+
+    return { result, events };
+  };
+
+  const first = await runOnce();
+  const second = await runOnce();
+
+  expect(first.result).toBe(second.result);
+  expect(first.events).toEqual(second.events);
+});

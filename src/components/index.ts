@@ -286,3 +286,90 @@ export type { StoredSummary, Summarizer, SummarizerContext } from "./summary";
 export { Summary } from "./summary";
 export type { ResultFormatter } from "./vector-search";
 export { VectorSearch } from "./vector-search";
+
+interface SeparatorProps {
+  value?: string;
+  priority?: number;
+  id?: string;
+  children?: Child;
+}
+
+export function Separator({
+  value = "\n",
+  priority = 0,
+  id,
+  children = [],
+}: SeparatorProps): PromptElement {
+  const normalized = children as PromptChildren;
+  const separated: PromptChildren = [];
+
+  normalized.forEach((child, index) => {
+    separated.push(child);
+    if (index < normalized.length - 1) {
+      separated.push(value);
+    }
+  });
+
+  return {
+    priority,
+    children: separated,
+    ...(id && { id }),
+  };
+}
+
+interface ExamplesProps {
+  title?: string;
+  separator?: string;
+  priority?: number;
+  id?: string;
+  children?: Child;
+}
+
+export function Examples({
+  title = "Examples:",
+  separator = "\n\n",
+  priority = 2,
+  id,
+  children = [],
+}: ExamplesProps): PromptElement {
+  const normalized = children as PromptChildren;
+  const withSeparators: PromptChildren = [];
+
+  normalized.forEach((child, index) => {
+    withSeparators.push(child);
+    if (index < normalized.length - 1) {
+      withSeparators.push(separator);
+    }
+  });
+
+  const prefixed = title
+    ? ([`${title}\n`, ...withSeparators] as PromptChildren)
+    : withSeparators;
+
+  return {
+    priority,
+    children: prefixed,
+    ...(id && { id }),
+  };
+}
+
+interface CodeBlockProps {
+  code: string;
+  language?: string;
+  priority?: number;
+  id?: string;
+}
+
+export function CodeBlock({
+  code,
+  language,
+  priority = 0,
+  id,
+}: CodeBlockProps): PromptElement {
+  const fenced = `\`\`\`${language ?? ""}\n${code}\n\`\`\`\n`;
+  return {
+    priority,
+    children: [fenced],
+    ...(id && { id }),
+  };
+}
