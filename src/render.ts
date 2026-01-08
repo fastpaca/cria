@@ -103,6 +103,27 @@ export async function render<TOptions extends RenderOptions>(
   return (await resolvedRenderer.render(fitted)) as RenderOutput<TOptions>;
 }
 
+/**
+ * Invoke a hook handler in a best-effort manner.
+ * Hooks are fire-and-forget: errors are silently swallowed and never block rendering.
+ */
+function safeInvoke<T>(
+  handler: ((event: T) => MaybePromise<void>) | undefined,
+  event: T
+): void {
+  if (!handler) {
+    return;
+  }
+
+  try {
+    Promise.resolve(handler(event)).catch(() => {
+      // Silently swallow hook errors
+    });
+  } catch {
+    // Hooks are best-effort and should never affect render behavior.
+  }
+}
+
 async function fitToBudget(
   element: PromptElement,
   budget: number,
@@ -275,19 +296,4 @@ async function applyStrategiesAtPriority(
   }
 
   return { element: nextElement, applied: childrenChanged };
-}
-
-function safeInvoke<T>(
-  handler: ((event: T) => MaybePromise<void>) | undefined,
-  event: T
-): void {
-  if (!handler) {
-    return;
-  }
-
-  try {
-    void Promise.resolve(handler(event)).catch(() => {});
-  } catch {
-    // Hooks are best-effort and should never affect render behavior.
-  }
 }

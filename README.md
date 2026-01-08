@@ -115,6 +115,70 @@ const { text } = await generateText({ model, messages });
 ```
 </details>
 
+### Render Hooks
+
+Cria provides lifecycle hooks to observe the fitting process without affecting render behavior. Hooks are **best-effort and non-blocking**: they never delay rendering and errors are silently swallowed.
+
+```tsx
+import type { RenderHooks } from "@fastpaca/cria";
+
+const hooks: RenderHooks = {
+  onFitStart: (event) => {
+    console.log(`Starting fit: ${event.totalTokens} tokens`);
+  },
+  onFitIteration: (event) => {
+    console.log(`Iteration ${event.iteration}: priority ${event.priority}`);
+  },
+  onStrategyApplied: (event) => {
+    console.log(`Applied strategy to ${event.target.type}`);
+  },
+  onFitComplete: (event) => {
+    console.log(`Fit complete in ${event.iterations} iterations`);
+  },
+  onFitError: (event) => {
+    console.log(`Fit failed: ${event.error.message}`);
+  },
+};
+
+render(prompt, { tokenizer, budget: 128000, hooks });
+```
+
+**Available Hooks:**
+
+| Hook | Fires When | Event Properties |
+|------|-----------|------------------|
+| `onFitStart` | Fitting begins | `element`, `budget`, `totalTokens` |
+| `onFitIteration` | Each fit iteration | `iteration`, `priority`, `totalTokens` |
+| `onStrategyApplied` | Strategy executes | `target`, `result`, `priority`, `iteration` |
+| `onFitComplete` | Fitting succeeds | `result`, `iterations`, `totalTokens` |
+| `onFitError` | Before throwing FitError | `error`, `iteration`, `priority`, `totalTokens` |
+
+**Hook Behavior:**
+
+- **Non-blocking**: Hooks are fire-and-forget and never await results
+- **Error-safe**: All errors (sync and async) are silently caught and swallowed
+- **No side effects on render**: Hooks cannot affect the rendered output
+- **Async-compatible**: Hooks can be sync or async, but are never awaited
+
+Use hooks for observability (logging, metrics, debugging) but never for critical logic that affects rendering.
+
+### Validation
+
+Cria ships runtime schemas for prompt IR validation:
+
+```tsx
+import { PromptChildrenSchema, PromptElementSchema } from "@fastpaca/cria";
+
+PromptElementSchema.parse(element);
+PromptChildrenSchema.parse(element.children);
+```
+
+If you used legacy `ir-validate` helpers, replace them with
+`PromptElementSchema.safeParse(...)` or `.parse(...)`.
+
+Note: legacy `ir-serialize` helpers were removed; IR snapshot utilities are
+still pending (see Roadmap).
+
 ## Roadmap
 
 - [x] JSX
@@ -151,9 +215,12 @@ const { text } = await generateText({ model, messages });
 
 **Observability**
 
+- [ ] Foundation
+  - [x] Async render hooks (onFitStart/onFitIteration/onFitComplete/onStrategyApplied/onFitError)
+  - [x] Runtime schemas for prompt IR validation
+  - [ ] IR snapshot utilities (before/after fitting) for diffing
 - [ ] OpenTelemetry instrumentation (`@fastpaca/cria/instrumentation`)
   - [ ] Span hierarchy matching prompt tree
-  - [ ] IR snapshots (before/after fitting) for diffing
   - [ ] Per-node decision metadata (kept/truncated/omitted)
   - [ ] GenAI semantic convention compatibility
 - [ ] Snapshots/checkpointing

@@ -1,15 +1,17 @@
+import { z } from "zod";
+
 /**
  * Message role used by semantic `kind: "message"` regions.
  *
  * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool),
  * while still allowing custom roles for bespoke targets.
  */
-export type PromptRole =
-  | "system"
-  | "user"
-  | "assistant"
-  | "tool"
-  | (string & {});
+export const PromptRoleSchema = z
+  .string()
+  .describe(
+    'Message role used by semantic `kind: "message"` regions (system/user/assistant/tool/custom).'
+  );
+export type PromptRole = z.infer<typeof PromptRoleSchema>;
 
 /**
  * A message in a completion request.
@@ -67,27 +69,41 @@ export interface CriaContext {
 /**
  * Semantic variants for a region node.
  *
- * Cria’s IR is “Regions all the way down” (like a DOM tree). `PromptKind` is how we
- * recognize certain regions as prompt parts so renderers can emit structured
- * targets without parsing strings.
+ * Cria’s IR is “Regions all the way down” (like a DOM tree). `PromptKindSchema`
+ * defines how we recognize prompt parts so renderers can emit structured targets
+ * without parsing strings.
  */
-export type PromptKind =
-  | { kind?: undefined }
-  | { kind: "message"; role: PromptRole }
-  | {
-      kind: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-    }
-  | {
-      kind: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    }
-  | { kind: "reasoning"; text: string };
+const PromptKindNoneSchema = z.object({ kind: z.undefined().optional() });
+const PromptKindMessageSchema = z.object({
+  kind: z.literal("message"),
+  role: PromptRoleSchema,
+});
+const PromptKindToolCallSchema = z.object({
+  kind: z.literal("tool-call"),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  input: z.unknown(),
+});
+const PromptKindToolResultSchema = z.object({
+  kind: z.literal("tool-result"),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  output: z.unknown(),
+});
+const PromptKindReasoningSchema = z.object({
+  kind: z.literal("reasoning"),
+  text: z.string(),
+});
 
+export const PromptKindSchema = z.union([
+  PromptKindNoneSchema,
+  PromptKindMessageSchema,
+  PromptKindToolCallSchema,
+  PromptKindToolResultSchema,
+  PromptKindReasoningSchema,
+]);
+
+export type PromptKind = z.infer<typeof PromptKindSchema>;
 export type PromptNodeKind = PromptKind["kind"];
 
 // Convenience type for functions that can return a promise or a value.
@@ -116,38 +132,31 @@ export type Tokenizer = (text: string) => number;
  * If you attach a semantic `kind` (via `PromptKind`), the node becomes a recognized
  * prompt part (message/tool-call/tool-result/reasoning) and renderers can emit
  * structured targets without parsing strings.
+ *
+ * `PromptElementSchema` is the single source of truth for validation and type inference.
  */
-export type PromptElement = {
-  /**
-   * Lower number = higher importance.
-   *
-   * Fitting starts reducing from the highest priority number (least important).
-   */
-  priority: number;
+const strategyValidator = (value: unknown): value is Strategy =>
+  typeof value === "function";
 
-  /**
-   * Strategy used during fitting to shrink this region.
-   *
-   * Strategies are tree-aware and may rewrite the subtree rooted at this element.
-   *
-   * If not provided, the region will never be reduced.
-   */
-  strategy?: Strategy;
+const PromptElementBaseSchema = z.object({
+  priority: z.number(),
+  strategy: z.custom<Strategy>(strategyValidator).optional(),
+  id: z.string().optional(),
+  children: z.lazy(() => z.array(z.union([z.string(), PromptElementSchema]))),
+  context: z.custom<CriaContext>().optional(),
+});
 
-  /** Optional stable identifier for caching/debugging. */
-  id?: string;
+export const PromptElementSchema = z.lazy(() =>
+  z.union([
+    PromptElementBaseSchema.merge(PromptKindNoneSchema),
+    PromptElementBaseSchema.merge(PromptKindMessageSchema),
+    PromptElementBaseSchema.merge(PromptKindToolCallSchema),
+    PromptElementBaseSchema.merge(PromptKindToolResultSchema),
+    PromptElementBaseSchema.merge(PromptKindReasoningSchema),
+  ])
+);
 
-  /** Canonical normalized children stored in the IR. */
-  children: PromptChildren;
-
-  /**
-   * Context provided by this element to its descendants.
-   *
-   * Provider components set this to inject context (like a ModelProvider)
-   * that child components can access during strategy execution.
-   */
-  context?: CriaContext | undefined;
-} & PromptKind;
+export type PromptElement = z.infer<typeof PromptElementSchema>;
 
 /**
  * A renderer that converts a fitted prompt tree into an output format.
@@ -196,12 +205,29 @@ export interface PromptRenderer<TOutput> {
  *
  * This is the only type you’ll find inside `PromptElement.children` after JSX normalization.
  */
-export type PromptChild = PromptElement | string;
+export const PromptChildSchema = z.lazy(() =>
+  z.union([z.string(), PromptElementSchema])
+);
+export type PromptChild = z.infer<typeof PromptChildSchema>;
 
 /**
  * Canonical normalized children list stored on `PromptElement.children`.
  */
-export type PromptChildren = PromptChild[];
+export const PromptChildrenSchema = z.lazy(() => z.array(PromptChildSchema));
+export type PromptChildren = z.infer<typeof PromptChildrenSchema>;
+
+export const JsonValueSchema = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(JsonValueSchema),
+    z.record(JsonValueSchema),
+  ])
+);
+
+export type JsonValue = z.infer<typeof JsonValueSchema>;
 
 export type StrategyResult = PromptElement | null;
 
