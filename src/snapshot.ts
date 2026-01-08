@@ -8,6 +8,14 @@ import type {
   Tokenizer,
 } from "./types";
 
+/**
+ * Snapshots are deterministic, post-fit projections of the prompt tree for
+ * observability and diffing. They flatten the fitted IR into nodes with
+ * stable identity (prefer explicit ids, otherwise positional paths),
+ * include per-node token counts using the renderer's tokenString, and
+ * produce a stable hash. Rendering/strategies still work on the IR; snapshots
+ * exist only for tooling (diffs, caching, tracing).
+ */
 export interface SnapshotNode {
   nodeType: "element" | "text";
   path: readonly number[];
