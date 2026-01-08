@@ -1,12 +1,14 @@
 <h1 align="center">Cria</h1>
 
 <p align="center">
-  Cria is a tiny library for building LLM prompts as reusable components.
+  Your prompts deserve the same structure as your code.
 </p>
 
 <p align="center">
-  <i>Debug, view, and save your prompts easily. Swap out components without major rewrites and test your prompts.</i>
+  Cria turns prompts into composable components with explicit roles and strategies, and works with your existing environment & frameworks.
 </p>
+
+Cria is a lightweight JSX prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@fastpaca/cria"><img src="https://img.shields.io/npm/v/@fastpaca/cria?logo=npm&logoColor=white" alt="npm"></a>
@@ -19,151 +21,110 @@
   </a>
 </p>
 
-Most prompt construction is string concatenation. Append everything to some buffer, hope the important parts survive when you hit limits or want to save cost.
-
-Cria lets you declare what's expendable and what is not, and makes your prompts failure mode explicit.
-
-Cria treats memory layout as a first-class concern. You declare priorities upfront, and the library handles eviction when needed. Components let you test retrieval logic separately from system prompts, swap implementations without rewrites, and debug exactly which content got cut when quality degrades.
+## Cria as an example
 
 ```tsx
+import { Last, Message, Omit, Region, render } from "@fastpaca/cria";
+
+const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+const historyMessages = conversationHistory.map((message) => (
+  <Message messageRole={message.role}>{message.content}</Message>
+));
+
 const prompt = (
   <Region priority={0}>
-    You are a helpful assistant.
-
-    {/* Only preserve 80k tokens of history */}
-    <Truncate budget={80000} priority={2}>
-      {conversationHistory}
-    </Truncate>
-
-    {/* Only preserve 20k tokens of tool calls. It gets dropped
-        first in case we need to. */}
-    <Truncate budget={20000} priority={3}>
-      {toolCalls}
-    </Truncate>
-
-    {/* Skip examples in case we are bad on budget */}
-    <Omit priority={3}>{examples}</Omit>
-
-    {userMessage}
+    <Message messageRole="system">You are a helpful assistant.</Message>
+    <Last N={12} priority={2}>{historyMessages}</Last>
+    <Omit priority={3}>{optionalExamples}</Omit>
+    <Message messageRole="user">{userQuestion}</Message>
   </Region>
 );
 
-render(prompt, { tokenizer, budget: 128000 });
+const output = await render(prompt, { tokenizer, budget: 8_000 });
 ```
 
-Cria will drop lower priority sections or truncate them in case it hits your prompt limits.
-## Features
+Docs: [docs/README.md](docs/README.md)
 
-- **Composable** — Build prompts from reusable components. Test and optimize each part independently.
-- **Priority-based** — Declare what's sacred (priority 0) and what's expendable (priority 3). No more guessing what gets cut.
-- **Flexible strategies** — Truncate content progressively, omit entire sections, or write custom eviction logic.
-- **Tiny** — Zero dependencies.
+## Use Cria when you need...
 
-## Getting Started
+- **Need RAG?** Add `<VectorSearch>` (wrap it in a `<Message>` for chat renderers).
+- **Need a summary for long conversations?** Add `<Summary>` (requires a summarizer or provider).
+- **Need to cap history but keep structure?** Add `<Last>`.
+- **Need to drop optional context when the context window is full?** Add `<Omit>`.
+- **Need tool calling structure?** Add `<ToolCall>` and `<ToolResult>`.
+- **Using AI SDK?** Render to `ModelMessage[]` with `@fastpaca/cria/ai-sdk`.
 
-```bash
-npm install @fastpaca/cria
-```
+## Integrations
 
-Add to your `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "@fastpaca/cria"
-  }
-}
-```
-
-## Documentation
-
-### Components
-
-**`<Region>`** — The basic building block. Groups content with a priority level.
-
-```jsx
-<Region>
-  <Region priority={0}>System instructions</Region>
-  <Region priority={2}>Retrieved context</Region>
-</Region>
-```
-
-**`<Truncate>`** — Progressively shortens content when over budget.
-
-```jsx
-<Truncate budget={10000} from="start" priority={2}>
-  {longConversation}
-</Truncate>
-```
-
-**`<Omit>`** — Drops entirely when space is needed.
-
-```jsx
-<Omit priority={3}>{optionalExamples}</Omit>
-```
-
-### Priority Levels
-
-Lower number = higher importance.
-
-| Priority | Use for |
-|----------|---------|
-| 0 | System prompt, safety rules |
-| 1 | Current user message, tool outputs |
-| 2 | Conversation history, retrieved docs |
-| 3 | Examples, optional context |
-
-### Tokenizer
-
-Pass any function that counts tokens:
+<details>
+<summary><strong>OpenAI Chat Completions</strong></summary>
 
 ```tsx
-import { encoding_for_model } from "tiktoken";
+import OpenAI from "openai";
+import { chatCompletions } from "@fastpaca/cria/openai";
+import { render } from "@fastpaca/cria";
 
-const enc = encoding_for_model("gpt-4");
-const tokenizer = (text: string) => enc.encode(text).length;
-
-render(prompt, { tokenizer, budget: 128000 });
+const client = new OpenAI();
+const messages = await render(prompt, { tokenizer, budget, renderer: chatCompletions });
+const response = await client.chat.completions.create({ model: "gpt-4o", messages });
 ```
+</details>
 
-### Custom Strategies
-
-Write your own eviction logic:
+<details>
+<summary><strong>OpenAI Responses</strong></summary>
 
 ```tsx
-import type { Strategy } from "@fastpaca/cria";
+import OpenAI from "openai";
+import { responses } from "@fastpaca/cria/openai";
+import { render } from "@fastpaca/cria";
 
-const summarize: Strategy = ({ target, tokenizer }) => {
-  const summary = createSummary(target.content);
-  return [{ ...target, content: summary, tokens: tokenizer(summary) }];
-};
-
-<Region priority={2} strategy={summarize}>{document}</Region>
+const client = new OpenAI();
+const input = await render(prompt, { tokenizer, budget, renderer: responses });
+const response = await client.responses.create({ model: "o3", input });
 ```
+</details>
 
-### Error Handling
+<details>
+<summary><strong>Anthropic</strong></summary>
 
 ```tsx
-import { FitError } from "@fastpaca/cria";
+import Anthropic from "@anthropic-ai/sdk";
+import { anthropic } from "@fastpaca/cria/anthropic";
+import { render } from "@fastpaca/cria";
 
-try {
-  render(prompt, { tokenizer, budget: 1000 });
-} catch (e) {
-  if (e instanceof FitError) {
-    console.log(`Over budget by ${e.overBudgetBy} tokens`);
-  }
-}
+const client = new Anthropic();
+const { system, messages } = await render(prompt, {
+  tokenizer,
+  budget,
+  renderer: anthropic,
+});
+const response = await client.messages.create({ model: "claude-sonnet-4-20250514", system, messages });
 ```
+</details>
+
+<details>
+<summary><strong>Vercel AI SDK</strong></summary>
+
+```tsx
+import { renderer } from "@fastpaca/cria/ai-sdk";
+import { render } from "@fastpaca/cria";
+import { generateText } from "ai";
+
+const messages = await render(prompt, { tokenizer, budget, renderer });
+const { text } = await generateText({ model, messages });
+```
+</details>
 
 ## Roadmap
 
 - [x] JSX
 - [x] Priority-based eviction (lower number = higher importance)
-- [x] Components 
-   - [x] Region
-   - [x] Truncate
-   - [x] Omit
+- [x] Components
+  - [x] Region
+  - [x] Truncate
+  - [x] Omit
+  - [x] Last
+  - [x] Message
 - [x] Custom strategy support (pure, deterministic, idempotent)
 - [x] Basic error handling
 
@@ -175,36 +136,61 @@ try {
   - [x] AI SDK
 - [ ] Integrations
   - [ ] Message storage
-  - [ ] Vector storage / search index (WIP: feature/rag branch)
+  - [x] Vector storage / search index (Chroma, Qdrant)
 - [ ] Components
   - [x] Summary
   - [x] Messages
-  - [ ] RAG/Vector-search (WIP: feature/rag branch)
+  - [x] RAG/Vector-search
   - [x] Tools / Tool Calls / Tool Result
   - [x] Reasoning
   - [ ] Examples
   - [ ] Code
   - [ ] Separators
 - [ ] Tokenizer helpers
-- [ ] Next.js adapter (`cria/nextjs`)
+- [ ] Next.js adapter (`@fastpaca/cria/nextjs`)
 
-**Observability** (Priority)
+**Observability**
 
 - [ ] OpenTelemetry instrumentation (`@fastpaca/cria/instrumentation`)
   - [ ] Span hierarchy matching prompt tree
   - [ ] IR snapshots (before/after fitting) for diffing
   - [ ] Per-node decision metadata (kept/truncated/omitted)
   - [ ] GenAI semantic convention compatibility
-- [ ] Snapshots/checkpointing (builds on OTel traces)
+- [ ] Snapshots/checkpointing
 - [ ] Visualization tool (separate package, future)
   - [ ] Tree view with expand/collapse
-  - [ ] Diff view (compare traces)
-  - [ ] Timeline view
+
+## Deep dive
+
+- Docs index: [docs/README.md](docs/README.md)
+- Concepts: [docs/concepts.md](docs/concepts.md)
+- Strategies: [docs/strategies.md](docs/strategies.md)
+- Custom components: [docs/custom-components.md](docs/custom-components.md)
+- Quickstart: [docs/quickstart.md](docs/quickstart.md)
+- Prompt structure: [docs/prompt-structure.md](docs/prompt-structure.md)
+- Components: [docs/components.md](docs/components.md)
+- Integrations: [docs/integrations.md](docs/integrations.md)
+- Memory and RAG: [docs/memory-and-rag.md](docs/memory-and-rag.md)
+- Recipes: [docs/recipes.md](docs/recipes.md)
+- Examples: [examples/](examples/)
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Issues and PRs are welcome.
+- Keep changes small and focused.
+- If you add a feature, include a short example or doc note.
+
+## Support
+
+- Open a GitHub issue for bugs or feature requests.
+- For quick questions, include a minimal repro or snippet.
+
+## FAQ
+
+- **Does this replace my LLM SDK?** No - Cria builds prompt structures. You still use your SDK to call the model.
+- **How do I tune token budgets?** Pass a `budget` plus a tokenizer to `render()` and adjust priorities on regions.
+- **Is this production-ready?** The core features are stable; see the docs for what's in progress.
 
 ## License
 
-MIT © [Fastpaca](https://fastpaca.com)
+MIT
