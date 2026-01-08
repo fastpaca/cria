@@ -1,39 +1,25 @@
 import { createHash } from "node:crypto";
-import type { RenderHooks } from "./render";
 import { markdownRenderer } from "./renderers/markdown";
+import type { RenderHooks } from "./render";
 import type {
+  PromptChild,
   PromptElement,
-  PromptNodeKind,
   PromptRenderer,
   PromptRole,
   Tokenizer,
 } from "./types";
 
-/**
- * Snapshots are deterministic, post-fit projections of the prompt tree for
- * observability and diffing. They flatten the fitted IR into nodes with
- * stable identity (prefer explicit ids, otherwise positional paths),
- * include per-node token counts using the renderer's tokenString, and
- * produce a stable hash. Rendering/strategies still work on the IR; snapshots
- * exist only for tooling (diffs, caching, tracing).
- */
-export interface SnapshotNode {
-  nodeType: "element" | "text";
-  path: readonly number[];
-  /** Prefer explicit ids for stable identity; fall back to positional path. */
-  id?: string;
-  kind?: PromptNodeKind;
-  priority?: number;
-  role?: PromptRole;
-  text?: string;
-  toolCallId?: string;
-  toolName?: string;
-  content?: string;
+export type SnapshotChild = string | SnapshotElement;
+
+export interface SnapshotElement
+  extends Omit<PromptElement, "children" | "strategy" | "context"> {
+  children: SnapshotChild[];
   tokens: number;
+  hash: string;
 }
 
 export interface Snapshot {
-  nodes: SnapshotNode[];
+  root: SnapshotElement;
   totalTokens: number;
   hash: string;
 }
@@ -49,17 +35,23 @@ export interface SnapshotHooksOptions {
   onSnapshot: (snapshot: Snapshot) => void;
 }
 
+/**
+ * Create a deterministic snapshot of a fitted prompt tree.
+ *
+ * - Keeps the tree structure (no flattening) and mirrors PromptElement shape.
+ * - Adds per-node token counts (using renderer.tokenString) and stable hashes.
+ * - Excludes strategy/context from the snapshot; this is for observability only.
+ */
 export function createSnapshot(
   element: PromptElement,
   { tokenizer, renderer = markdownRenderer }: SnapshotOptions
 ): Snapshot {
-  const nodes: SnapshotNode[] = [];
-  collectNodes(element, [], tokenizer, renderer, nodes);
-
-  const totalTokens = nodes.reduce((sum, node) => sum + node.tokens, 0);
-  const hash = hashSnapshot(nodes);
-
-  return { nodes, totalTokens, hash };
+  const root = snapshotElement(element, tokenizer, renderer);
+  return {
+    root,
+    totalTokens: root.tokens,
+    hash: root.hash,
+  };
 }
 
 export function createSnapshotHooks({
@@ -82,122 +74,162 @@ export function createSnapshotHooks({
   };
 }
 
+export interface DiffEntry {
+  path: readonly number[];
+  node: SnapshotChild;
+}
+
+export interface DiffChange {
+  path: readonly number[];
+  before: SnapshotChild;
+  after: SnapshotChild;
+}
+
 export interface SnapshotDiff {
-  added: SnapshotNode[];
-  removed: SnapshotNode[];
-  changed: Array<{
-    path: readonly number[];
-    before: SnapshotNode;
-    after: SnapshotNode;
-  }>;
+  added: DiffEntry[];
+  removed: DiffEntry[];
+  changed: DiffChange[];
 }
 
 export function diffSnapshots(before: Snapshot, after: Snapshot): SnapshotDiff {
-  const beforeMap = mapByKey(before.nodes);
-  const afterMap = mapByKey(after.nodes);
+  const added: DiffEntry[] = [];
+  const removed: DiffEntry[] = [];
+  const changed: DiffChange[] = [];
 
-  const added: SnapshotNode[] = [];
-  const removed: SnapshotNode[] = [];
-  const changed: SnapshotDiff["changed"] = [];
-
-  for (const [key, node] of afterMap.entries()) {
-    const prev = beforeMap.get(key);
-    if (!prev) {
-      added.push(node);
-      continue;
-    }
-    if (!nodesEqual(prev, node)) {
-      changed.push({
-        path: node.path,
-        before: prev,
-        after: node,
-      });
-    }
-  }
-
-  for (const [key, node] of beforeMap.entries()) {
-    if (!afterMap.has(key)) {
-      removed.push(node);
-    }
-  }
+  compareNodes(before.root, after.root, [], added, removed, changed);
 
   return { added, removed, changed };
 }
 
-function collectNodes(
-  element: PromptElement,
+function compareNodes(
+  before: SnapshotChild,
+  after: SnapshotChild,
   path: number[],
-  tokenizer: Tokenizer,
-  renderer: PromptRenderer<unknown>,
-  nodes: SnapshotNode[]
+  added: DiffEntry[],
+  removed: DiffEntry[],
+  changed: DiffChange[]
 ): void {
-  const node: SnapshotNode = {
-    nodeType: "element",
-    path: [...path],
-    kind: element.kind,
-    priority: element.priority,
-    tokens: tokenizer(renderer.tokenString(element)),
-  };
-
-  if (element.id) {
-    node.id = element.id;
+  if (typeof before === "string" && typeof after === "string") {
+    if (before !== after) {
+      changed.push({ path, before, after });
+    }
+    return;
   }
 
-  switch (element.kind) {
-    case "message":
-      node.role = element.role;
-      break;
-    case "reasoning":
-      node.text = element.text;
-      break;
-    case "tool-call":
-      node.toolCallId = element.toolCallId;
-      node.toolName = element.toolName;
-      node.content = safeStringify(element.input);
-      break;
-    case "tool-result":
-      node.toolCallId = element.toolCallId;
-      node.toolName = element.toolName;
-      node.content = safeStringify(element.output);
-      break;
-    default:
-      break;
+  if (typeof before === "string") {
+    removed.push({ path, node: before });
+    added.push({ path, node: after });
+    return;
   }
 
-  nodes.push(node);
+  if (typeof after === "string") {
+    removed.push({ path, node: before });
+    added.push({ path, node: after });
+    return;
+  }
 
-  for (const [index, child] of element.children.entries()) {
-    if (typeof child === "string") {
-      nodes.push({
-        nodeType: "text",
-        path: [...path, index],
-        content: child,
-        tokens: tokenizer(child),
-      });
+  // Both elements
+  const identityChanged = elementIdentity(before) !== elementIdentity(after);
+  const contentChanged = before.hash !== after.hash || before.tokens !== after.tokens;
+  if (identityChanged || contentChanged) {
+    changed.push({ path, before, after });
+  }
+
+  const maxChildren = Math.max(before.children.length, after.children.length);
+  for (let i = 0; i < maxChildren; i++) {
+    const beforeChild = before.children[i];
+    const afterChild = after.children[i];
+    if (beforeChild === undefined && afterChild !== undefined) {
+      added.push({ path: [...path, i], node: afterChild });
       continue;
     }
-    collectNodes(child, [...path, index], tokenizer, renderer, nodes);
+    if (beforeChild !== undefined && afterChild === undefined) {
+      removed.push({ path: [...path, i], node: beforeChild });
+      continue;
+    }
+    if (beforeChild !== undefined && afterChild !== undefined) {
+      compareNodes(beforeChild, afterChild, [...path, i], added, removed, changed);
+    }
   }
 }
 
-function hashSnapshot(nodes: SnapshotNode[]): string {
-  const serialized = stableStringify(nodes);
+function elementIdentity(element: SnapshotElement): string {
+  return element.id ?? `${element.kind ?? "region"}:${element.priority}`;
+}
+
+function snapshotElement(
+  element: PromptElement,
+  tokenizer: Tokenizer,
+  renderer: PromptRenderer<unknown>
+): SnapshotElement {
+  const childSnapshots: SnapshotChild[] = element.children.map((child) =>
+    typeof child === "string" ? child : snapshotElement(child, tokenizer, renderer)
+  );
+
+  const contentProjection = renderer.tokenString(element);
+  const tokens = tokenizer(contentProjection);
+  const childHashes = childSnapshots.map((child) =>
+    typeof child === "string" ? hashString(child) : child.hash
+  );
+
+  const hash = hashElement({
+    kind: element.kind,
+    priority: element.priority,
+    role: element.kind === "message" ? element.role : undefined,
+    text: element.kind === "reasoning" ? element.text : undefined,
+    toolCallId:
+      element.kind === "tool-call" || element.kind === "tool-result"
+        ? element.toolCallId
+        : undefined,
+    toolName:
+      element.kind === "tool-call" || element.kind === "tool-result"
+        ? element.toolName
+        : undefined,
+    id: element.id,
+    tokens,
+    childHashes,
+  });
+
+  return {
+    ...element,
+    children: childSnapshots as PromptChild[],
+    tokens,
+    hash,
+  };
+}
+
+function hashElement(input: {
+  kind: PromptElement["kind"];
+  priority: number;
+  role?: PromptRole;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  id?: string;
+  tokens: number;
+  childHashes: string[];
+}): string {
   const hash = createHash("sha256");
-  hash.update(serialized);
+  hash.update(
+    stableStringify({
+      kind: input.kind ?? "region",
+      priority: input.priority,
+      role: input.role,
+      text: input.text,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      id: input.id,
+      tokens: input.tokens,
+      children: input.childHashes,
+    })
+  );
   return hash.digest("hex");
 }
 
-function mapByKey(nodes: SnapshotNode[]): Map<string, SnapshotNode> {
-  const map = new Map<string, SnapshotNode>();
-  for (const node of nodes) {
-    const key = node.id ? `id:${node.id}` : `path:${node.path.join(".")}`;
-    map.set(key, node);
-  }
-  return map;
-}
-
-function nodesEqual(a: SnapshotNode, b: SnapshotNode): boolean {
-  return stableStringify(a) === stableStringify(b);
+function hashString(value: string): string {
+  const hash = createHash("sha256");
+  hash.update(value);
+  return hash.digest("hex");
 }
 
 function stableStringify(value: unknown): string {
@@ -209,30 +241,17 @@ function stableStringify(value: unknown): string {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   }
 
-  const entries = Object.entries(value as Record<string, unknown>).sort(
-    ([a], [b]) => {
-      if (a < b) {
-        return -1;
-      }
-      if (a > b) {
-        return 1;
-      }
-      return 0;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => {
+    if (a < b) {
+      return -1;
     }
-  );
+    if (a > b) {
+      return 1;
+    }
+    return 0;
+  });
   const serializedEntries = entries.map(
     ([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`
   );
   return `{${serializedEntries.join(",")}}`;
-}
-
-function safeStringify(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value) ?? "null";
-  } catch {
-    return String(value);
-  }
 }

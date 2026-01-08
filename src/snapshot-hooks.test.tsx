@@ -13,15 +13,15 @@ describe("createSnapshotHooks", () => {
       </Region>
     );
 
-    const hooks = createSnapshotHooks({
-      tokenizer,
-      onSnapshot: (snapshot) => {
-        snapshots.push(snapshot.hash);
-      },
-    });
+  const hooks = createSnapshotHooks({
+    tokenizer,
+    onSnapshot: (snapshot) => {
+      snapshots.push(snapshot.hash);
+    },
+  });
 
-    const result = await render(element, { tokenizer, budget: 1, hooks });
-    expect(result).toBe("A");
+  const result = await render(element, { tokenizer, budget: 1, hooks });
+  expect(result).toBe("A");
     expect(snapshots).toHaveLength(1);
   });
 
