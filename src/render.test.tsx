@@ -97,3 +97,54 @@ test("render: multiple strategies at same priority applied together", async () =
   const result = await render(element, { tokenizer, budget: 0 });
   expect(result).toBe("");
 });
+
+test("render: hooks fire in expected order", async () => {
+  const calls: string[] = [];
+  const element = (
+    <Region priority={0}>
+      A
+      <Omit priority={1}>BBBB</Omit>
+    </Region>
+  );
+
+  const result = await render(element, {
+    tokenizer,
+    budget: 1,
+    hooks: {
+      onFitStart: () => {
+        calls.push("start");
+      },
+      onFitIteration: () => {
+        calls.push("iteration");
+      },
+      onStrategyApplied: () => {
+        calls.push("strategy");
+      },
+      onFitComplete: () => {
+        calls.push("complete");
+      },
+    },
+  });
+
+  expect(result).toBe("A");
+  expect(calls).toEqual(["start", "iteration", "strategy", "complete"]);
+});
+
+test("render: onFitError fires before FitError throws", async () => {
+  const element = <Region priority={0}>Too long</Region>;
+  let errorEvent: { priority: number } | null = null;
+
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitError: (event) => {
+          errorEvent = { priority: event.priority };
+        },
+      },
+    })
+  ).rejects.toThrow(FIT_ERROR_PATTERN);
+
+  expect(errorEvent?.priority).toBe(-1);
+});

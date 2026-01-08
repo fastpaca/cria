@@ -14,6 +14,47 @@ export interface RenderOptions {
   /** Token budget. Omit for unlimited. */
   budget?: number;
   renderer?: PromptRenderer<unknown>;
+  hooks?: RenderHooks;
+}
+
+export interface FitStartEvent {
+  element: PromptElement;
+  budget: number;
+  totalTokens: number;
+}
+
+export interface FitIterationEvent {
+  iteration: number;
+  priority: number;
+  totalTokens: number;
+}
+
+export interface StrategyAppliedEvent {
+  target: PromptElement;
+  result: PromptElement | null;
+  priority: number;
+  iteration: number;
+}
+
+export interface FitCompleteEvent {
+  result: PromptElement | null;
+  iterations: number;
+  totalTokens: number;
+}
+
+export interface FitErrorEvent {
+  error: FitError;
+  iteration: number;
+  priority: number;
+  totalTokens: number;
+}
+
+export interface RenderHooks {
+  onFitStart?: (event: FitStartEvent) => MaybePromise<void>;
+  onFitIteration?: (event: FitIterationEvent) => MaybePromise<void>;
+  onStrategyApplied?: (event: StrategyAppliedEvent) => MaybePromise<void>;
+  onFitComplete?: (event: FitCompleteEvent) => MaybePromise<void>;
+  onFitError?: (event: FitErrorEvent) => MaybePromise<void>;
 }
 
 type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
@@ -24,7 +65,7 @@ type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
 
 export async function render<TOptions extends RenderOptions>(
   element: MaybePromise<PromptElement>,
-  { tokenizer, budget, renderer }: TOptions
+  { tokenizer, budget, renderer, hooks }: TOptions
 ): Promise<RenderOutput<TOptions>> {
   /*
    * The JSX runtime normalizes children and returns either a PromptElement or a
@@ -52,7 +93,8 @@ export async function render<TOptions extends RenderOptions>(
     resolvedElement,
     budget,
     tokenizer,
-    resolvedRenderer.tokenString
+    resolvedRenderer.tokenString,
+    hooks
   );
   if (!fitted) {
     return resolvedRenderer.empty();
@@ -65,19 +107,39 @@ async function fitToBudget(
   element: PromptElement,
   budget: number,
   tokenizer: Tokenizer,
-  tokenString: (element: PromptElement) => string
+  tokenString: (element: PromptElement) => string,
+  hooks: RenderHooks | undefined
 ): Promise<PromptElement | null> {
   let current: PromptElement | null = element;
   let iteration = 0;
   let totalTokens = tokenizer(tokenString(element));
+
+  safeInvoke(hooks?.onFitStart, {
+    element,
+    budget,
+    totalTokens,
+  });
 
   while (current && totalTokens > budget) {
     iteration++;
 
     const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
-      throw new FitError(totalTokens - budget, -1, iteration);
+      const error = new FitError(totalTokens - budget, -1, iteration);
+      safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: -1,
+        totalTokens,
+      });
+      throw error;
     }
+
+    safeInvoke(hooks?.onFitIteration, {
+      iteration,
+      priority: lowestImportancePriority,
+      totalTokens,
+    });
 
     const baseCtx = {
       budget,
@@ -91,21 +153,36 @@ async function fitToBudget(
       current,
       lowestImportancePriority,
       baseCtx,
-      {} // Start with empty context at the root
+      {}, // Start with empty context at the root
+      hooks,
+      iteration
     );
     current = applied.element;
 
     const nextTokens = current ? tokenizer(tokenString(current)) : 0;
     if (nextTokens >= totalTokens) {
-      throw new FitError(
+      const error = new FitError(
         nextTokens - budget,
         lowestImportancePriority,
         iteration
       );
+      safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: lowestImportancePriority,
+        totalTokens: nextTokens,
+      });
+      throw error;
     }
 
     totalTokens = nextTokens;
   }
+
+  safeInvoke(hooks?.onFitComplete, {
+    result: current,
+    iterations: iteration,
+    totalTokens,
+  });
 
   return current;
 }
@@ -140,7 +217,9 @@ async function applyStrategiesAtPriority(
   element: PromptElement,
   priority: number,
   baseCtx: BaseContext,
-  inheritedContext: CriaContext
+  inheritedContext: CriaContext,
+  hooks: RenderHooks | undefined,
+  iteration: number
 ): Promise<{ element: PromptElement | null; applied: boolean }> {
   // Merge this element's context with inherited context
   // Element context overrides inherited context
@@ -162,7 +241,9 @@ async function applyStrategiesAtPriority(
       child,
       priority,
       baseCtx,
-      mergedContext
+      mergedContext,
+      hooks,
+      iteration
     );
     if (applied.applied) {
       childrenChanged = true;
@@ -184,8 +265,29 @@ async function applyStrategiesAtPriority(
       target: nextElement,
       context: mergedContext,
     });
+    safeInvoke(hooks?.onStrategyApplied, {
+      target: nextElement,
+      result: replacement,
+      priority,
+      iteration,
+    });
     return { element: replacement, applied: true };
   }
 
   return { element: nextElement, applied: childrenChanged };
+}
+
+function safeInvoke<T>(
+  handler: ((event: T) => MaybePromise<void>) | undefined,
+  event: T
+): void {
+  if (!handler) {
+    return;
+  }
+
+  try {
+    void Promise.resolve(handler(event)).catch(() => {});
+  } catch {
+    // Hooks are best-effort and should never affect render behavior.
+  }
 }
