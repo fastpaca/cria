@@ -45,7 +45,9 @@ describe("diffSnapshots", () => {
     const changed = createSnapshot(await buildChangedTree(), { tokenizer });
 
     const diff = diffSnapshots(base, changed);
-    const changedPaths = diff.changed.map((entry) => entry.path.join(".")).sort();
+    const changedPaths = diff.changed
+      .map((entry) => entry.path.join("."))
+      .sort();
 
     expect(diff.added).toHaveLength(0);
     expect(diff.removed).toHaveLength(0);

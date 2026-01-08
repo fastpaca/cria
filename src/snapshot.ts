@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { markdownRenderer } from "./renderers/markdown";
 import type { RenderHooks } from "./render";
+import { markdownRenderer } from "./renderers/markdown";
 import type {
   PromptChild,
   PromptElement,
@@ -109,46 +109,85 @@ function compareNodes(
   removed: DiffEntry[],
   changed: DiffChange[]
 ): void {
+  if (handlePrimitives(before, after, path, added, removed, changed)) {
+    return;
+  }
+
+  const beforeElement = before as SnapshotElement;
+  const afterElement = after as SnapshotElement;
+
+  recordElementChange(beforeElement, afterElement, path, changed);
+  compareChildren(beforeElement, afterElement, path, added, removed, changed);
+}
+
+function handlePrimitives(
+  before: SnapshotChild,
+  after: SnapshotChild,
+  path: readonly number[],
+  added: DiffEntry[],
+  removed: DiffEntry[],
+  changed: DiffChange[]
+): boolean {
   if (typeof before === "string" && typeof after === "string") {
     if (before !== after) {
       changed.push({ path, before, after });
     }
-    return;
+    return true;
   }
 
   if (typeof before === "string") {
     removed.push({ path, node: before });
     added.push({ path, node: after });
-    return;
+    return true;
   }
 
   if (typeof after === "string") {
     removed.push({ path, node: before });
     added.push({ path, node: after });
-    return;
+    return true;
   }
 
-  // Both elements
+  return false;
+}
+
+function recordElementChange(
+  before: SnapshotElement,
+  after: SnapshotElement,
+  path: readonly number[],
+  changed: DiffChange[]
+): void {
   const identityChanged = elementIdentity(before) !== elementIdentity(after);
-  const contentChanged = before.hash !== after.hash || before.tokens !== after.tokens;
+  const contentChanged =
+    before.hash !== after.hash || before.tokens !== after.tokens;
   if (identityChanged || contentChanged) {
     changed.push({ path, before, after });
   }
+}
 
+function compareChildren(
+  before: SnapshotElement,
+  after: SnapshotElement,
+  path: number[],
+  added: DiffEntry[],
+  removed: DiffEntry[],
+  changed: DiffChange[]
+): void {
   const maxChildren = Math.max(before.children.length, after.children.length);
   for (let i = 0; i < maxChildren; i++) {
     const beforeChild = before.children[i];
     const afterChild = after.children[i];
+    const childPath = [...path, i];
+
     if (beforeChild === undefined && afterChild !== undefined) {
-      added.push({ path: [...path, i], node: afterChild });
+      added.push({ path: childPath, node: afterChild });
       continue;
     }
     if (beforeChild !== undefined && afterChild === undefined) {
-      removed.push({ path: [...path, i], node: beforeChild });
+      removed.push({ path: childPath, node: beforeChild });
       continue;
     }
     if (beforeChild !== undefined && afterChild !== undefined) {
-      compareNodes(beforeChild, afterChild, [...path, i], added, removed, changed);
+      compareNodes(beforeChild, afterChild, childPath, added, removed, changed);
     }
   }
 }
@@ -163,7 +202,9 @@ function snapshotElement(
   renderer: PromptRenderer<unknown>
 ): SnapshotElement {
   const childSnapshots: SnapshotChild[] = element.children.map((child) =>
-    typeof child === "string" ? child : snapshotElement(child, tokenizer, renderer)
+    typeof child === "string"
+      ? child
+      : snapshotElement(child, tokenizer, renderer)
   );
 
   const contentProjection = renderer.tokenString(element);
@@ -241,15 +282,17 @@ function stableStringify(value: unknown): string {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   }
 
-  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => {
-    if (a < b) {
-      return -1;
+  const entries = Object.entries(value as Record<string, unknown>).sort(
+    ([a], [b]) => {
+      if (a < b) {
+        return -1;
+      }
+      if (a > b) {
+        return 1;
+      }
+      return 0;
     }
-    if (a > b) {
-      return 1;
-    }
-    return 0;
-  });
+  );
   const serializedEntries = entries.map(
     ([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`
   );
