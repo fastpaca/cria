@@ -204,3 +204,66 @@ test("render: onFitError hook errors bubble", async () => {
     })
   ).rejects.toThrow("Error hook failed");
 });
+
+test("render: fit decisions are deterministic", async () => {
+  const buildTree = () => (
+    <Region priority={0}>
+      Head <Omit priority={3}>Drop</Omit>
+      <Truncate budget={4} priority={2}>
+        LongTail
+      </Truncate>
+      <Region priority={1}>End</Region>
+    </Region>
+  );
+
+  type EventLog =
+    | { type: "start"; totalTokens: number }
+    | { type: "iteration"; iteration: number; priority: number; totalTokens: number }
+    | { type: "strategy"; iteration: number; priority: number; resultType: "node" | "null" }
+    | { type: "complete"; iterations: number; totalTokens: number };
+
+  const runOnce = async (): Promise<{ result: string; events: EventLog[] }> => {
+    const events: EventLog[] = [];
+
+    const result = await render(buildTree(), {
+      tokenizer,
+      budget: 12,
+      hooks: {
+        onFitStart: (event) => {
+          events.push({ type: "start", totalTokens: event.totalTokens });
+        },
+        onFitIteration: (event) => {
+          events.push({
+            type: "iteration",
+            iteration: event.iteration,
+            priority: event.priority,
+            totalTokens: event.totalTokens,
+          });
+        },
+        onStrategyApplied: (event) => {
+          events.push({
+            type: "strategy",
+            iteration: event.iteration,
+            priority: event.priority,
+            resultType: event.result ? "node" : "null",
+          });
+        },
+        onFitComplete: (event) => {
+          events.push({
+            type: "complete",
+            iterations: event.iterations,
+            totalTokens: event.totalTokens,
+          });
+        },
+      },
+    });
+
+    return { result, events };
+  };
+
+  const first = await runOnce();
+  const second = await runOnce();
+
+  expect(first.result).toBe(second.result);
+  expect(first.events).toEqual(second.events);
+});
