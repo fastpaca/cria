@@ -30,17 +30,21 @@ export type {
   SummarizerContext,
 } from "./components";
 export {
+  CodeBlock,
+  Examples,
   Last,
   Message,
   Omit,
   Reasoning,
   Region,
+  Separator,
   Summary,
   ToolCall,
   ToolResult,
   Truncate,
   VectorSearch,
 } from "./components";
+export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,
   MemoryEntry,
@@ -60,13 +64,16 @@ export type {
   StrategyAppliedEvent,
 } from "./render";
 export { render } from "./render";
+export { markdownRenderer } from "./renderers/markdown";
 export {
   createSnapshot,
+  createSnapshotHooks,
   diffSnapshots,
   type Snapshot,
   type SnapshotDiff,
   type SnapshotNode,
 } from "./snapshot";
+export { createOtelRenderHooks } from "./instrumentation/otel";
 export { markdownRenderer } from "./renderers/markdown";
 export type {
   CompletionMessage,

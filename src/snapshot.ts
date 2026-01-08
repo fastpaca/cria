@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import type { RenderHooks } from "./render";
 import { markdownRenderer } from "./renderers/markdown";
+import type { RenderHooks } from "./render";
 import type {
   PromptElement,
   PromptNodeKind,
@@ -42,6 +44,12 @@ export interface SnapshotOptions {
   renderer?: PromptRenderer<unknown>;
 }
 
+export interface SnapshotHooksOptions {
+  tokenizer: Tokenizer;
+  renderer?: PromptRenderer<unknown>;
+  onSnapshot: (snapshot: Snapshot) => void;
+}
+
 export function createSnapshot(
   element: PromptElement,
   { tokenizer, renderer = markdownRenderer }: SnapshotOptions
@@ -55,6 +63,26 @@ export function createSnapshot(
   return { nodes, totalTokens, hash };
 }
 
+export function createSnapshotHooks({
+  tokenizer,
+  renderer,
+  onSnapshot,
+}: SnapshotHooksOptions): RenderHooks {
+  return {
+    onFitComplete: (event) => {
+      if (!event.result) {
+        return;
+      }
+      try {
+        const snapshot = createSnapshot(event.result, { tokenizer, renderer });
+        onSnapshot(snapshot);
+      } catch {
+        // Observability only; swallow errors.
+      }
+    },
+  };
+}
+
 export interface SnapshotDiff {
   added: SnapshotNode[];
   removed: SnapshotNode[];
@@ -65,10 +93,7 @@ export interface SnapshotDiff {
   }>;
 }
 
-export function diffSnapshots(
-  before: Snapshot,
-  after: Snapshot
-): SnapshotDiff {
+export function diffSnapshots(before: Snapshot, after: Snapshot): SnapshotDiff {
   const beforeMap = mapByKey(before.nodes);
   const afterMap = mapByKey(after.nodes);
 
@@ -185,9 +210,15 @@ function stableStringify(value: unknown): string {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   }
 
-  const entries = Object.entries(value as Record<string, unknown>).sort(
-    ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)
-  );
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => {
+    if (a < b) {
+      return -1;
+    }
+    if (a > b) {
+      return 1;
+    }
+    return 0;
+  });
   const serializedEntries = entries.map(
     ([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`
   );

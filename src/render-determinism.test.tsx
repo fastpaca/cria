@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { Omit, Region, Truncate, render } from "./index";
+import { Omit, Region, render, Truncate } from "./index";
 
 const tokenizer = (text: string): number => text.length;
 
@@ -22,7 +22,7 @@ type EventLog =
 const buildTree = () => (
   <Region priority={0}>
     Head <Omit priority={3}>Drop</Omit>
-    <Truncate priority={2} budget={4}>
+    <Truncate budget={4} priority={2}>
       LongTail
     </Truncate>
     <Region priority={1}>End</Region>
