@@ -60,6 +60,13 @@ export type {
   StrategyAppliedEvent,
 } from "./render";
 export { render } from "./render";
+export {
+  createSnapshot,
+  diffSnapshots,
+  type Snapshot,
+  type SnapshotDiff,
+  type SnapshotNode,
+} from "./snapshot";
 export { markdownRenderer } from "./renderers/markdown";
 export type {
   CompletionMessage,
