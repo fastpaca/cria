@@ -247,19 +247,18 @@ function hashElement(input: {
   childHashes: string[];
 }): string {
   const hash = createHash("sha256");
-  hash.update(
-    stableStringify({
-      kind: input.kind ?? "region",
-      priority: input.priority,
-      role: input.role,
-      text: input.text,
-      toolCallId: input.toolCallId,
-      toolName: input.toolName,
-      id: input.id,
-      tokens: input.tokens,
-      children: input.childHashes,
-    })
-  );
+  const payload = {
+    kind: input.kind ?? "region",
+    priority: input.priority,
+    role: input.role,
+    text: input.text,
+    toolCallId: input.toolCallId,
+    toolName: input.toolName,
+    id: input.id,
+    tokens: input.tokens,
+    children: input.childHashes,
+  };
+  hash.update(JSON.stringify(payload));
   return hash.digest("hex");
 }
 
@@ -267,30 +266,4 @@ function hashString(value: string): string {
   const hash = createHash("sha256");
   hash.update(value);
   return hash.digest("hex");
-}
-
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>).sort(
-    ([a], [b]) => {
-      if (a < b) {
-        return -1;
-      }
-      if (a > b) {
-        return 1;
-      }
-      return 0;
-    }
-  );
-  const serializedEntries = entries.map(
-    ([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`
-  );
-  return `{${serializedEntries.join(",")}}`;
 }
