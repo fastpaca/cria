@@ -1,14 +1,12 @@
 <h1 align="center">Cria</h1>
 
 <p align="center">
-  Your prompts deserve the same structure as your code.
+  <i>Your prompts deserve the same structure as your code.</i>
 </p>
 
 <p align="center">
-  Cria turns prompts into composable components with explicit roles and strategies, and works with your existing environment & frameworks.
+  <b><i>Cria turns prompts into composable components with explicit roles and strategies, and works with your existing environment & frameworks.</i></b>
 </p>
-
-Cria is a lightweight JSX prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@fastpaca/cria"><img src="https://img.shields.io/npm/v/@fastpaca/cria?logo=npm&logoColor=white" alt="npm"></a>
@@ -20,6 +18,8 @@ Cria is a lightweight JSX prompt composition library for structured prompt engin
     <img src="https://img.shields.io/badge/Give%20a%20Star-Support%20the%20project-orange?style=for-the-badge" alt="Give a Star">
   </a>
 </p>
+
+Cria is a lightweight JSX prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
 ## Cria as an example
 
@@ -47,12 +47,12 @@ Docs: [docs/README.md](docs/README.md)
 
 ## Use Cria when you need...
 
-- **Need RAG?** Add `<VectorSearch>` (wrap it in a `<Message>` for chat renderers).
-- **Need a summary for long conversations?** Add `<Summary>` (requires a summarizer or provider).
-- **Need to cap history but keep structure?** Add `<Last>`.
+- **Need RAG?** Add `<VectorSearch>`!
+- **Need a summary for long conversations?** Add `<Summary>`!
+- **Need to cap history but keep structure?** Use `<Last>`.
 - **Need to drop optional context when the context window is full?** Add `<Omit>`.
-- **Need tool calling structure?** Add `<ToolCall>` and `<ToolResult>`.
-- **Using AI SDK?** Render to `ModelMessage[]` with `@fastpaca/cria/ai-sdk`.
+- **Need granular tool calling structure?** Add `<ToolCall>` and `<ToolResult>`.
+- **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
 
 ## Integrations
 
