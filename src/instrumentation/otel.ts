@@ -1,10 +1,4 @@
-import {
-  type Attributes,
-  context,
-  type Span,
-  SpanStatusCode,
-  type Tracer,
-} from "@opentelemetry/api";
+import { SpanStatusCode, context, type Attributes, type Span, type Tracer } from "@opentelemetry/api";
 import type { RenderHooks } from "../render";
 import type { PromptElement } from "../types";
 
@@ -19,7 +13,7 @@ interface OtelRenderHooksOptions {
 /**
  * Creates RenderHooks that emit OpenTelemetry spans for fit lifecycle events.
  *
- * - Does not throw: hook failures are swallowed.
+ * - Throws if tracer operations throw.
  * - Uses the provided tracer; does not create global tracers.
  * - Uses explicit ids when present for stable node attribution.
  */
@@ -29,14 +23,6 @@ export function createOtelRenderHooks({
   attributes = {},
 }: OtelRenderHooksOptions): RenderHooks {
   let fitSpan: Span | null = null;
-
-  const safe = (fn: () => void): void => {
-    try {
-      fn();
-    } catch {
-      // Best-effort; never throw from hooks.
-    }
-  };
 
   const startChildSpan = (name: string, attrs: Attributes): Span => {
     const span = tracer.startSpan(name, undefined, context.active());
@@ -48,69 +34,63 @@ export function createOtelRenderHooks({
   };
 
   return {
-    onFitStart: (event) =>
-      safe(() => {
-        fitSpan = tracer.startSpan(spanName, undefined, context.active());
-        setAttributes(fitSpan, {
-          ...attributes,
-          "cria.budget": event.budget,
-          "cria.total_tokens": event.totalTokens,
-        });
-        setElementAttributes(fitSpan, event.element);
-      }),
+    onFitStart: (event) => {
+      fitSpan = tracer.startSpan(spanName, undefined, context.active());
+      setAttributes(fitSpan, {
+        ...attributes,
+        "cria.budget": event.budget,
+        "cria.total_tokens": event.totalTokens,
+      });
+      setElementAttributes(fitSpan, event.element);
+    },
 
-    onFitIteration: (event) =>
-      safe(() => {
-        const span = startChildSpan(`${spanName}.iteration`, {
-          "cria.iteration": event.iteration,
-          "cria.priority": event.priority,
-          "cria.total_tokens": event.totalTokens,
-        });
-        span.end();
-      }),
+    onFitIteration: (event) => {
+      const span = startChildSpan(`${spanName}.iteration`, {
+        "cria.iteration": event.iteration,
+        "cria.priority": event.priority,
+        "cria.total_tokens": event.totalTokens,
+      });
+      span.end();
+    },
 
-    onStrategyApplied: (event) =>
-      safe(() => {
-        const span = startChildSpan(`${spanName}.strategy`, {
-          "cria.iteration": event.iteration,
-          "cria.priority": event.priority,
-          "cria.strategy.result": event.result ? "node" : "null",
-        });
-        setElementAttributes(span, event.target);
-        span.end();
-      }),
+    onStrategyApplied: (event) => {
+      const span = startChildSpan(`${spanName}.strategy`, {
+        "cria.iteration": event.iteration,
+        "cria.priority": event.priority,
+        "cria.strategy.result": event.result ? "node" : "null",
+      });
+      setElementAttributes(span, event.target);
+      span.end();
+    },
 
-    onFitComplete: (event) =>
-      safe(() => {
-        if (!fitSpan) {
-          return;
-        }
-        setAttributes(fitSpan, {
-          "cria.iterations": event.iterations,
-          "cria.total_tokens": event.totalTokens,
-        });
-        fitSpan.end();
-        fitSpan = null;
-      }),
+    onFitComplete: (event) => {
+      if (!fitSpan) {
+        return;
+      }
+      setAttributes(fitSpan, {
+        "cria.iterations": event.iterations,
+        "cria.total_tokens": event.totalTokens,
+      });
+      fitSpan.end();
+      fitSpan = null;
+    },
 
-    onFitError: (event) =>
-      safe(() => {
-        const span =
-          fitSpan ?? tracer.startSpan(spanName, undefined, context.active());
-        setAttributes(span, {
-          ...attributes,
-          "cria.iteration": event.iteration,
-          "cria.priority": event.priority,
-          "cria.total_tokens": event.totalTokens,
-        });
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: event.error.message,
-        });
-        span.recordException(event.error);
-        span.end();
-        fitSpan = null;
-      }),
+    onFitError: (event) => {
+      const span = fitSpan ?? tracer.startSpan(spanName, undefined, context.active());
+      setAttributes(span, {
+        ...attributes,
+        "cria.iteration": event.iteration,
+        "cria.priority": event.priority,
+        "cria.total_tokens": event.totalTokens,
+      });
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: event.error.message,
+      });
+      span.recordException(event.error);
+      span.end();
+      fitSpan = null;
+    },
   };
 }
 

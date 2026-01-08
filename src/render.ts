@@ -103,10 +103,6 @@ export async function render<TOptions extends RenderOptions>(
   return (await resolvedRenderer.render(fitted)) as RenderOutput<TOptions>;
 }
 
-/**
- * Invoke a hook handler in a best-effort manner.
- * Hooks are fire-and-forget: errors are silently swallowed and never block rendering.
- */
 async function safeInvoke<T>(
   handler: ((event: T) => MaybePromise<void>) | undefined,
   event: T

@@ -25,7 +25,7 @@ describe("createSnapshotHooks", () => {
     expect(snapshots).toHaveLength(1);
   });
 
-  test("swallows errors from snapshot creation", async () => {
+  test("propagates errors from snapshot creation", async () => {
     const element = <Region priority={0}>Hi</Region>;
 
     const hooks = createSnapshotHooks({
@@ -37,7 +37,8 @@ describe("createSnapshotHooks", () => {
       },
     });
 
-    const result = await render(element, { tokenizer, budget: 10, hooks });
-    expect(result).toBe("Hi");
+    await expect(
+      render(element, { tokenizer, budget: 10, hooks })
+    ).rejects.toThrow("tokenizer failed");
   });
 });

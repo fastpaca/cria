@@ -64,12 +64,8 @@ export function createSnapshotHooks({
       if (!event.result) {
         return;
       }
-      try {
-        const snapshot = createSnapshot(event.result, { tokenizer, renderer });
-        onSnapshot(snapshot);
-      } catch {
-        // Observability only; swallow errors.
-      }
+      const snapshot = createSnapshot(event.result, { tokenizer, renderer });
+      onSnapshot(snapshot);
     },
   };
 }

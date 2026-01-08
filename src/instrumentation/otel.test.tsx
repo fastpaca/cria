@@ -101,7 +101,7 @@ describe("createOtelRenderHooks", () => {
     expect(errorSpan.exceptions).toHaveLength(1);
   });
 
-  test("swallows tracer errors", async () => {
+  test("propagates tracer errors", async () => {
     const tracer: Tracer = {
       startSpan: () => {
         throw new Error("boom");
@@ -117,6 +117,6 @@ describe("createOtelRenderHooks", () => {
         budget: 1,
         hooks,
       })
-    ).rejects.toThrow(FIT_ERROR);
+    ).rejects.toThrow("boom");
   });
 });
