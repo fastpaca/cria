@@ -8,7 +8,7 @@
  * const prompt = (
  *   <Region priority={0}>
  *     You are a helpful assistant.
- *     <Truncate budget={20000} direction="start" priority={2}>
+ *     <Truncate budget={20000} from="start" priority={2}>
  *       {conversationHistory}
  *     </Truncate>
  *     <Omit priority={3}>
@@ -17,7 +17,7 @@
  *   </Region>
  * );
  *
- * const result = render(prompt, { tokenizer, budget: 128000 });
+ * const result = await render(prompt, { tokenizer, budget: 128000 });
  * ```
  *
  * @packageDocumentation
@@ -48,11 +48,37 @@ export type {
   VectorSearchOptions,
   VectorSearchResult,
 } from "./memory";
+export type {
+  AssignPromptElementIdsOptions,
+  HashFunction,
+  PromptElementPath,
+} from "./identity";
+export { assignPromptElementIds, locatePromptElementPath } from "./identity";
+export {
+  inspectPromptElement,
+  serializePromptElement,
+} from "./ir-serialize";
 // LLM Memory
 export { InMemoryStore } from "./memory";
-export type { RenderOptions } from "./render";
+export type {
+  FitCompleteEvent,
+  FitErrorEvent,
+  FitIterationEvent,
+  FitStartEvent,
+  RenderHooks,
+  RenderOptions,
+  StrategyAppliedEvent,
+} from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
+export {
+  assertPromptChildren,
+  assertPromptElement,
+  assertPromptElementIdsUnique,
+  findDuplicatePromptElementIds,
+  isPromptChildren,
+  isPromptElement,
+} from "./ir-validate";
 export type {
   CompletionMessage,
   CompletionRequest,
