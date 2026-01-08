@@ -35,3 +35,5 @@ coverage/
 
 # Local design docs
 .design-docs/
+.code/
+.plans/
