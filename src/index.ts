@@ -48,16 +48,6 @@ export type {
   VectorSearchOptions,
   VectorSearchResult,
 } from "./memory";
-export type {
-  AssignPromptElementIdsOptions,
-  HashFunction,
-  PromptElementPath,
-} from "./identity";
-export { assignPromptElementIds, locatePromptElementPath } from "./identity";
-export {
-  inspectPromptElement,
-  serializePromptElement,
-} from "./ir-serialize";
 // LLM Memory
 export { InMemoryStore } from "./memory";
 export type {
@@ -71,19 +61,12 @@ export type {
 } from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
-export {
-  assertPromptChildren,
-  assertPromptElement,
-  assertPromptElementIdsUnique,
-  findDuplicatePromptElementIds,
-  isPromptChildren,
-  isPromptElement,
-} from "./ir-validate";
 export type {
   CompletionMessage,
   CompletionRequest,
   CompletionResult,
   CriaContext,
+  JsonValue,
   MaybePromise,
   ModelProvider,
   PromptChild,
@@ -98,4 +81,12 @@ export type {
   StrategyResult,
   Tokenizer,
 } from "./types";
-export { FitError } from "./types";
+export {
+  FitError,
+  JsonValueSchema,
+  PromptChildrenSchema,
+  PromptChildSchema,
+  PromptElementSchema,
+  PromptKindSchema,
+  PromptRoleSchema,
+} from "./types";
