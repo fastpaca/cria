@@ -107,21 +107,15 @@ export async function render<TOptions extends RenderOptions>(
  * Invoke a hook handler in a best-effort manner.
  * Hooks are fire-and-forget: errors are silently swallowed and never block rendering.
  */
-function safeInvoke<T>(
+async function safeInvoke<T>(
   handler: ((event: T) => MaybePromise<void>) | undefined,
   event: T
-): void {
+): Promise<void> {
   if (!handler) {
     return;
   }
 
-  try {
-    Promise.resolve(handler(event)).catch(() => {
-      // Silently swallow hook errors
-    });
-  } catch {
-    // Hooks are best-effort and should never affect render behavior.
-  }
+  await handler(event);
 }
 
 async function fitToBudget(
@@ -135,7 +129,7 @@ async function fitToBudget(
   let iteration = 0;
   let totalTokens = tokenizer(tokenString(element));
 
-  safeInvoke(hooks?.onFitStart, {
+  await safeInvoke(hooks?.onFitStart, {
     element,
     budget,
     totalTokens,
@@ -147,7 +141,7 @@ async function fitToBudget(
     const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
       const error = new FitError(totalTokens - budget, -1, iteration);
-      safeInvoke(hooks?.onFitError, {
+      await safeInvoke(hooks?.onFitError, {
         error,
         iteration,
         priority: -1,
@@ -156,7 +150,7 @@ async function fitToBudget(
       throw error;
     }
 
-    safeInvoke(hooks?.onFitIteration, {
+    await safeInvoke(hooks?.onFitIteration, {
       iteration,
       priority: lowestImportancePriority,
       totalTokens,
@@ -187,7 +181,7 @@ async function fitToBudget(
         lowestImportancePriority,
         iteration
       );
-      safeInvoke(hooks?.onFitError, {
+      await safeInvoke(hooks?.onFitError, {
         error,
         iteration,
         priority: lowestImportancePriority,
@@ -199,7 +193,7 @@ async function fitToBudget(
     totalTokens = nextTokens;
   }
 
-  safeInvoke(hooks?.onFitComplete, {
+  await safeInvoke(hooks?.onFitComplete, {
     result: current,
     iterations: iteration,
     totalTokens,
@@ -286,7 +280,7 @@ async function applyStrategiesAtPriority(
       target: nextElement,
       context: mergedContext,
     });
-    safeInvoke(hooks?.onStrategyApplied, {
+    await safeInvoke(hooks?.onStrategyApplied, {
       target: nextElement,
       result: replacement,
       priority,

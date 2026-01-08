@@ -148,106 +148,50 @@ test("render: onFitError fires before FitError throws", async () => {
   expect(errorEvent?.priority).toBe(-1);
 });
 
-test("render: hook errors are swallowed (sync error)", async () => {
+test("render: hook errors bubble (sync error)", async () => {
   const element = (
     <Region priority={0}>
       A<Omit priority={1}>BBBB</Omit>
     </Region>
   );
 
-  // Hook that throws synchronously should not break rendering
-  const result = await render(element, {
-    tokenizer,
-    budget: 1,
-    hooks: {
-      onFitStart: () => {
-        throw new Error("Hook error");
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitStart: () => {
+          throw new Error("Hook error");
+        },
       },
-      onFitIteration: () => {
-        throw new Error("Hook error");
-      },
-      onStrategyApplied: () => {
-        throw new Error("Hook error");
-      },
-      onFitComplete: () => {
-        throw new Error("Hook error");
-      },
-    },
-  });
-
-  // Render should succeed despite hook errors
-  expect(result).toBe("A");
+    })
+  ).rejects.toThrow("Hook error");
 });
 
-test("render: hook errors are swallowed (async error)", async () => {
+test("render: hook errors bubble (async error)", async () => {
   const element = (
     <Region priority={0}>
       A<Omit priority={1}>BBBB</Omit>
     </Region>
   );
 
-  // Hook that rejects asynchronously should not break rendering
-  const result = await render(element, {
-    tokenizer,
-    budget: 1,
-    hooks: {
-      onFitStart: async () => {
-        await Promise.resolve();
-        throw new Error("Async hook error");
+  await expect(
+    render(element, {
+      tokenizer,
+      budget: 1,
+      hooks: {
+        onFitComplete: async () => {
+          await Promise.resolve();
+          throw new Error("Async hook error");
+        },
       },
-      onFitIteration: async () => {
-        await Promise.resolve();
-        throw new Error("Async hook error");
-      },
-      onStrategyApplied: async () => {
-        await Promise.resolve();
-        throw new Error("Async hook error");
-      },
-      onFitComplete: async () => {
-        await Promise.resolve();
-        throw new Error("Async hook error");
-      },
-    },
-  });
-
-  // Render should succeed despite async hook errors
-  expect(result).toBe("A");
+    })
+  ).rejects.toThrow("Async hook error");
 });
 
-test("render: hooks are non-blocking (fire-and-forget)", async () => {
-  const element = (
-    <Region priority={0}>
-      A<Omit priority={1}>BBBB</Omit>
-    </Region>
-  );
-
-  let asyncHookCompleted = false;
-
-  const result = await render(element, {
-    tokenizer,
-    budget: 1,
-    hooks: {
-      onFitComplete: async () => {
-        // Simulate slow async operation
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        asyncHookCompleted = true;
-      },
-    },
-  });
-
-  // Render completes immediately without waiting for hook
-  expect(result).toBe("A");
-  expect(asyncHookCompleted).toBe(false);
-
-  // Wait for async hook to complete
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  expect(asyncHookCompleted).toBe(true);
-});
-
-test("render: onFitError hook errors are swallowed", async () => {
+test("render: onFitError hook errors bubble", async () => {
   const element = <Region priority={0}>Too long</Region>;
 
-  // Even if the error hook throws, the FitError should still be thrown
   await expect(
     render(element, {
       tokenizer,
@@ -258,40 +202,5 @@ test("render: onFitError hook errors are swallowed", async () => {
         },
       },
     })
-  ).rejects.toThrow(FIT_ERROR_PATTERN);
-});
-
-test("render: all hooks fire in sequence despite individual errors", async () => {
-  const calls: string[] = [];
-  const element = (
-    <Region priority={0}>
-      A<Omit priority={1}>BBBB</Omit>
-    </Region>
-  );
-
-  await render(element, {
-    tokenizer,
-    budget: 1,
-    hooks: {
-      onFitStart: () => {
-        calls.push("start");
-        throw new Error("start error");
-      },
-      onFitIteration: () => {
-        calls.push("iteration");
-        throw new Error("iteration error");
-      },
-      onStrategyApplied: () => {
-        calls.push("strategy");
-        throw new Error("strategy error");
-      },
-      onFitComplete: () => {
-        calls.push("complete");
-        throw new Error("complete error");
-      },
-    },
-  });
-
-  // All hooks should have been called despite errors
-  expect(calls).toEqual(["start", "iteration", "strategy", "complete"]);
+  ).rejects.toThrow("Error hook failed");
 });
