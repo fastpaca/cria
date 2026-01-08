@@ -72,7 +72,11 @@ describe("createOtelRenderHooks", () => {
     await render(element, { tokenizer, budget: 1, hooks });
 
     const names = tracer.spans.map((span) => span.name);
-    expect(names).toEqual(["cria.fit", "cria.fit.iteration", "cria.fit.strategy"]);
+    expect(names).toEqual([
+      "cria.fit",
+      "cria.fit.iteration",
+      "cria.fit.strategy",
+    ]);
 
     const rootSpan = tracer.spans[0];
     expect(rootSpan.attributes["cria.budget"]).toBe(1);

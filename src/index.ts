@@ -73,8 +73,6 @@ export {
   type SnapshotDiff,
   type SnapshotNode,
 } from "./snapshot";
-export { createOtelRenderHooks } from "./instrumentation/otel";
-export { markdownRenderer } from "./renderers/markdown";
 export type {
   CompletionMessage,
   CompletionRequest,

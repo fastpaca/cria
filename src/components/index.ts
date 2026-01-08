@@ -342,7 +342,9 @@ export function Examples({
     }
   });
 
-  const prefixed = title ? ([`${title}\n`, ...withSeparators] as PromptChildren) : withSeparators;
+  const prefixed = title
+    ? ([`${title}\n`, ...withSeparators] as PromptChildren)
+    : withSeparators;
 
   return {
     priority,

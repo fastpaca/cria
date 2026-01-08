@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { RenderHooks } from "./render";
 import { markdownRenderer } from "./renderers/markdown";
-import type { RenderHooks } from "./render";
 import type {
   PromptElement,
   PromptNodeKind,
@@ -210,15 +209,17 @@ function stableStringify(value: unknown): string {
     return `[${value.map((item) => stableStringify(item)).join(",")}]`;
   }
 
-  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => {
-    if (a < b) {
-      return -1;
+  const entries = Object.entries(value as Record<string, unknown>).sort(
+    ([a], [b]) => {
+      if (a < b) {
+        return -1;
+      }
+      if (a > b) {
+        return 1;
+      }
+      return 0;
     }
-    if (a > b) {
-      return 1;
-    }
-    return 0;
-  });
+  );
   const serializedEntries = entries.map(
     ([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`
   );

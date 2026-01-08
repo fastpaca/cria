@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { CodeBlock, Examples, Region, Separator } from "./index";
 import { render } from "../render";
+import { CodeBlock, Examples, Region, Separator } from "./index";
 
 const tokenizer = (text: string): number => text.length;
 
 describe("Separator", () => {
   test("inserts separators between children", async () => {
     const element = (
-      <Separator value=" | " priority={0}>
+      <Separator priority={0} value=" | ">
         <Region priority={0}>A</Region>
         <Region priority={0}>B</Region>
         <Region priority={0}>C</Region>
@@ -22,7 +22,7 @@ describe("Separator", () => {
 describe("Examples", () => {
   test("prefixes title and separates examples", async () => {
     const element = (
-      <Examples title="Examples:" separator="\n---\n" priority={1}>
+      <Examples priority={1} separator="\n---\n" title="Examples:">
         <Region priority={0}>One</Region>
         <Region priority={0}>Two</Region>
       </Examples>
