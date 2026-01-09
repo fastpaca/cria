@@ -36,6 +36,18 @@ interface QdrantPayload<T> {
 }
 
 /**
+ * Convert a Qdrant payload to a MemoryEntry.
+ */
+function payloadToEntry<T>(payload: QdrantPayload<T>): MemoryEntry<T> {
+  return {
+    data: payload.data,
+    createdAt: payload.createdAt,
+    updatedAt: payload.updatedAt,
+    ...(payload.metadata && { metadata: payload.metadata }),
+  };
+}
+
+/**
  * VectorMemory implementation backed by Qdrant.
  *
  * This adapter wraps a Qdrant collection and implements the VectorMemory interface,
@@ -102,16 +114,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
 
     const payload = point.payload as QdrantPayload<T> | undefined;
 
-    if (!payload) {
-      return null;
-    }
-
-    return {
-      data: payload.data,
-      createdAt: payload.createdAt,
-      updatedAt: payload.updatedAt,
-      ...(payload.metadata && { metadata: payload.metadata }),
-    };
+    return payload ? payloadToEntry(payload) : null;
   }
 
   async set(
@@ -186,12 +189,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
       results.push({
         key: String(point.id),
         score: point.score,
-        entry: {
-          data: payload.data,
-          createdAt: payload.createdAt,
-          updatedAt: payload.updatedAt,
-          ...(payload.metadata && { metadata: payload.metadata }),
-        },
+        entry: payloadToEntry(payload),
       });
     }
 

@@ -13,14 +13,20 @@ import {
   ToolResult,
 } from "../components";
 import type { Child } from "../jsx-runtime";
+import { markdownRenderer } from "../renderers/markdown";
+import {
+  coalesceTextParts,
+  collectMessageNodes,
+  collectSemanticParts,
+  type MessageElement,
+  partsToText,
+  type SemanticPart,
+} from "../renderers/shared";
 import type {
   CompletionRequest,
   CompletionResult,
-  ModelProvider,
-} from "../providers/types";
-import { markdownRenderer } from "../renderers/markdown";
-import type {
   MaybePromise,
+  ModelProvider,
   PromptChildren,
   PromptElement,
   PromptRenderer,
@@ -158,28 +164,17 @@ function UIMessageElement({
 function resolvePriorities(
   priorities: Partial<Priorities> | undefined
 ): Priorities {
-  if (!priorities) {
-    return DEFAULT_PRIORITIES;
-  }
-
-  return {
-    system: priorities.system ?? DEFAULT_PRIORITIES.system,
-    user: priorities.user ?? DEFAULT_PRIORITIES.user,
-    assistant: priorities.assistant ?? DEFAULT_PRIORITIES.assistant,
-    toolCall: priorities.toolCall ?? DEFAULT_PRIORITIES.toolCall,
-    toolResult: priorities.toolResult ?? DEFAULT_PRIORITIES.toolResult,
-    reasoning: priorities.reasoning ?? DEFAULT_PRIORITIES.reasoning,
-  };
+  return { ...DEFAULT_PRIORITIES, ...priorities };
 }
 
+const ROLE_PRIORITY_MAP: Record<UIMessage["role"], keyof Priorities> = {
+  system: "system",
+  user: "user",
+  assistant: "assistant",
+};
+
 function rolePriority(role: UIMessage["role"], priorities: Priorities): number {
-  if (role === "system") {
-    return priorities.system;
-  }
-  if (role === "user") {
-    return priorities.user;
-  }
-  return priorities.assistant;
+  return priorities[ROLE_PRIORITY_MAP[role]];
 }
 
 interface ToolInvocation {
@@ -298,38 +293,6 @@ function renderToModelMessages(root: PromptElement): ModelMessage[] {
   return result;
 }
 
-type MessageElement = Extract<PromptElement, { kind: "message" }>;
-
-function collectMessageNodes(
-  element: PromptElement,
-  acc: MessageElement[] = []
-): MessageElement[] {
-  if (element.kind === "message") {
-    acc.push(element);
-    return acc;
-  }
-
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
-    }
-    collectMessageNodes(child, acc);
-  }
-
-  return acc;
-}
-
-type SemanticPart =
-  | { type: "text"; text: string }
-  | { type: "reasoning"; text: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
-
 type ToolResultSemanticPart = Extract<SemanticPart, { type: "tool-result" }>;
 type NonToolSemanticPart = Exclude<SemanticPart, { type: "tool-result" }>;
 
@@ -380,81 +343,6 @@ function groupSemanticParts(
   }
 
   return groups;
-}
-
-function collectSemanticParts(children: PromptChildren): SemanticPart[] {
-  const parts: SemanticPart[] = [];
-
-  for (const child of children) {
-    if (typeof child === "string") {
-      if (child.length > 0) {
-        parts.push({ type: "text", text: child });
-      }
-      continue;
-    }
-
-    parts.push(...semanticPartsFromElement(child));
-  }
-
-  return parts;
-}
-
-function semanticPartsFromElement(element: PromptElement): SemanticPart[] {
-  switch (element.kind) {
-    case "tool-call":
-      return [
-        {
-          type: "tool-call",
-          toolCallId: element.toolCallId,
-          toolName: element.toolName,
-          input: element.input,
-        },
-      ];
-    case "tool-result":
-      return [
-        {
-          type: "tool-result",
-          toolCallId: element.toolCallId,
-          toolName: element.toolName,
-          output: element.output,
-        },
-      ];
-    case "reasoning":
-      return element.text.length === 0
-        ? []
-        : [{ type: "reasoning", text: element.text }];
-    case "message":
-      // A nested message inside a message is ambiguous for structured targets.
-      // Ignore it for now (caller should flatten at the IR level).
-      return [];
-    default:
-      return collectSemanticParts(element.children);
-  }
-}
-
-function coalesceTextParts(parts: readonly SemanticPart[]): SemanticPart[] {
-  const result: SemanticPart[] = [];
-  let buffer = "";
-
-  for (const part of parts) {
-    if (part.type === "text") {
-      buffer += part.text;
-      continue;
-    }
-
-    if (buffer.length > 0) {
-      result.push({ type: "text", text: buffer });
-      buffer = "";
-    }
-
-    result.push(part);
-  }
-
-  if (buffer.length > 0) {
-    result.push({ type: "text", text: buffer });
-  }
-
-  return result;
 }
 
 function toModelMessage(
@@ -588,16 +476,6 @@ function safeJsonValue(value: unknown): JsonValue {
   return String(value);
 }
 
-function partsToText(parts: readonly SemanticPart[]): string {
-  let result = "";
-  for (const part of parts) {
-    if (part.type === "text") {
-      result += part.text;
-    }
-  }
-  return result;
-}
-
 interface AISDKProviderProps {
   /** The language model to use (e.g. openai("gpt-4o"), anthropic("claude-sonnet-4-20250514")) */
   model: LanguageModel;
@@ -628,6 +506,9 @@ interface AISDKProviderProps {
  * const result = await render(prompt, { tokenizer, budget: 4000 });
  * ```
  */
+type AISDKRole = "user" | "assistant" | "system";
+const VALID_AI_SDK_ROLES = new Set<string>(["user", "assistant", "system"]);
+
 export function AISDKProvider({
   model,
   children = [],
@@ -635,21 +516,13 @@ export function AISDKProvider({
   const provider: ModelProvider = {
     name: "ai-sdk",
     async completion(request: CompletionRequest): Promise<CompletionResult> {
-      const messages: ModelMessage[] = [];
+      const messages: ModelMessage[] = request.system
+        ? [{ role: "system", content: request.system }]
+        : [];
 
-      // Handle system message
-      if (request.system) {
-        messages.push({ role: "system", content: request.system });
-      }
-
-      // Convert request messages to AI SDK format
       for (const msg of request.messages) {
-        if (msg.role === "user") {
-          messages.push({ role: "user", content: msg.content });
-        } else if (msg.role === "assistant") {
-          messages.push({ role: "assistant", content: msg.content });
-        } else if (msg.role === "system") {
-          messages.push({ role: "system", content: msg.content });
+        if (VALID_AI_SDK_ROLES.has(msg.role)) {
+          messages.push({ role: msg.role as AISDKRole, content: msg.content });
         }
       }
 

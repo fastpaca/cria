@@ -209,19 +209,16 @@ function snapshotElement(
     typeof child === "string" ? hashString(child) : child.hash
   );
 
+  const hasToolId =
+    element.kind === "tool-call" || element.kind === "tool-result";
+
   const hash = hashElement({
     kind: element.kind,
     priority: element.priority,
     role: element.kind === "message" ? element.role : undefined,
     text: element.kind === "reasoning" ? element.text : undefined,
-    toolCallId:
-      element.kind === "tool-call" || element.kind === "tool-result"
-        ? element.toolCallId
-        : undefined,
-    toolName:
-      element.kind === "tool-call" || element.kind === "tool-result"
-        ? element.toolName
-        : undefined,
+    toolCallId: hasToolId ? element.toolCallId : undefined,
+    toolName: hasToolId ? element.toolName : undefined,
     id: element.id,
     tokens,
     childHashes,

@@ -7,13 +7,25 @@ import type {
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { Child } from "../jsx-runtime";
+import { markdownRenderer } from "../renderers/markdown";
+import {
+  coalesceTextParts,
+  collectMessageNodes,
+  collectSemanticParts,
+  type MessageElement,
+  type SemanticPart,
+  safeStringify,
+  type ToolCallPart,
+  type ToolResultPart,
+} from "../renderers/shared";
 import type {
   CompletionRequest,
   CompletionResult,
   ModelProvider,
-} from "../providers/types";
-import { markdownRenderer } from "../renderers/markdown";
-import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
+  PromptChildren,
+  PromptElement,
+  PromptRenderer,
+} from "../types";
 
 /**
  * Result of rendering to Anthropic format.
@@ -52,8 +64,6 @@ export const anthropic: PromptRenderer<AnthropicRenderResult> = {
   empty: () => ({ messages: [] }),
 };
 
-type MessageElement = Extract<PromptElement, { kind: "message" }>;
-
 function renderToAnthropic(root: PromptElement): AnthropicRenderResult {
   const messageNodes = collectMessageNodes(root);
 
@@ -76,25 +86,6 @@ function renderToAnthropic(root: PromptElement): AnthropicRenderResult {
   };
 }
 
-function collectMessageNodes(
-  element: PromptElement,
-  acc: MessageElement[] = []
-): MessageElement[] {
-  if (element.kind === "message") {
-    acc.push(element);
-    return acc;
-  }
-
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
-    }
-    collectMessageNodes(child, acc);
-  }
-
-  return acc;
-}
-
 /**
  * Convert message nodes to Anthropic format.
  * Key quirk: tool results must be in user messages, not assistant messages.
@@ -104,7 +95,7 @@ function convertMessages(nodes: MessageElement[]): MessageParam[] {
 }
 
 function convertMessageNode(node: MessageElement): MessageParam[] {
-  const parts = categorizeParts(collectSemanticParts(node.children));
+  const parts = coalesceTextParts(collectSemanticParts(node.children));
 
   if (node.role === "user") {
     return buildUserMessages(parts);
@@ -113,7 +104,7 @@ function convertMessageNode(node: MessageElement): MessageParam[] {
   return buildAssistantMessages(parts);
 }
 
-function buildUserMessages(parts: CategorizedParts): MessageParam[] {
+function buildUserMessages(parts: readonly SemanticPart[]): MessageParam[] {
   const content = buildUserContent(parts);
   if (content.length === 0) {
     return [];
@@ -122,185 +113,94 @@ function buildUserMessages(parts: CategorizedParts): MessageParam[] {
   return [{ role: "user", content }];
 }
 
-function buildUserContent({
-  textParts,
-  toolResultParts,
-  reasoningParts,
-}: CategorizedParts): ContentBlockParam[] {
-  const content: ContentBlockParam[] = toolResultParts.map(toToolResultBlock);
-  const text = combineTextParts(textParts, reasoningParts);
+/**
+ * Build user content blocks preserving tool result positions.
+ * Adjacent text/reasoning parts are coalesced into single text blocks.
+ */
+function buildUserContent(parts: readonly SemanticPart[]): ContentBlockParam[] {
+  const content: ContentBlockParam[] = [];
+  let textBuffer = "";
 
-  if (text.length > 0) {
-    content.push({ type: "text", text });
+  const flushTextBuffer = () => {
+    if (textBuffer.length > 0) {
+      content.push({ type: "text", text: textBuffer });
+      textBuffer = "";
+    }
+  };
+
+  for (const part of parts) {
+    if (part.type === "tool-result") {
+      flushTextBuffer();
+      content.push(toToolResultBlock(part));
+    } else if (part.type === "text") {
+      textBuffer += part.text;
+    } else if (part.type === "reasoning") {
+      textBuffer += `<thinking>\n${part.text}\n</thinking>`;
+    }
+    // tool-call parts in user messages are ignored
   }
 
+  flushTextBuffer();
   return content;
 }
 
-function buildAssistantMessages(parts: CategorizedParts): MessageParam[] {
-  const content = buildAssistantContent(parts);
+function buildAssistantMessages(
+  parts: readonly SemanticPart[]
+): MessageParam[] {
+  // Separate tool results (go to user message) from assistant content
+  const assistantParts = parts.filter((p) => p.type !== "tool-result");
+  const toolResultParts = parts.filter(
+    (p): p is ToolResultPart => p.type === "tool-result"
+  );
+
+  const content = buildAssistantContent(assistantParts);
   const result: MessageParam[] = [];
 
   if (content.length > 0) {
     result.push({ role: "assistant", content });
   }
 
-  if (parts.toolResultParts.length > 0) {
+  if (toolResultParts.length > 0) {
     result.push({
       role: "user",
-      content: parts.toolResultParts.map(toToolResultBlock),
+      content: toolResultParts.map(toToolResultBlock),
     });
   }
 
   return result;
 }
 
-function buildAssistantContent({
-  textParts,
-  toolCallParts,
-  reasoningParts,
-}: CategorizedParts): ContentBlockParam[] {
+/**
+ * Build assistant content blocks preserving tool call positions.
+ * Adjacent text/reasoning parts are coalesced into single text blocks.
+ */
+function buildAssistantContent(
+  parts: readonly SemanticPart[]
+): ContentBlockParam[] {
   const content: ContentBlockParam[] = [];
-  const text = combineTextParts(textParts, reasoningParts);
+  let textBuffer = "";
 
-  if (text.length > 0) {
-    content.push({ type: "text", text });
-  }
-
-  for (const tc of toolCallParts) {
-    content.push(toToolUseBlock(tc));
-  }
-
-  return content;
-}
-
-type SemanticPart =
-  | { type: "text"; text: string }
-  | { type: "reasoning"; text: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
-
-type ToolCallPart = Extract<SemanticPart, { type: "tool-call" }>;
-type ToolResultPart = Extract<SemanticPart, { type: "tool-result" }>;
-type TextPart = Extract<SemanticPart, { type: "text" }>;
-type ReasoningPart = Extract<SemanticPart, { type: "reasoning" }>;
-
-interface CategorizedParts {
-  textParts: TextPart[];
-  toolCallParts: ToolCallPart[];
-  toolResultParts: ToolResultPart[];
-  reasoningParts: ReasoningPart[];
-}
-
-function categorizeParts(parts: SemanticPart[]): CategorizedParts {
-  const textParts: TextPart[] = [];
-  const toolCallParts: ToolCallPart[] = [];
-  const toolResultParts: ToolResultPart[] = [];
-  const reasoningParts: ReasoningPart[] = [];
-
-  for (const part of parts) {
-    switch (part.type) {
-      case "text":
-        textParts.push(part);
-        break;
-      case "tool-call":
-        toolCallParts.push(part);
-        break;
-      case "tool-result":
-        toolResultParts.push(part);
-        break;
-      case "reasoning":
-        reasoningParts.push(part);
-        break;
-      default:
-        assertNever(part);
+  const flushTextBuffer = () => {
+    if (textBuffer.length > 0) {
+      content.push({ type: "text", text: textBuffer });
+      textBuffer = "";
     }
-  }
-
-  return { textParts, toolCallParts, toolResultParts, reasoningParts };
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled semantic part: ${String(value)}`);
-}
-
-function collectSemanticParts(children: PromptChildren): SemanticPart[] {
-  const parts: SemanticPart[] = [];
-
-  for (const child of children) {
-    if (typeof child === "string") {
-      if (child.length > 0) {
-        parts.push({ type: "text", text: child });
-      }
-      continue;
-    }
-
-    parts.push(...semanticPartsFromElement(child));
-  }
-
-  return coalesceTextParts(parts);
-}
-
-function semanticPartsFromElement(element: PromptElement): SemanticPart[] {
-  switch (element.kind) {
-    case "tool-call":
-      return [
-        {
-          type: "tool-call",
-          toolCallId: element.toolCallId,
-          toolName: element.toolName,
-          input: element.input,
-        },
-      ];
-    case "tool-result":
-      return [
-        {
-          type: "tool-result",
-          toolCallId: element.toolCallId,
-          toolName: element.toolName,
-          output: element.output,
-        },
-      ];
-    case "reasoning":
-      return element.text.length === 0
-        ? []
-        : [{ type: "reasoning", text: element.text }];
-    case "message":
-      // Nested messages are ambiguous - skip
-      return [];
-    default:
-      return collectSemanticParts(element.children);
-  }
-}
-
-function coalesceTextParts(parts: readonly SemanticPart[]): SemanticPart[] {
-  const result: SemanticPart[] = [];
-  let buffer = "";
+  };
 
   for (const part of parts) {
     if (part.type === "text") {
-      buffer += part.text;
-      continue;
+      textBuffer += part.text;
+    } else if (part.type === "reasoning") {
+      textBuffer += `<thinking>\n${part.text}\n</thinking>`;
+    } else if (part.type === "tool-call") {
+      flushTextBuffer();
+      content.push(toToolUseBlock(part));
     }
-
-    if (buffer.length > 0) {
-      result.push({ type: "text", text: buffer });
-      buffer = "";
-    }
-
-    result.push(part);
+    // tool-result parts handled separately
   }
 
-  if (buffer.length > 0) {
-    result.push({ type: "text", text: buffer });
-  }
-
-  return result;
+  flushTextBuffer();
+  return content;
 }
 
 function collectTextContent(children: PromptChildren): string {
@@ -322,25 +222,6 @@ function collectTextContent(children: PromptChildren): string {
   return result;
 }
 
-function combineTextParts(
-  textParts: TextPart[],
-  reasoningParts: ReasoningPart[]
-): string {
-  let result = "";
-
-  // Add reasoning as thinking blocks
-  for (const rp of reasoningParts) {
-    result += `<thinking>\n${rp.text}\n</thinking>\n`;
-  }
-
-  // Add text parts
-  for (const tp of textParts) {
-    result += tp.text;
-  }
-
-  return result;
-}
-
 function toToolUseBlock(part: ToolCallPart): ToolUseBlockParam {
   return {
     type: "tool_use",
@@ -354,32 +235,22 @@ function toToolResultBlock(part: ToolResultPart): ToolResultBlockParam {
   return {
     type: "tool_result",
     tool_use_id: part.toolCallId,
-    content: stringifyOutput(part.output),
+    content: safeStringify(part.output),
   };
 }
 
-function stringifyOutput(output: unknown): string {
-  if (typeof output === "string") {
-    return output;
-  }
-  try {
-    return JSON.stringify(output) ?? "null";
-  } catch {
-    return String(output);
-  }
-}
+type AnthropicRole = "user" | "assistant";
+const VALID_ANTHROPIC_ROLES = new Set<string>(["user", "assistant"]);
 
 function convertToAnthropicMessages(
   request: CompletionRequest
 ): MessageParam[] {
   const messages: MessageParam[] = [];
   for (const msg of request.messages) {
-    if (msg.role === "user") {
-      messages.push({ role: "user", content: msg.content });
-    } else if (msg.role === "assistant") {
-      messages.push({ role: "assistant", content: msg.content });
-    }
     // System messages are handled separately in Anthropic's API
+    if (VALID_ANTHROPIC_ROLES.has(msg.role)) {
+      messages.push({ role: msg.role as AnthropicRole, content: msg.content });
+    }
   }
   return messages;
 }
@@ -387,13 +258,12 @@ function convertToAnthropicMessages(
 function extractTextFromResponse(
   content: Anthropic.Messages.ContentBlock[]
 ): string {
-  let text = "";
-  for (const block of content) {
-    if (block.type === "text") {
-      text += block.text;
-    }
-  }
-  return text;
+  return content
+    .filter(
+      (block): block is Anthropic.Messages.TextBlock => block.type === "text"
+    )
+    .map((block) => block.text)
+    .join("");
 }
 
 interface AnthropicProviderProps {
