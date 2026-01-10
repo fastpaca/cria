@@ -29,8 +29,20 @@ const response = await client.responses.create({ model: "o3", input });
 
 ### Provider
 
-`OpenAIProvider` injects a model provider so components like `Summary` can
-summarize without a custom function.
+`OpenAIProvider` injects a model provider so components like `Summary` can summarize without a custom function.
+
+```tsx
+import { OpenAIProvider } from "@fastpaca/cria/openai";
+import { Summary, render } from "@fastpaca/cria";
+
+const prompt = (
+  <OpenAIProvider client={openai} model="gpt-4o">
+    <Summary id="history" store={store} priority={2}>
+      {conversationHistory}
+    </Summary>
+  </OpenAIProvider>
+);
+```
 
 ## Anthropic
 
@@ -50,6 +62,14 @@ const response = await client.messages.create({ model: "claude-sonnet-4-20250514
 
 `AnthropicProvider` works like `OpenAIProvider` for components that need a model.
 
+```tsx
+import { AnthropicProvider } from "@fastpaca/cria/anthropic";
+
+<AnthropicProvider client={anthropic} model="claude-sonnet-4-20250514">
+  {children}
+</AnthropicProvider>
+```
+
 ## Vercel AI SDK
 
 ```tsx
@@ -63,8 +83,22 @@ const { text } = await generateText({ model, messages });
 
 `AISDKProvider` provides a model for `Summary` or other AI-backed components.
 
-`Messages` converts AI SDK UI messages into Cria elements, and
-`DEFAULT_PRIORITIES` gives a sensible starting point.
+```tsx
+import { AISDKProvider } from "@fastpaca/cria/ai-sdk";
+import { openai } from "@ai-sdk/openai";
+
+<AISDKProvider model={openai("gpt-4o")}>
+  {children}
+</AISDKProvider>
+```
+
+`Messages` converts AI SDK UI messages into Cria elements, and `DEFAULT_PRIORITIES` gives a sensible starting point.
+
+```tsx
+import { Messages, DEFAULT_PRIORITIES } from "@fastpaca/cria/ai-sdk";
+
+<Messages messages={uiMessages} priorities={DEFAULT_PRIORITIES} />
+```
 
 ## Related
 

@@ -18,13 +18,13 @@ Cria ships a small set of composable components. All are available from `@fastpa
 </Region>
 ```
 
-Anything without a priority won't get truncated or managed in case you hit your budget, it will remain by default.
+Content without a priority is never trimmed. It stays in the prompt no matter what.
 
 ## Semantic components
 
 - `ToolCall`: represents a tool invocation.
 - `ToolResult`: represents tool output.
-- `Reasoning`: stores reasoning text (mapped to supported outputs).
+- `Reasoning`: stores reasoning text for models that support it (like OpenAI's o-series).
 
 These map cleanly to OpenAI and Anthropic tool formats via renderers.
 
@@ -32,7 +32,7 @@ These map cleanly to OpenAI and Anthropic tool formats via renderers.
 
 ### Summary
 
-Summarizes content when it is selected for reduction. Requires a store.
+Summarizes its children when the prompt needs to shrink. Requires a store to cache summaries.
 
 ```tsx
 import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
@@ -62,3 +62,33 @@ Query sources, in order:
 3. `messages` prop (defaults to last user message)
 
 If no results are found, the default formatter throws. Provide a custom `formatResults` to handle empty results.
+
+## Utility components
+
+### Separator
+
+Inserts a separator between children.
+
+```tsx
+<Separator value="\n\n">
+  {paragraphs}
+</Separator>
+```
+
+### Examples
+
+Wraps example content with an optional title and separators between items.
+
+```tsx
+<Examples title="Examples:" separator="\n\n" priority={2}>
+  {exampleList}
+</Examples>
+```
+
+### CodeBlock
+
+Wraps code in a fenced code block.
+
+```tsx
+<CodeBlock code={sourceCode} language="typescript" />
+```

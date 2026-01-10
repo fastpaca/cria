@@ -1,7 +1,6 @@
 # Prompt structure
 
-Cria prompts are trees. Each node can carry a priority and an optional strategy. When the prompt is over budget, Cria applies strategies at the lowest priority
-until it fits.
+Cria prompts are trees. Each node can carry a priority and an optional strategy. When the prompt is over budget, Cria applies strategies starting with the highest priority numbers (least important content) until it fits.
 
 ## A minimal shape
 

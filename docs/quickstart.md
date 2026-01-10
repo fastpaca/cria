@@ -59,15 +59,10 @@ OpenAI, Anthropic, or AI SDK message formats.
 - [Components](components.md)
 - [Integrations](integrations.md)
 
-## Status
+## What's included
 
-Shipping today:
-- Components: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning
-- Renderers: markdown, OpenAI Chat Completions, OpenAI Responses, Anthropic, AI SDK
-- Providers: OpenAIProvider, AnthropicProvider, AISDKProvider
-- Memory: InMemoryStore, Redis/Postgres adapters, Chroma/Qdrant adapters
-
-Planned or in progress:
-- Additional components (Examples, Code, Separators)
-- Next.js adapter
-- Observability (OpenTelemetry, snapshots, visualizer)
+- **Components**: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
+- **Renderers**: markdown, OpenAI Chat Completions, OpenAI Responses, Anthropic, AI SDK
+- **Providers**: OpenAIProvider, AnthropicProvider, AISDKProvider
+- **Memory**: InMemoryStore, Redis/Postgres adapters, Chroma/Qdrant vector stores
+- **Observability**: Render hooks, validation schemas, snapshots, OpenTelemetry

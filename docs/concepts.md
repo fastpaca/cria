@@ -10,7 +10,7 @@ Cria turns a prompt into a tree of components. Each node can have:
 - **Priority** (lower number = more important)
 - **Strategy** (how to shrink when over budget)
 
-Think of it as a structured prompt IR:
+Think of it as a structured prompt tree:
 
 ```
 Region (priority 0)
@@ -53,7 +53,7 @@ map to provider formats.
 ## Tokenizers and budgets
 
 `render()` takes a tokenizer and a token budget. If the prompt exceeds the
-budget, Cria applies strategies at the lowest priority until it fits.
+budget, Cria applies strategies starting with the highest priority numbers (least important content) until it fits.
 
 ## Providers and context
 

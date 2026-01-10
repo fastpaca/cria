@@ -16,6 +16,7 @@ truncation, omission, summarization, and vector search.
 - [Custom components](custom-components.md)
 - [Integrations](integrations.md)
 - [Memory and RAG](memory-and-rag.md)
+- [Observability](observability.md)
 - [Recipes](recipes.md)
 
 ## Runnable examples

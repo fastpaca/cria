@@ -4,8 +4,7 @@ Strategies control how a region shrinks when the prompt exceeds a token budget.
 
 ## When strategies run
 
-During `render()`, Cria computes total tokens and applies strategies at the
-lowest priority. A strategy can:
+During `render()`, Cria computes total tokens and applies strategies starting with the highest priority numbers (least important content). A strategy can:
 - Replace a node
 - Rewrite its children
 - Return `null` to remove it entirely
@@ -31,7 +30,8 @@ const myStrategy: Strategy = async ({
 
 Key inputs:
 - `target`: the node being reduced
-- `tokenizer` / `tokenString`: measure size
+- `tokenizer`: counts tokens in a string
+- `tokenString`: converts the node to a string for token counting
 - `budget`, `totalTokens`, `iteration`: current fit state
 - `context`: provider context injected by ancestor providers
 
