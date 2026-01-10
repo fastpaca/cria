@@ -1,21 +1,22 @@
 # Cria Docs
 
-Welcome to the Cria docs. This set is short by design - it focuses on the core concepts and the parts you'll use most often.
+Welcome to the Cria docs. This set is short by design and focuses on the core concepts and the parts you'll use most often.
 
 ## What is Cria?
 
-Cria is a JSX-based prompt renderer. You build prompts as components, assign
-priorities, and Cria fits the prompt to a token budget using strategies like
-truncation, omission, summarization, and vector search.
+Cria lets you build prompts as composable JSX components. Define your prompt structure once, reuse it across providers, and render to OpenAI, Anthropic, or Vercel AI SDK formats with no changes.
+
+Because prompts are structured as a tree, you get budget fitting for free: assign priorities to regions and Cria trims low-priority content when you hit your token limit.
 
 - [Quickstart](quickstart.md)
 - [Concepts](concepts.md)
-- [Prompt structure](prompt-structure.md)
 - [Components](components.md)
-- [Strategies](strategies.md)
 - [Custom components](custom-components.md)
 - [Integrations](integrations.md)
 - [Memory and RAG](memory-and-rag.md)
+- [Strategies](strategies.md)
+- [Errors](errors.md)
+- [Observability](observability.md)
 - [Recipes](recipes.md)
 
 ## Runnable examples

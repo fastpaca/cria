@@ -1,6 +1,6 @@
 # Quickstart
 
-Cria lets you build prompts as a small JSX tree and then fit them to a token budget.
+Cria lets you build prompts as reusable JSX components. Write your prompt structure once, render it to any provider.
 
 ## Install
 
@@ -24,9 +24,60 @@ Add this to `tsconfig.json`:
 ## Build your first prompt
 
 ```tsx
-import { Message, Omit, Region, Truncate, render } from "@fastpaca/cria";
+import { Message, Region, render } from "@fastpaca/cria";
 
-const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+const prompt = (
+  <Region>
+    <Message messageRole="system">You are a helpful assistant.</Message>
+    <Message messageRole="user">{userQuestion}</Message>
+  </Region>
+);
+
+const markdown = await render(prompt);
+```
+
+That's it. `render()` returns a markdown string by default.
+
+## Recommended layout
+
+A clear structure makes prompts easier to maintain:
+
+```
+System rules
+History / retrieved context
+Examples / optional context
+Current user request
+```
+
+Keep the user's current request last so the model sees it right before responding.
+
+## Render to any provider
+
+The same prompt structure works with OpenAI, Anthropic, or Vercel AI SDK. Just swap the renderer:
+
+```tsx
+import { chatCompletions } from "@fastpaca/cria/openai";
+import { anthropic } from "@fastpaca/cria/anthropic";
+import { renderer } from "@fastpaca/cria/ai-sdk";
+
+// OpenAI
+const messages = await render(prompt, { renderer: chatCompletions });
+
+// Anthropic
+const { system, messages } = await render(prompt, { renderer: anthropic });
+
+// AI SDK
+const messages = await render(prompt, { renderer });
+```
+
+No changes to your prompt structure. The renderer handles the format.
+
+## Budget fitting (optional)
+
+Because your prompt is a tree, you can assign priorities and let Cria trim low-priority content when you hit a token limit:
+
+```tsx
+import { Message, Omit, Region, Truncate, render } from "@fastpaca/cria";
 
 const prompt = (
   <Region priority={0}>
@@ -42,12 +93,9 @@ const prompt = (
 const output = await render(prompt, { tokenizer, budget: 8000 });
 ```
 
-Use a real tokenizer (for example, `tiktoken`) for accurate counts.
+Lower priority number = more important. Cria shrinks priority 3 first, then 2, and so on.
 
 ## Renderers
-
-By default `render()` returns a markdown string. Use a renderer to output
-OpenAI, Anthropic, or AI SDK message formats.
 
 - OpenAI: `@fastpaca/cria/openai`
 - Anthropic: `@fastpaca/cria/anthropic`
@@ -55,19 +103,14 @@ OpenAI, Anthropic, or AI SDK message formats.
 
 ## Next steps
 
-- [Prompt structure](prompt-structure.md)
+- [Concepts](concepts.md)
 - [Components](components.md)
 - [Integrations](integrations.md)
 
-## Status
+## What's included
 
-Shipping today:
-- Components: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning
-- Renderers: markdown, OpenAI Chat Completions, OpenAI Responses, Anthropic, AI SDK
-- Providers: OpenAIProvider, AnthropicProvider, AISDKProvider
-- Memory: InMemoryStore, Redis/Postgres adapters, Chroma/Qdrant adapters
-
-Planned or in progress:
-- Additional components (Examples, Code, Separators)
-- Next.js adapter
-- Observability (OpenTelemetry, snapshots, visualizer)
+- **Components**: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
+- **Renderers**: markdown, OpenAI Chat Completions, OpenAI Responses, Anthropic, AI SDK
+- **Providers**: OpenAIProvider, AnthropicProvider, AISDKProvider
+- **Memory**: InMemoryStore, Redis/Postgres adapters, Chroma/Qdrant vector stores
+- **Observability**: Render hooks, validation schemas, snapshots, OpenTelemetry

@@ -1,28 +1,60 @@
 # Concepts
 
-This page covers the core ideas behind Cria: how prompts become a tree, how
-priorities and strategies work, and how rendering fits a budget.
+Cria treats prompts like code: composable, reusable, and provider-agnostic. This page explains how.
+
+## Prompts as components
+
+Just like UI components, prompt components encapsulate structure and can be composed:
+
+```tsx
+function SystemRules() {
+  return <Message messageRole="system">You are a helpful assistant.</Message>;
+}
+
+function ChatPrompt({ history, question }) {
+  return (
+    <Region>
+      <SystemRules />
+      {history}
+      <Message messageRole="user">{question}</Message>
+    </Region>
+  );
+}
+```
+
+Build once, reuse everywhere.
 
 ## Prompt tree
 
-Cria turns a prompt into a tree of components. Each node can have:
-- **Children** (nested content)
-- **Priority** (lower number = more important)
-- **Strategy** (how to shrink when over budget)
-
-Think of it as a structured prompt IR:
+Your JSX compiles to a tree of nodes. Each node has semantic meaning:
 
 ```
-Region (priority 0)
+Region
   Message(system)
   Message(user)
-  Region (priority 2)
+  Region
     ...history...
 ```
 
-## Priorities
+This structure is the foundation. It enables everything else: rendering to different providers, budget fitting, validation, and observability.
 
-Priorities are how Cria decides what to reduce first.
+## Renderers: one structure, any provider
+
+Renderers convert your prompt tree to provider-specific formats:
+
+- Markdown string (default)
+- OpenAI Chat Completions / Responses
+- Anthropic Messages
+- Vercel AI SDK ModelMessage[]
+
+Semantic nodes like `Message`, `ToolCall`, and `ToolResult` map automatically to each provider's format. Write your prompt once, render it anywhere.
+
+## Budget fitting (optional)
+
+Because your prompt is a tree, you can assign priorities and let Cria manage token limits for you:
+
+- **Priority**: lower number = more important
+- **Strategy**: how to shrink when over budget (truncate, omit, summarize)
 
 | Priority | Typical use |
 | --- | --- |
@@ -31,38 +63,12 @@ Priorities are how Cria decides what to reduce first.
 | 2 | History, retrieved context |
 | 3 | Examples, optional context |
 
-## Strategies
-
-Strategies are functions that rewrite part of the tree when a budget is exceeded.
-
-Cria includes built-ins like `Truncate`, `Omit`, `Summary`, and `VectorSearch`, but
-you can attach your own strategy to any `Region` or custom component.
-
-## Renderers
-
-Renderers convert the prompt tree into the final output format:
-
-- Markdown string (default)
-- OpenAI Chat Completions / Responses
-- Anthropic Messages
-- Vercel AI SDK ModelMessage[]
-
-Renderers decide how semantic nodes like `Message`, `ToolCall`, and `ToolResult`
-map to provider formats.
-
-## Tokenizers and budgets
-
-`render()` takes a tokenizer and a token budget. If the prompt exceeds the
-budget, Cria applies strategies at the lowest priority until it fits.
+Cria includes strategies like `Truncate`, `Omit`, `Summary`, and `VectorSearch`, or you can write your own.
 
 ## Providers and context
 
-Provider components (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`)
-attach model context to the tree so components like `Summary` can call a model
-without a custom summarize function.
+Provider components (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`) attach model context to the tree. Components like `Summary` use this to call a model without you passing a custom function.
 
 ## Works everywhere
 
-JSX here is just syntax. Cria does not depend on the DOM or React, and runs in
-Node, Deno, Bun, and Edge runtimes. Adapters require their SDKs and supported
-runtimes.
+JSX here is just syntax. Cria does not depend on the DOM or React. It runs in Node, Deno, Bun, and Edge runtimes.
