@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import type { RenderHooks } from "./render";
 import { markdownRenderer } from "./renderers/markdown";
 import type {
-  PromptChild,
+  MaybePromise,
   PromptElement,
   PromptRenderer,
   PromptRole,
@@ -32,7 +33,7 @@ export interface SnapshotOptions {
 export interface SnapshotHooksOptions {
   tokenizer: Tokenizer;
   renderer?: PromptRenderer<unknown>;
-  onSnapshot: (snapshot: Snapshot) => void;
+  onSnapshot: (snapshot: Snapshot) => MaybePromise<void>;
 }
 
 /**
@@ -60,12 +61,15 @@ export function createSnapshotHooks({
   onSnapshot,
 }: SnapshotHooksOptions): RenderHooks {
   return {
-    onFitComplete: (event) => {
+    onFitComplete: async (event) => {
       if (!event.result) {
         return;
       }
-      const snapshot = createSnapshot(event.result, { tokenizer, renderer });
-      onSnapshot(snapshot);
+      const snapshot = createSnapshot(event.result, {
+        tokenizer,
+        renderer,
+      });
+      await onSnapshot(snapshot);
     },
   };
 }
@@ -197,15 +201,16 @@ function snapshotElement(
   tokenizer: Tokenizer,
   renderer: PromptRenderer<unknown>
 ): SnapshotElement {
-  const childSnapshots: SnapshotChild[] = element.children.map((child) =>
-    typeof child === "string"
-      ? child
-      : snapshotElement(child, tokenizer, renderer)
+  const childSnapshots = element.children.map(
+    (child): SnapshotChild =>
+      typeof child === "string"
+        ? child
+        : snapshotElement(child, tokenizer, renderer)
   );
 
   const contentProjection = renderer.tokenString(element);
   const tokens = tokenizer(contentProjection);
-  const childHashes = childSnapshots.map((child) =>
+  const childHashes = childSnapshots.map((child): string =>
     typeof child === "string" ? hashString(child) : child.hash
   );
 
@@ -226,7 +231,7 @@ function snapshotElement(
 
   return {
     ...element,
-    children: childSnapshots as PromptChild[],
+    children: childSnapshots,
     tokens,
     hash,
   };
@@ -243,7 +248,6 @@ function hashElement(input: {
   tokens: number;
   childHashes: string[];
 }): string {
-  const hash = createHash("sha256");
   const payload = {
     kind: input.kind ?? "region",
     priority: input.priority,
@@ -255,12 +259,9 @@ function hashElement(input: {
     tokens: input.tokens,
     children: input.childHashes,
   };
-  hash.update(JSON.stringify(payload));
-  return hash.digest("hex");
+  return hashString(JSON.stringify(payload));
 }
 
 function hashString(value: string): string {
-  const hash = createHash("sha256");
-  hash.update(value);
-  return hash.digest("hex");
+  return bytesToHex(sha256(utf8ToBytes(value)));
 }
