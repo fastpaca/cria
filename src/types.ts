@@ -48,6 +48,14 @@ export interface CompletionResult {
 export interface ModelProvider {
   /** Provider identifier for debugging */
   name: string;
+  /**
+   * Tokenizer for this provider's model.
+   *
+   * Used for budget fitting when the caller doesn't pass a tokenizer directly.
+   * Providers should supply an estimate that matches the chosen model; callers
+   * can still override via render options.
+   */
+  tokenizer?: Tokenizer;
 
   /**
    * Generate a completion from the model.

@@ -15,9 +15,14 @@ Because prompts are structured as a tree, you get budget fitting for free: assig
 - [Integrations](integrations.md)
 - [Memory and RAG](memory-and-rag.md)
 - [Strategies](strategies.md)
+- [Tokenization](tokenization.md)
 - [Errors](errors.md)
 - [Observability](observability.md)
 - [Recipes](recipes.md)
+
+## Don’t skip tokenization
+
+If you set a budget, Cria needs a tokenizer. Bring your own (accurate) or let providers supply a default (approximate) tokenizer. Start with [Tokenization](tokenization.md) for how counts work and how to keep them aligned with your model.
 
 ## Runnable examples
 

@@ -65,6 +65,15 @@ Because your prompt is a tree, you can assign priorities and let Cria manage tok
 
 Cria includes strategies like `Truncate`, `Omit`, `Summary`, and `VectorSearch`, or you can write your own.
 
+## Tokenization
+
+Budget fitting needs a tokenizer to count tokens. You can:
+
+- Pass `tokenizer` to `render()` for accurate, model-specific counts (e.g. tiktoken, `@anthropic-ai/tokenizer`).
+- Rely on provider defaults: `OpenAIProvider`, `AnthropicProvider`, and `AISDKProvider` include an approximate tokenizer and accept a `tokenizer` prop to override with an accurate one.
+
+If you set a budget without either, Cria will throw so you know to configure token counting. See [Tokenization](tokenization.md) for details and examples.
+
 ## Providers and context
 
 Provider components (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`) attach model context to the tree. Components like `Summary` use this to call a model without you passing a custom function.

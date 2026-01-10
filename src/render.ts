@@ -10,7 +10,7 @@ import {
 } from "./types";
 
 export interface RenderOptions {
-  tokenizer: Tokenizer;
+  tokenizer?: Tokenizer;
   /** Token budget. Omit for unlimited. */
   budget?: number;
   renderer?: PromptRenderer<unknown>;
@@ -89,10 +89,19 @@ export async function render<TOptions extends RenderOptions>(
     return resolvedRenderer.empty();
   }
 
+  const tokenizerResolution = resolveTokenizer(resolvedElement, tokenizer);
+  if (!tokenizerResolution) {
+    throw new Error(
+      "Token budgeting requires a tokenizer. Provide one to render(), or wrap your prompt in a provider that supplies a tokenizer (e.g. <OpenAIProvider>, <AnthropicProvider>, or <AISDKProvider>). See docs/tokenization.md for details."
+    );
+  }
+
+  const tokenizerFn = tokenizerResolution.tokenizer;
+
   const fitted = await fitToBudget(
     resolvedElement,
     budget,
-    tokenizer,
+    tokenizerFn,
     resolvedRenderer.tokenString,
     hooks
   );
@@ -112,6 +121,52 @@ async function safeInvoke<T>(
   }
 
   await handler(event);
+}
+
+interface TokenizerResolution {
+  tokenizer: Tokenizer;
+  source: "options" | "provider";
+  providerName?: string;
+}
+
+function resolveTokenizer(
+  element: PromptElement,
+  override?: Tokenizer
+): TokenizerResolution | null {
+  if (override) {
+    return { tokenizer: override, source: "options" };
+  }
+
+  const providerResolution = findProviderTokenizer(element);
+  if (providerResolution) {
+    return { ...providerResolution, source: "provider" };
+  }
+
+  return null;
+}
+
+function findProviderTokenizer(
+  element: PromptElement
+): Omit<TokenizerResolution, "source"> | null {
+  const providerTokenizer = element.context?.provider?.tokenizer;
+  if (providerTokenizer) {
+    return {
+      tokenizer: providerTokenizer,
+      providerName: element.context?.provider?.name,
+    };
+  }
+
+  for (const child of element.children) {
+    if (typeof child === "string") {
+      continue;
+    }
+    const found = findProviderTokenizer(child);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
 }
 
 async function fitToBudget(
