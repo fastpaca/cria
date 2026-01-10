@@ -20,9 +20,9 @@ Because prompts are structured as a tree, you get budget fitting for free: assig
 - [Observability](observability.md)
 - [Recipes](recipes.md)
 
-## Don’t skip tokenization
+## Using budgets?
 
-If you set a budget, Cria needs a tokenizer. Providers default to tiktoken-based tokenizers; you can override with your own. Start with [Tokenization](tokenization.md) for how counts work and how to keep them aligned with your model.
+Budget fitting needs token counts. Providers include tiktoken defaults; you can bring your own tokenizer for exact accuracy. See [Tokenization](tokenization.md).
 
 ## Runnable examples
 

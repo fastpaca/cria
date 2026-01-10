@@ -67,12 +67,9 @@ Cria includes strategies like `Truncate`, `Omit`, `Summary`, and `VectorSearch`,
 
 ## Tokenization
 
-Budget fitting needs a tokenizer to count tokens. You can:
+Budget fitting needs token counts. Pass a tokenizer to `render()`, or let a provider handle it—built-in providers ship with tiktoken defaults. No tokenizer and no provider? Cria throws so you notice before it matters.
 
-- Pass `tokenizer` to `render()` for accurate, model-specific counts (e.g. tiktoken, `@anthropic-ai/tokenizer`).
-- Rely on provider defaults: `OpenAIProvider`, `AnthropicProvider`, and `AISDKProvider` include a tiktoken-based tokenizer and accept a `tokenizer` prop to override with a custom one.
-
-If you set a budget without either, Cria will throw so you know to configure token counting. See [Tokenization](tokenization.md) for details and examples.
+See [Tokenization](tokenization.md) for setup options and examples.
 
 ## Providers and context
 

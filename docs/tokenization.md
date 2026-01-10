@@ -1,36 +1,37 @@
-# Tokenization and budgets
+# Tokenization
 
-Cria fits prompts to a token budget. Token counts come from a tokenizer, and you can supply one explicitly or let a provider do it for you. If you set a budget without a tokenizer or provider, Cria throws to prevent silent miscounts.
+Budget fitting needs token counts. Cria can get them from a tokenizer you pass directly, or from a provider's built-in default. No tokenizer and no provider? Cria throws so you don't silently miscount.
 
-## Where token counts come from
+## Three ways to supply a tokenizer
 
-- `render(prompt, { tokenizer, budget })`: pass a tokenizer directly (recommended for accuracy, e.g. tiktoken, `@anthropic-ai/tokenizer`).
-- Provider components: `<OpenAIProvider>`, `<AnthropicProvider>`, and `<AISDKProvider>` default to a tiktoken-based tokenizer. Pass `tokenizer` to those components to override (for custom models or alternative tokenizers).
-- Custom providers: add a `tokenizer` property to your `ModelProvider` so Cria can use it during fitting.
+| Method | When to use |
+| --- | --- |
+| `render(prompt, { tokenizer })` | You want exact counts for your model |
+| Provider component | Good defaults, no extra setup |
+| Custom `ModelProvider` | Building your own integration |
 
-## Accuracy vs. convenience
+Providers (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`) ship with a tiktoken-based tokenizer. Pass `tokenizer` to the provider to override it.
 
-- **Built-in default (accurate)**: providers use tiktoken under the hood (cl100k-based, model-aware when a model is provided). This is accurate for OpenAI/AI SDK models and a good approximation for others.
-- **Custom accurate**: use model-specific tokenizers directly (tiktoken for OpenAI/AI SDK, `@anthropic-ai/tokenizer` for Anthropic). Example:
+## Bring your own tokenizer
 
-  ```ts
-  import { encoding_for_model } from "tiktoken";
-  import { render } from "@fastpaca/cria";
+A tokenizer is just a function: `(text: string) => number`. Wrap any library:
 
-  const enc = encoding_for_model("gpt-4o");
-  const tokenizer = (text: string) => enc.encode(text).length;
+```ts
+import { encoding_for_model } from "tiktoken";
+import { render } from "@fastpaca/cria";
 
-  const output = await render(prompt, { tokenizer, budget: 12_000 });
-  ```
+const enc = encoding_for_model("gpt-4o");
+const tokenizer = (text: string) => enc.encode(text).length;
 
-- **Approximate fallback**: when tiktoken can't load, Cria falls back to a simple `Math.ceil(text.length / 4)` heuristic. Use this only as a last resort.
+const output = await render(prompt, { tokenizer, budget: 12_000 });
+```
 
-## What happens if you forget
+Use tiktoken for OpenAI models, `@anthropic-ai/tokenizer` for Claude. Match tokenizer to model.
 
-- Budgets without any tokenizer source (neither render option nor provider) throw an error so you know to configure one.
-- Budgets with a provider but no explicit tokenizer use the provider's tokenizer (tiktoken-based by default for built-ins).
+## How provider defaults work
 
-## Tips
+Built-in providers use tiktoken (cl100k-based). This is accurate for OpenAI and a reasonable approximation for others. If tiktoken fails to load, Cria falls back to `Math.ceil(text.length / 4)`—a rough heuristic, not production-grade.
 
-- Keep the tokenizer aligned with the model you call; mismatches can over- or under-count.
-- If you build custom components that rely on token counts, thread the tokenizer through rather than re-counting content yourself.
+## Error handling
+
+Set a budget without a tokenizer source and Cria throws immediately. This is intentional: silent miscounts break budget fitting in ways that are hard to debug later.

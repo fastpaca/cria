@@ -142,7 +142,7 @@ const { text } = await generateText({ model, messages });
 ## FAQ
 
 - **Does this replace my LLM SDK?** No - Cria builds prompt structures. You still use your SDK to call the model.
-- **How do I tune token budgets?** Pass a `budget` plus a tokenizer to `render()` and adjust priorities on regions. Providers (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`) supply a tiktoken-based tokenizer if you don't pass one—see `docs/tokenization.md` for accuracy vs. convenience tradeoffs.
+- **How do I tune token budgets?** Pass `budget` to `render()` and set priorities on regions. Providers include tiktoken defaults; see [docs/tokenization.md](docs/tokenization.md) to bring your own.
 - **Is this production-ready?** The core features are stable; see the docs for what's in progress.
 
 ## License

@@ -95,7 +95,7 @@ const output = await render(prompt, { tokenizer, budget: 8000 });
 
 Lower priority number = more important. Cria shrinks priority 3 first, then 2, and so on.
 
-Cria needs a tokenizer to count tokens when a budget is set. Pass one to `render()` or wrap your prompt with a provider (`<OpenAIProvider>`, `<AnthropicProvider>`, `<AISDKProvider>`) to use their tiktoken-based defaults. See [Tokenization](tokenization.md) for options.
+Budget fitting needs token counts. Pass a tokenizer to `render()`, or use a provider—they ship with tiktoken defaults. See [Tokenization](tokenization.md).
 
 ## Renderers
 
