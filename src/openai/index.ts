@@ -23,6 +23,7 @@ import {
   safeStringify,
   type ToolResultPart,
 } from "../renderers/shared";
+import { tiktokenTokenizer } from "../tokenizers";
 import type {
   CompletionRequest,
   CompletionResult,
@@ -30,6 +31,7 @@ import type {
   PromptChildren,
   PromptElement,
   PromptRenderer,
+  Tokenizer,
 } from "../types";
 
 /**
@@ -326,6 +328,8 @@ interface OpenAIProviderProps {
   client: OpenAI;
   /** Model to use (e.g. "gpt-4o", "gpt-4o-mini") */
   model: string;
+  /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
+  tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
   children?: Child;
 }
@@ -361,10 +365,12 @@ const VALID_OPENAI_ROLES = new Set<string>(["user", "assistant", "system"]);
 export function OpenAIProvider({
   client,
   model,
+  tokenizer,
   children = [],
 }: OpenAIProviderProps): PromptElement {
   const provider: ModelProvider = {
     name: "openai",
+    tokenizer: tokenizer ?? tiktokenTokenizer(model),
     async completion(request: CompletionRequest): Promise<CompletionResult> {
       const messages: ChatCompletionMessageParam[] = request.system
         ? [{ role: "system", content: request.system }]

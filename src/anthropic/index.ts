@@ -18,6 +18,7 @@ import {
   type ToolCallPart,
   type ToolResultPart,
 } from "../renderers/shared";
+import { tiktokenTokenizer } from "../tokenizers";
 import type {
   CompletionRequest,
   CompletionResult,
@@ -25,6 +26,7 @@ import type {
   PromptChildren,
   PromptElement,
   PromptRenderer,
+  Tokenizer,
 } from "../types";
 
 /**
@@ -273,6 +275,8 @@ interface AnthropicProviderProps {
   model: Model;
   /** Maximum tokens to generate. Defaults to 1024. */
   maxTokens?: number;
+  /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
+  tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
   children?: Child;
 }
@@ -306,10 +310,12 @@ export function AnthropicProvider({
   client,
   model,
   maxTokens = 1024,
+  tokenizer,
   children = [],
 }: AnthropicProviderProps): PromptElement {
   const provider: ModelProvider = {
     name: "anthropic",
+    tokenizer: tokenizer ?? tiktokenTokenizer(model),
     async completion(request: CompletionRequest): Promise<CompletionResult> {
       const messages = convertToAnthropicMessages(request);
 

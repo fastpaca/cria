@@ -65,6 +65,12 @@ Because your prompt is a tree, you can assign priorities and let Cria manage tok
 
 Cria includes strategies like `Truncate`, `Omit`, `Summary`, and `VectorSearch`, or you can write your own.
 
+## Tokenization
+
+Budget fitting needs token counts. Pass a tokenizer to `render()`, or let a provider handle it—built-in providers ship with tiktoken defaults. No tokenizer and no provider? Cria throws so you notice before it matters.
+
+See [Tokenization](tokenization.md) for setup options and examples.
+
 ## Providers and context
 
 Provider components (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`) attach model context to the tree. Components like `Summary` use this to call a model without you passing a custom function.

@@ -15,9 +15,14 @@ Because prompts are structured as a tree, you get budget fitting for free: assig
 - [Integrations](integrations.md)
 - [Memory and RAG](memory-and-rag.md)
 - [Strategies](strategies.md)
+- [Tokenization](tokenization.md)
 - [Errors](errors.md)
 - [Observability](observability.md)
 - [Recipes](recipes.md)
+
+## Using budgets?
+
+Budget fitting needs token counts. Providers include tiktoken defaults; you can bring your own tokenizer for exact accuracy. See [Tokenization](tokenization.md).
 
 ## Runnable examples
 

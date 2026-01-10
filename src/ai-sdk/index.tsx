@@ -22,6 +22,7 @@ import {
   partsToText,
   type SemanticPart,
 } from "../renderers/shared";
+import { tiktokenTokenizer } from "../tokenizers";
 import type {
   CompletionRequest,
   CompletionResult,
@@ -31,6 +32,7 @@ import type {
   PromptElement,
   PromptRenderer,
   Strategy,
+  Tokenizer,
 } from "../types";
 
 /**
@@ -479,6 +481,8 @@ function safeJsonValue(value: unknown): JsonValue {
 interface AISDKProviderProps {
   /** The language model to use (e.g. openai("gpt-4o"), anthropic("claude-sonnet-4-20250514")) */
   model: LanguageModel;
+  /** Optional tokenizer to use for budgeting; defaults to an approximate counter */
+  tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
   children?: Child;
 }
@@ -511,10 +515,18 @@ const VALID_AI_SDK_ROLES = new Set<string>(["user", "assistant", "system"]);
 
 export function AISDKProvider({
   model,
+  tokenizer,
   children = [],
 }: AISDKProviderProps): MaybePromise<PromptElement> {
   const provider: ModelProvider = {
     name: "ai-sdk",
+    tokenizer:
+      tokenizer ??
+      tiktokenTokenizer(
+        // @ts-expect-error AI SDK models are functions; try to extract a name when available
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        (model as { modelId?: string | undefined }).modelId
+      ),
     async completion(request: CompletionRequest): Promise<CompletionResult> {
       const messages: ModelMessage[] = request.system
         ? [{ role: "system", content: request.system }]
