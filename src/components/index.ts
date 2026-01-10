@@ -287,6 +287,16 @@ export { Summary } from "./summary";
 export type { ResultFormatter } from "./vector-search";
 export { VectorSearch } from "./vector-search";
 
+/**
+ * Intersperse a separator between elements of an array.
+ */
+function intersperse<T>(items: readonly T[], separator: T): T[] {
+  if (items.length === 0) {
+    return [];
+  }
+  return items.flatMap((item, i) => (i === 0 ? [item] : [separator, item]));
+}
+
 interface SeparatorProps {
   value?: string;
   priority?: number;
@@ -301,18 +311,9 @@ export function Separator({
   children = [],
 }: SeparatorProps): PromptElement {
   const normalized = children as PromptChildren;
-  const separated: PromptChildren = [];
-
-  normalized.forEach((child, index) => {
-    separated.push(child);
-    if (index < normalized.length - 1) {
-      separated.push(value);
-    }
-  });
-
   return {
     priority,
-    children: separated,
+    children: intersperse(normalized, value),
     ...(id && { id }),
   };
 }
@@ -333,14 +334,7 @@ export function Examples({
   children = [],
 }: ExamplesProps): PromptElement {
   const normalized = children as PromptChildren;
-  const withSeparators: PromptChildren = [];
-
-  normalized.forEach((child, index) => {
-    withSeparators.push(child);
-    if (index < normalized.length - 1) {
-      withSeparators.push(separator);
-    }
-  });
+  const withSeparators = intersperse(normalized, separator);
 
   const prefixed = title
     ? ([`${title}\n`, ...withSeparators] as PromptChildren)

@@ -281,6 +281,52 @@ test("responses: renders reasoning as native reasoning item", async () => {
   });
 });
 
+test("responses: preserves reasoning inside messages and keeps ordering", async () => {
+  const prompt = (
+    <Region priority={0}>
+      <Message messageRole="assistant">
+        {[
+          "Before",
+          <Reasoning key="r" priority={1} text="thinking..." />,
+          <ToolCall
+            input={{ city: "Paris" }}
+            key="tc"
+            priority={1}
+            toolCallId="call_123"
+            toolName="getWeather"
+          />,
+          "After",
+        ]}
+      </Message>
+    </Region>
+  );
+
+  const input = await render(prompt, {
+    tokenizer,
+    budget: 10_000,
+    renderer: responses,
+  });
+
+  expect(input).toHaveLength(4);
+  expect(input[0]).toMatchObject({
+    role: "assistant",
+    content: "Before",
+  });
+  expect(input[1]).toMatchObject({
+    type: "reasoning",
+    summary: [{ type: "summary_text", text: "thinking..." }],
+  });
+  expect(input[2]).toMatchObject({
+    type: "function_call",
+    call_id: "call_123",
+    name: "getWeather",
+  });
+  expect(input[3]).toMatchObject({
+    role: "assistant",
+    content: "After",
+  });
+});
+
 test("responses: full conversation with reasoning", async () => {
   const prompt = (
     <Region priority={0}>

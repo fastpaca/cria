@@ -7,14 +7,30 @@ import type {
   ChatCompletionToolMessageParam,
   ChatCompletionUserMessageParam,
 } from "openai/resources/chat/completions";
+import type {
+  ResponseFunctionToolCall,
+  ResponseInputItem,
+  ResponseReasoningItem,
+} from "openai/resources/responses/responses";
 import type { Child } from "../jsx-runtime";
+import { markdownRenderer } from "../renderers/markdown";
+import {
+  coalesceTextParts,
+  collectMessageNodes,
+  collectSemanticParts,
+  partsToText,
+  type SemanticPart,
+  safeStringify,
+  type ToolResultPart,
+} from "../renderers/shared";
 import type {
   CompletionRequest,
   CompletionResult,
   ModelProvider,
-} from "../providers/types";
-import { markdownRenderer } from "../renderers/markdown";
-import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
+  PromptChildren,
+  PromptElement,
+  PromptRenderer,
+} from "../types";
 
 /**
  * Renderer that outputs ChatCompletionMessageParam[] for the OpenAI Chat Completions API.
@@ -36,8 +52,6 @@ export const chatCompletions: PromptRenderer<ChatCompletionMessageParam[]> = {
   empty: () => [],
 };
 
-type MessageElement = Extract<PromptElement, { kind: "message" }>;
-
 function renderToChatCompletions(
   root: PromptElement
 ): ChatCompletionMessageParam[] {
@@ -51,40 +65,8 @@ function renderToChatCompletions(
   return result;
 }
 
-function collectMessageNodes(
-  element: PromptElement,
-  acc: MessageElement[] = []
-): MessageElement[] {
-  if (element.kind === "message") {
-    acc.push(element);
-    return acc;
-  }
-
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
-    }
-    collectMessageNodes(child, acc);
-  }
-
-  return acc;
-}
-
-type SemanticPart =
-  | { type: "text"; text: string }
-  | { type: "reasoning"; text: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
-
-type ToolResultPart = Extract<SemanticPart, { type: "tool-result" }>;
-
 function messageNodeToParams(
-  messageNode: MessageElement
+  messageNode: Extract<PromptElement, { kind: "message" }>
 ): ChatCompletionMessageParam[] {
   const parts = coalesceTextParts(collectSemanticParts(messageNode.children));
 
@@ -97,7 +79,14 @@ function messageNodeToParams(
   }
 
   // Assistant message: may contain tool calls, and tool results become separate messages
-  const { assistantParts, toolResultParts } = splitToolResults(parts);
+  // Preserve original part ordering - only separate out tool results
+  const assistantParts = parts.filter(
+    (p): p is Exclude<SemanticPart, { type: "tool-result" }> =>
+      p.type !== "tool-result"
+  );
+  const toolResultParts = parts.filter(
+    (p): p is ToolResultPart => p.type === "tool-result"
+  );
   const result: ChatCompletionMessageParam[] = [];
 
   if (assistantParts.length > 0 || toolResultParts.length === 0) {
@@ -111,106 +100,12 @@ function messageNodeToParams(
   return result;
 }
 
-function splitToolResults(parts: SemanticPart[]): {
-  assistantParts: Exclude<SemanticPart, { type: "tool-result" }>[];
-  toolResultParts: ToolResultPart[];
-} {
-  const assistantParts: Exclude<SemanticPart, { type: "tool-result" }>[] = [];
-  const toolResultParts: ToolResultPart[] = [];
-
-  for (const part of parts) {
-    if (part.type === "tool-result") {
-      toolResultParts.push(part);
-    } else {
-      assistantParts.push(part);
-    }
-  }
-
-  return { assistantParts, toolResultParts };
-}
-
-function collectSemanticParts(children: PromptChildren): SemanticPart[] {
-  const parts: SemanticPart[] = [];
-
-  for (const child of children) {
-    if (typeof child === "string") {
-      if (child.length > 0) {
-        parts.push({ type: "text", text: child });
-      }
-      continue;
-    }
-
-    parts.push(...semanticPartsFromElement(child));
-  }
-
-  return parts;
-}
-
-function semanticPartsFromElement(element: PromptElement): SemanticPart[] {
-  switch (element.kind) {
-    case "tool-call":
-      return [
-        {
-          type: "tool-call",
-          toolCallId: element.toolCallId,
-          toolName: element.toolName,
-          input: element.input,
-        },
-      ];
-    case "tool-result":
-      return [
-        {
-          type: "tool-result",
-          toolCallId: element.toolCallId,
-          toolName: element.toolName,
-          output: element.output,
-        },
-      ];
-    case "reasoning":
-      // OpenAI Chat Completions doesn't have native reasoning support
-      // Include as text content
-      return element.text.length === 0
-        ? []
-        : [{ type: "reasoning", text: element.text }];
-    case "message":
-      // Nested messages are ambiguous - skip
-      return [];
-    default:
-      return collectSemanticParts(element.children);
-  }
-}
-
-function coalesceTextParts(parts: readonly SemanticPart[]): SemanticPart[] {
-  const result: SemanticPart[] = [];
-  let buffer = "";
-
-  for (const part of parts) {
-    if (part.type === "text") {
-      buffer += part.text;
-      continue;
-    }
-
-    if (buffer.length > 0) {
-      result.push({ type: "text", text: buffer });
-      buffer = "";
-    }
-
-    result.push(part);
-  }
-
-  if (buffer.length > 0) {
-    result.push({ type: "text", text: buffer });
-  }
-
-  return result;
-}
-
 function toSystemMessage(
   parts: readonly SemanticPart[]
 ): ChatCompletionSystemMessageParam {
   return {
     role: "system",
-    content: partsToText(parts),
+    content: partsToText(parts, { wrapReasoning: true }),
   };
 }
 
@@ -219,33 +114,27 @@ function toUserMessage(
 ): ChatCompletionUserMessageParam {
   return {
     role: "user",
-    content: partsToText(parts),
+    content: partsToText(parts, { wrapReasoning: true }),
   };
 }
 
 function toAssistantMessage(
   parts: readonly Exclude<SemanticPart, { type: "tool-result" }>[]
 ): ChatCompletionAssistantMessageParam {
-  const toolCalls: ChatCompletionMessageToolCall[] = [];
-  let textContent = "";
-
-  for (const part of parts) {
-    if (part.type === "text") {
-      textContent += part.text;
-    } else if (part.type === "reasoning") {
-      // Include reasoning as text since Chat Completions doesn't support it natively
-      textContent += `<thinking>\n${part.text}\n</thinking>\n`;
-    } else if (part.type === "tool-call") {
-      toolCalls.push({
-        id: part.toolCallId,
-        type: "function",
-        function: {
-          name: part.toolName,
-          arguments: stringifyInput(part.input),
-        },
-      });
-    }
-  }
+  const textContent = partsToText(parts, { wrapReasoning: true });
+  const toolCalls: ChatCompletionMessageToolCall[] = parts
+    .filter(
+      (part): part is Extract<typeof part, { type: "tool-call" }> =>
+        part.type === "tool-call"
+    )
+    .map((part) => ({
+      id: part.toolCallId,
+      type: "function" as const,
+      function: {
+        name: part.toolName,
+        arguments: safeStringify(part.input),
+      },
+    }));
 
   const result: ChatCompletionAssistantMessageParam = {
     role: "assistant",
@@ -266,54 +155,13 @@ function toToolMessage(part: ToolResultPart): ChatCompletionToolMessageParam {
   return {
     role: "tool",
     tool_call_id: part.toolCallId,
-    content: stringifyOutput(part.output),
+    content: safeStringify(part.output),
   };
-}
-
-function stringifyInput(input: unknown): string {
-  if (typeof input === "string") {
-    return input;
-  }
-  try {
-    return JSON.stringify(input) ?? "null";
-  } catch {
-    return String(input);
-  }
-}
-
-function stringifyOutput(output: unknown): string {
-  if (typeof output === "string") {
-    return output;
-  }
-  try {
-    return JSON.stringify(output) ?? "null";
-  } catch {
-    return String(output);
-  }
-}
-
-function partsToText(parts: readonly SemanticPart[]): string {
-  let result = "";
-  for (const part of parts) {
-    if (part.type === "text") {
-      result += part.text;
-    } else if (part.type === "reasoning") {
-      result += `<thinking>\n${part.text}\n</thinking>\n`;
-    }
-  }
-  return result;
 }
 
 // ============================================================================
 // Responses API Renderer (for reasoning models)
 // ============================================================================
-
-import type {
-  EasyInputMessage,
-  ResponseFunctionToolCall,
-  ResponseInputItem,
-  ResponseReasoningItem,
-} from "openai/resources/responses/responses";
 
 /**
  * Renderer that outputs ResponseInputItem[] for the OpenAI Responses API.
@@ -337,11 +185,73 @@ export const responses: PromptRenderer<ResponseInputItem[]> = {
 
 function renderToResponses(root: PromptElement): ResponseInputItem[] {
   const result: ResponseInputItem[] = [];
-
-  // Collect all semantic items from the tree
   collectResponseItems(root, result);
-
   return result;
+}
+
+type MessageElement = Extract<PromptElement, { kind: "message" }>;
+
+/**
+ * Convert a message element's parts into ResponseInputItems.
+ * Handles text, reasoning, tool calls, and tool results.
+ */
+function collectMessageResponseItems(
+  element: MessageElement,
+  acc: ResponseInputItem[]
+): void {
+  const parts = coalesceTextParts(collectSemanticParts(element.children));
+  const role = mapRoleForResponses(element.role);
+  let textBuffer = "";
+  let reasoningIndex = 0;
+
+  const flushTextBuffer = () => {
+    if (textBuffer.length > 0) {
+      acc.push({ role, content: textBuffer });
+      textBuffer = "";
+    }
+  };
+
+  for (const part of parts) {
+    switch (part.type) {
+      case "text":
+        textBuffer += part.text;
+        break;
+      case "reasoning": {
+        flushTextBuffer();
+        acc.push({
+          id: element.id
+            ? `${element.id}-reasoning-${reasoningIndex}`
+            : `reasoning_${reasoningIndex}`,
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: part.text }],
+        });
+        reasoningIndex += 1;
+        break;
+      }
+      case "tool-call":
+        flushTextBuffer();
+        acc.push({
+          type: "function_call",
+          call_id: part.toolCallId,
+          name: part.toolName,
+          arguments: safeStringify(part.input),
+        });
+        break;
+      case "tool-result":
+        flushTextBuffer();
+        acc.push({
+          type: "function_call_output",
+          call_id: part.toolCallId,
+          output: safeStringify(part.output),
+        });
+        break;
+      default:
+        // Exhaustive check - all SemanticPart types handled above
+        break;
+    }
+  }
+
+  flushTextBuffer();
 }
 
 function collectResponseItems(
@@ -350,40 +260,7 @@ function collectResponseItems(
 ): void {
   switch (element.kind) {
     case "message": {
-      const parts = coalesceTextParts(collectSemanticParts(element.children));
-      const { nonToolParts, toolCallParts, toolResultParts } =
-        categorizePartsForResponses(parts);
-
-      // Add message if it has text content
-      if (nonToolParts.length > 0) {
-        const role = mapRoleForResponses(element.role);
-        const message: EasyInputMessage = {
-          role,
-          content: partsToTextForResponses(nonToolParts),
-        };
-        acc.push(message);
-      }
-
-      // Add tool calls as separate items
-      for (const tc of toolCallParts) {
-        const toolCall: ResponseFunctionToolCall = {
-          type: "function_call",
-          call_id: tc.toolCallId,
-          name: tc.toolName,
-          arguments: stringifyInput(tc.input),
-        };
-        acc.push(toolCall);
-      }
-
-      // Add tool results as separate items
-      for (const tr of toolResultParts) {
-        const toolResult: ResponseInputItem.FunctionCallOutput = {
-          type: "function_call_output",
-          call_id: tr.toolCallId,
-          output: stringifyOutput(tr.output),
-        };
-        acc.push(toolResult);
-      }
+      collectMessageResponseItems(element, acc);
       break;
     }
 
@@ -405,7 +282,7 @@ function collectResponseItems(
         type: "function_call",
         call_id: element.toolCallId,
         name: element.toolName,
-        arguments: stringifyInput(element.input),
+        arguments: safeStringify(element.input),
       };
       acc.push(toolCall);
       break;
@@ -415,7 +292,7 @@ function collectResponseItems(
       const toolResult: ResponseInputItem.FunctionCallOutput = {
         type: "function_call_output",
         call_id: element.toolCallId,
-        output: stringifyOutput(element.output),
+        output: safeStringify(element.output),
       };
       acc.push(toolResult);
       break;
@@ -432,57 +309,16 @@ function collectResponseItems(
   }
 }
 
-type ToolCallPart = Extract<SemanticPart, { type: "tool-call" }>;
+type ResponseRole = "user" | "assistant" | "system" | "developer";
 
-function categorizePartsForResponses(parts: SemanticPart[]): {
-  nonToolParts: Exclude<SemanticPart, { type: "tool-call" | "tool-result" }>[];
-  toolCallParts: ToolCallPart[];
-  toolResultParts: ToolResultPart[];
-} {
-  const nonToolParts: Exclude<
-    SemanticPart,
-    { type: "tool-call" | "tool-result" }
-  >[] = [];
-  const toolCallParts: ToolCallPart[] = [];
-  const toolResultParts: ToolResultPart[] = [];
+const RESPONSE_ROLE_MAP: Record<string, ResponseRole> = {
+  system: "system",
+  developer: "developer",
+  user: "user",
+};
 
-  for (const part of parts) {
-    if (part.type === "tool-call") {
-      toolCallParts.push(part);
-    } else if (part.type === "tool-result") {
-      toolResultParts.push(part);
-    } else {
-      nonToolParts.push(part);
-    }
-  }
-
-  return { nonToolParts, toolCallParts, toolResultParts };
-}
-
-function mapRoleForResponses(
-  role: string
-): "user" | "assistant" | "system" | "developer" {
-  if (role === "system" || role === "developer") {
-    return role;
-  }
-  if (role === "user") {
-    return "user";
-  }
-  return "assistant";
-}
-
-function partsToTextForResponses(
-  parts: readonly Exclude<SemanticPart, { type: "tool-call" | "tool-result" }>[]
-): string {
-  let result = "";
-  for (const part of parts) {
-    if (part.type === "text") {
-      result += part.text;
-    }
-    // Note: reasoning parts inside messages are handled separately
-    // We don't include them as text here since Responses API has native reasoning
-  }
-  return result;
+function mapRoleForResponses(role: string): ResponseRole {
+  return RESPONSE_ROLE_MAP[role] ?? "assistant";
 }
 
 interface OpenAIProviderProps {
@@ -519,6 +355,9 @@ interface OpenAIProviderProps {
  * const result = await render(prompt, { tokenizer, budget: 4000 });
  * ```
  */
+type OpenAIRole = "user" | "assistant" | "system";
+const VALID_OPENAI_ROLES = new Set<string>(["user", "assistant", "system"]);
+
 export function OpenAIProvider({
   client,
   model,
@@ -527,21 +366,13 @@ export function OpenAIProvider({
   const provider: ModelProvider = {
     name: "openai",
     async completion(request: CompletionRequest): Promise<CompletionResult> {
-      const messages: ChatCompletionMessageParam[] = [];
+      const messages: ChatCompletionMessageParam[] = request.system
+        ? [{ role: "system", content: request.system }]
+        : [];
 
-      // Handle system message
-      if (request.system) {
-        messages.push({ role: "system", content: request.system });
-      }
-
-      // Convert request messages to OpenAI format
       for (const msg of request.messages) {
-        if (msg.role === "user") {
-          messages.push({ role: "user", content: msg.content });
-        } else if (msg.role === "assistant") {
-          messages.push({ role: "assistant", content: msg.content });
-        } else if (msg.role === "system") {
-          messages.push({ role: "system", content: msg.content });
+        if (VALID_OPENAI_ROLES.has(msg.role)) {
+          messages.push({ role: msg.role as OpenAIRole, content: msg.content });
         }
       }
 

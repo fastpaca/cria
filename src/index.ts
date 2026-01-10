@@ -70,8 +70,9 @@ export {
   createSnapshotHooks,
   diffSnapshots,
   type Snapshot,
+  type SnapshotChild,
   type SnapshotDiff,
-  type SnapshotNode,
+  type SnapshotElement,
 } from "./snapshot";
 export type {
   CompletionMessage,

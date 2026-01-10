@@ -1,4 +1,5 @@
 import type { PromptChildren, PromptElement, PromptRenderer } from "../types";
+import { safeStringify } from "./shared";
 
 export const markdownRenderer: PromptRenderer<string> = {
   name: "markdown",
@@ -24,11 +25,11 @@ function renderToMarkdown(element: PromptElement): string {
       return `<thinking>\n${element.text}\n</thinking>\n`;
     }
     case "tool-call": {
-      const inputText = safeJsonStringify(element.input);
+      const inputText = safeStringify(element.input, true);
       return `<tool_call name="${element.toolName}">\n${inputText}\n</tool_call>\n`;
     }
     case "tool-result": {
-      const outputText = safeJsonStringify(element.output);
+      const outputText = safeStringify(element.output, true);
       return `<tool_result name="${element.toolName}">\n${outputText}\n</tool_result>\n`;
     }
     default: {
@@ -43,19 +44,4 @@ function renderChildrenToMarkdown(children: PromptChildren): string {
     result += typeof child === "string" ? child : renderToMarkdown(child);
   }
   return result;
-}
-
-function safeJsonStringify(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value === undefined) {
-    return "undefined";
-  }
-
-  try {
-    return JSON.stringify(value, null, 2) ?? "null";
-  } catch {
-    return String(value);
-  }
 }

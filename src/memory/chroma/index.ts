@@ -47,6 +47,17 @@ function distanceToScore(distance: number): number {
 }
 
 /**
+ * Extract timestamp from Chroma metadata field.
+ */
+function extractTimestamp(
+  metadata: Metadata | null | undefined,
+  field: "_createdAt" | "_updatedAt"
+): number {
+  const value = metadata?.[field];
+  return typeof value === "number" ? value : 0;
+}
+
+/**
  * VectorMemory implementation backed by ChromaDB.
  *
  * This adapter wraps a Chroma collection and implements the VectorMemory interface,
@@ -108,17 +119,11 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
 
     const document = response.documents?.[0];
     const metadata = response.metadatas?.[0];
-    const data = parseDocument<T>(document);
-
-    const createdAt =
-      typeof metadata?._createdAt === "number" ? metadata._createdAt : 0;
-    const updatedAt =
-      typeof metadata?._updatedAt === "number" ? metadata._updatedAt : 0;
 
     return {
-      data,
-      createdAt,
-      updatedAt,
+      data: parseDocument<T>(document),
+      createdAt: extractTimestamp(metadata, "_createdAt"),
+      updatedAt: extractTimestamp(metadata, "_updatedAt"),
       ...(metadata && { metadata: metadata as Record<string, unknown> }),
     };
   }
@@ -217,22 +222,15 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
         continue;
       }
 
-      const document = documents[i];
       const metadata = metadatas[i];
-      const data = parseDocument<T>(document);
-
-      const createdAt =
-        typeof metadata?._createdAt === "number" ? metadata._createdAt : 0;
-      const updatedAt =
-        typeof metadata?._updatedAt === "number" ? metadata._updatedAt : 0;
 
       results.push({
         key: id,
         score,
         entry: {
-          data,
-          createdAt,
-          updatedAt,
+          data: parseDocument<T>(documents[i]),
+          createdAt: extractTimestamp(metadata, "_createdAt"),
+          updatedAt: extractTimestamp(metadata, "_updatedAt"),
           ...(metadata && { metadata: metadata as Record<string, unknown> }),
         },
       });

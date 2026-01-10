@@ -90,7 +90,7 @@ const prompt = (
 );
 
 // Render with a tight budget to trigger summarization
-const budget = 220; // Budget that triggers summarization (full content ~233 tokens)
+const budget = 240; // Budget that triggers summarization (full content ~243 tokens)
 const messages = await render(prompt, {
   tokenizer,
   budget,

@@ -1,8 +1,8 @@
 import type { Child } from "../jsx-runtime";
 import type { KVMemory } from "../memory";
-import type { ModelProvider } from "../providers/types";
 import type {
   MaybePromise,
+  ModelProvider,
   PromptChildren,
   PromptElement,
   Strategy,

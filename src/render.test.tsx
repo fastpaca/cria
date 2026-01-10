@@ -218,8 +218,18 @@ test("render: fit decisions are deterministic", async () => {
 
   type EventLog =
     | { type: "start"; totalTokens: number }
-    | { type: "iteration"; iteration: number; priority: number; totalTokens: number }
-    | { type: "strategy"; iteration: number; priority: number; resultType: "node" | "null" }
+    | {
+        type: "iteration";
+        iteration: number;
+        priority: number;
+        totalTokens: number;
+      }
+    | {
+        type: "strategy";
+        iteration: number;
+        priority: number;
+        resultType: "node" | "null";
+      }
     | { type: "complete"; iterations: number; totalTokens: number };
 
   const runOnce = async (): Promise<{ result: string; events: EventLog[] }> => {

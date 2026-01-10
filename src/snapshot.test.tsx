@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Omit, Region } from "./components";
-import { createSnapshot, createSnapshotHooks, diffSnapshots } from "./snapshot";
 import { render } from "./render";
+import { createSnapshot, createSnapshotHooks, diffSnapshots } from "./snapshot";
 
 const tokenizer = (text: string): number => text.length;
 
