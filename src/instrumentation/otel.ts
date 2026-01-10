@@ -1,4 +1,10 @@
-import { SpanStatusCode, context, type Attributes, type Span, type Tracer } from "@opentelemetry/api";
+import {
+  type Attributes,
+  context,
+  type Span,
+  SpanStatusCode,
+  type Tracer,
+} from "@opentelemetry/api";
 import type { RenderHooks } from "../render";
 import type { PromptElement } from "../types";
 
@@ -76,7 +82,8 @@ export function createOtelRenderHooks({
     },
 
     onFitError: (event) => {
-      const span = fitSpan ?? tracer.startSpan(spanName, undefined, context.active());
+      const span =
+        fitSpan ?? tracer.startSpan(spanName, undefined, context.active());
       setAttributes(span, {
         ...attributes,
         "cria.iteration": event.iteration,
