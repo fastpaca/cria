@@ -2,10 +2,24 @@
 
 Cria ships a small set of composable components. All are available from `@fastpaca/cria` unless noted.
 
-## Core building blocks
+## Structure
 
-- `Region`: groups children and sets priority for that subtree.
+- `Region`: groups children into a logical block.
 - `Message`: semantic message with `messageRole` (system, user, assistant, tool).
+
+```tsx
+<Region>
+  <Message messageRole="system">System rules</Message>
+  <Message messageRole="user">Current request</Message>
+</Region>
+```
+
+These are your building blocks. Regions group related content; Messages carry semantic roles that renderers convert to provider formats.
+
+## Budget fitting (optional)
+
+When you need to fit prompts to token limits, add priorities and strategies:
+
 - `Truncate`: trims content to a token budget.
 - `Omit`: drops content entirely when shrinking.
 - `Last`: keeps only the last N children.

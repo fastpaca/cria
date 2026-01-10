@@ -1,6 +1,6 @@
 # Strategies
 
-Strategies control how a region shrinks when the prompt exceeds a token budget.
+Strategies control how a region shrinks when the prompt exceeds a token budget. You only need strategies if you use budget fitting.
 
 ## When strategies run
 

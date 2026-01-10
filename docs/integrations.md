@@ -1,6 +1,6 @@
 # Integrations
 
-Cria ships plug-and-play renderers and provider components for common LLM SDKs.
+Cria ships plug-and-play renderers and provider components for common LLM SDKs. Write your prompt once, render it to any format.
 
 ## OpenAI
 
@@ -12,7 +12,7 @@ import { chatCompletions } from "@fastpaca/cria/openai";
 import { render } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const messages = await render(prompt, { tokenizer, budget, renderer: chatCompletions });
+const messages = await render(prompt, { renderer: chatCompletions });
 const response = await client.chat.completions.create({ model: "gpt-4o", messages });
 ```
 
@@ -22,8 +22,7 @@ const response = await client.chat.completions.create({ model: "gpt-4o", message
 import { responses } from "@fastpaca/cria/openai";
 import { render } from "@fastpaca/cria";
 
-// Reuse your OpenAI client
-const input = await render(prompt, { tokenizer, budget, renderer: responses });
+const input = await render(prompt, { renderer: responses });
 const response = await client.responses.create({ model: "o3", input });
 ```
 
@@ -52,11 +51,7 @@ import { anthropic } from "@fastpaca/cria/anthropic";
 import { render } from "@fastpaca/cria";
 
 const client = new Anthropic();
-const { system, messages } = await render(prompt, {
-  tokenizer,
-  budget,
-  renderer: anthropic,
-});
+const { system, messages } = await render(prompt, { renderer: anthropic });
 const response = await client.messages.create({ model: "claude-sonnet-4-20250514", system, messages });
 ```
 
@@ -77,7 +72,7 @@ import { renderer } from "@fastpaca/cria/ai-sdk";
 import { render } from "@fastpaca/cria";
 import { generateText } from "ai";
 
-const messages = await render(prompt, { tokenizer, budget, renderer });
+const messages = await render(prompt, { renderer });
 const { text } = await generateText({ model, messages });
 ```
 
