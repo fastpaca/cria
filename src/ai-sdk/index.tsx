@@ -22,7 +22,7 @@ import {
   partsToText,
   type SemanticPart,
 } from "../renderers/shared";
-import { approximateTokenizer } from "../tokenizers";
+import { tiktokenTokenizer } from "../tokenizers";
 import type {
   CompletionRequest,
   CompletionResult,
@@ -520,7 +520,13 @@ export function AISDKProvider({
 }: AISDKProviderProps): MaybePromise<PromptElement> {
   const provider: ModelProvider = {
     name: "ai-sdk",
-    tokenizer: tokenizer ?? approximateTokenizer,
+    tokenizer:
+      tokenizer ??
+      tiktokenTokenizer(
+        // @ts-expect-error AI SDK models are functions; try to extract a name when available
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        (model as { modelId?: string | undefined }).modelId
+      ),
     async completion(request: CompletionRequest): Promise<CompletionResult> {
       const messages: ModelMessage[] = request.system
         ? [{ role: "system", content: request.system }]

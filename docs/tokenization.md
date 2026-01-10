@@ -5,12 +5,13 @@ Cria fits prompts to a token budget. Token counts come from a tokenizer, and you
 ## Where token counts come from
 
 - `render(prompt, { tokenizer, budget })`: pass a tokenizer directly (recommended for accuracy, e.g. tiktoken, `@anthropic-ai/tokenizer`).
-- Provider components: `<OpenAIProvider>`, `<AnthropicProvider>`, and `<AISDKProvider>` include an approximate tokenizer by default. Pass `tokenizer` to those components to use a model-specific function.
+- Provider components: `<OpenAIProvider>`, `<AnthropicProvider>`, and `<AISDKProvider>` default to a tiktoken-based tokenizer. Pass `tokenizer` to those components to override (for custom models or alternative tokenizers).
 - Custom providers: add a `tokenizer` property to your `ModelProvider` so Cria can use it during fitting.
 
 ## Accuracy vs. convenience
 
-- **Accurate**: use model-specific tokenizers (tiktoken for OpenAI/AI SDK, `@anthropic-ai/tokenizer` for Anthropic). Example:
+- **Built-in default (accurate)**: providers use tiktoken under the hood (cl100k-based, model-aware when a model is provided). This is accurate for OpenAI/AI SDK models and a good approximation for others.
+- **Custom accurate**: use model-specific tokenizers directly (tiktoken for OpenAI/AI SDK, `@anthropic-ai/tokenizer` for Anthropic). Example:
 
   ```ts
   import { encoding_for_model } from "tiktoken";
@@ -22,12 +23,12 @@ Cria fits prompts to a token budget. Token counts come from a tokenizer, and you
   const output = await render(prompt, { tokenizer, budget: 12_000 });
   ```
 
-- **Approximate**: provider defaults use a simple `Math.ceil(text.length / 4)` heuristic. Good for quick starts; switch to an accurate tokenizer before relying on tight budgets.
+- **Approximate fallback**: when tiktoken can't load, Cria falls back to a simple `Math.ceil(text.length / 4)` heuristic. Use this only as a last resort.
 
 ## What happens if you forget
 
 - Budgets without any tokenizer source (neither render option nor provider) throw an error so you know to configure one.
-- Budgets with a provider but no explicit tokenizer use the provider's tokenizer (approximate by default for built-ins).
+- Budgets with a provider but no explicit tokenizer use the provider's tokenizer (tiktoken-based by default for built-ins).
 
 ## Tips
 
