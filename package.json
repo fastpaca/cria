@@ -4,6 +4,10 @@
   "description": "Lightweight, fast, and tiny LLM Context & Memory layout renderer to enforce token budgets in long running agents.",
   "license": "MIT",
   "author": "seb@fastpaca.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fastpaca/cria"
+  },
   "type": "module",
   "publishConfig": {
     "access": "public"
