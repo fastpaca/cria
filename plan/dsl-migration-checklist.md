@@ -16,7 +16,7 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 ## Examples
 - [x] examples/ai-sdk/main.tsx: convert to DSL entrypoint.
 - [x] examples/openai-*/anthropic/etc.: main usage shows `cria.prompt()` chains with `.render()`.
-- [ ] Add a minimal DSL-only example for each integration; move JSX versions under a clearly marked `jsx/` subfolder or README note (pending).
+- [x] Add a minimal DSL-only example for each integration; move JSX versions under a clearly marked `jsx/` subfolder or README note.
 
 ## Source comments and docs
 - [x] src/index.ts header comment references “JSX-based prompt renderer”; rewrite to DSL-first and mention JSX optional entry.
