@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { Message, Omit, Region, render, Truncate } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 import { renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
@@ -34,49 +34,48 @@ const documents = [
 
 const userQuestion = "Can you summarize Berlin's key facts?";
 
-// Build the prompt using Cria JSX with Message components for structured output
-const prompt = (
-  <Region priority={0}>
-    {/* System message - highest priority, never dropped */}
-    <Message id="system" messageRole="system" priority={0}>
-      {systemPrompt}
-    </Message>
-
-    {/* Assistant message with reference documents - can be omitted if over budget */}
-    <Omit id="documents" priority={3}>
-      <Message messageRole="assistant" priority={3}>
-        {"Here are some reference documents:\n\n"}
-        {documents.map((doc, i) => (
-          <Region id={`doc-${i}`} priority={3}>
-            {`### ${doc.title}\n${doc.content}\n\n`}
-          </Region>
-        ))}
-      </Message>
-    </Omit>
-
-    {/* Conversation history - truncate from start if needed */}
-    <Truncate budget={500} from="start" id="history" priority={2}>
-      {conversationHistory.map((msg, i) => (
-        <Message
-          id={`msg-${i}`}
-          messageRole={msg.role as "user" | "assistant"}
-          priority={2}
-        >
-          {msg.content}
-        </Message>
-      ))}
-    </Truncate>
-
-    {/* Current question - high priority */}
-    <Message id="question" messageRole="user" priority={1}>
-      {userQuestion}
-    </Message>
-  </Region>
+// Build the prompt using the DSL for structured output
+const documentSections = documents.reduce(
+  (acc, doc, i) =>
+    acc.merge(
+      cria
+        .prompt()
+        .message(
+          "assistant",
+          `Here are some reference documents:\n\n### ${doc.title}\n${doc.content}\n\n`,
+          { priority: 3, id: `doc-${i}` }
+        )
+    ),
+  cria.prompt()
 );
+
+const historySection = conversationHistory.reduce(
+  (acc, msg, i) =>
+    acc.merge(
+      cria
+        .prompt()
+        .message(msg.role as "user" | "assistant", msg.content, {
+          priority: 2,
+          id: `msg-${i}`,
+        })
+    ),
+  cria.prompt()
+);
+
+const prompt = cria
+  .prompt()
+  // System message - highest priority, never dropped
+  .system(systemPrompt, { priority: 0 })
+  // Assistant message with reference documents - can be omitted if over budget
+  .omit(documentSections, { priority: 3, id: "documents" })
+  // Conversation history - truncate from start if needed
+  .truncate(historySection, { budget: 500, from: "start", priority: 2, id: "history" })
+  // Current question - high priority
+  .user(userQuestion, { priority: 1, id: "question" });
 
 // Render with a token budget using the AI SDK renderer
 const budget = 1000; // tokens
-const messages = await render(prompt, {
+const messages = await prompt.render({
   tokenizer,
   budget,
   renderer,
