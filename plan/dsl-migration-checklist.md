@@ -27,7 +27,7 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 
 ## Config/exports
 - [x] tsconfig.json: remove default `jsxImportSource` for core/examples; DSL is default, JSX is optional entry.
-- [ ] package.json exports: verify JSX optional entry messaging in README; consider deprecating root JSX exports in a future major (add TODO/release note).
+- [x] package.json exports: verify JSX optional entry messaging in README; add TODO for deprecating root JSX in a future major.
 - [x] Ensure `@fastpaca/cria/jsx` path is documented; optionally add `package.json` `"typesVersions"` hint if needed. (Docs/examples note optional JSX entry; typesVersions added.)
 
 ## Tests and tooling

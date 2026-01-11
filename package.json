@@ -34,6 +34,7 @@
       "types": "./dist/jsx/jsx-dev-runtime.d.ts",
       "import": "./dist/jsx/jsx-dev-runtime.js"
     },
+    // TODO: In the next major, keep JSX only under the ./jsx* entries and drop any root JSX assumptions.
     "./openai": {
       "types": "./dist/openai/index.d.ts",
       "import": "./dist/openai/index.js"
