@@ -26,7 +26,7 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 - [x] Provider docs/types: document new Provider classes (OpenAI/Anthropic/AI SDK) for `.provider()` in DSL.
 
 ## Config/exports
-- [ ] tsconfig.json: currently sets `jsxImportSource: "@fastpaca/cria"`; evaluate if default config should target DSL (maybe move JSX config to examples or doc note).
+- [x] tsconfig.json: remove default `jsxImportSource` for core/examples; DSL is default, JSX is optional entry.
 - [ ] package.json exports: verify JSX optional entry messaging in README; consider deprecating root JSX exports in a future major (add TODO/release note).
 - [ ] Ensure `@fastpaca/cria/jsx` path is documented; optionally add `package.json` `"typesVersions"` hint if needed.
 
