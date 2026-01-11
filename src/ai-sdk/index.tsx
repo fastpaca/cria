@@ -522,11 +522,7 @@ export function AISDKProvider({
     name: "ai-sdk",
     tokenizer:
       tokenizer ??
-      tiktokenTokenizer(
-        // @ts-expect-error AI SDK models are functions; try to extract a name when available
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        (model as { modelId?: string | undefined }).modelId
-      ),
+      tiktokenTokenizer((model as { modelId?: string | undefined }).modelId),
     async completion(request: CompletionRequest): Promise<CompletionResult> {
       const messages: ModelMessage[] = request.system
         ? [{ role: "system", content: request.system }]

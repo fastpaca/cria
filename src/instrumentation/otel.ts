@@ -126,6 +126,8 @@ function setElementAttributes(span: Span, element: PromptElement): void {
 
 function setAttributes(span: Span, attrs: Attributes): void {
   for (const [key, value] of Object.entries(attrs)) {
-    span.setAttribute(key, value);
+    if (value !== undefined) {
+      span.setAttribute(key, value);
+    }
   }
 }
