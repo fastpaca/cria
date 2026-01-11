@@ -1,32 +1,30 @@
 # Concepts
 
-Cria treats prompts like code: composable, reusable, and provider-agnostic. This page explains how.
+Cria treats prompts like code: composable, reusable, and provider-agnostic. This page explains how, using the fluent DSL as the primary surface. JSX remains optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
 
-## Prompts as components
+## Prompts as builders
 
-Just like UI components, prompt components encapsulate structure and can be composed:
+Just like UI components, prompt sections encapsulate structure and can be composed. The DSL makes this explicit:
 
-```tsx
-function SystemRules() {
-  return <Message messageRole="system">You are a helpful assistant.</Message>;
-}
+```ts
+import { cria } from "@fastpaca/cria";
 
-function ChatPrompt({ history, question }) {
-  return (
-    <Region>
-      <SystemRules />
-      {history}
-      <Message messageRole="user">{question}</Message>
-    </Region>
-  );
-}
+const systemRules = () =>
+  cria.prompt().system("You are a helpful assistant.");
+
+const chatPrompt = (history: string, question: string) =>
+  cria
+    .prompt()
+    .merge(systemRules())
+    .region((r) => r.last(history, { N: 10, priority: 2 }))
+    .user(question);
+
+Build once, reuse everywhere by reusing builder snippets.
 ```
-
-Build once, reuse everywhere.
 
 ## Prompt tree
 
-Your JSX compiles to a tree of nodes. Each node has semantic meaning:
+Your builder produces a tree of nodes. Each node has semantic meaning:
 
 ```
 Region
@@ -73,8 +71,23 @@ See [Tokenization](tokenization.md) for setup options and examples.
 
 ## Providers and context
 
-Provider components (`OpenAIProvider`, `AnthropicProvider`, `AISDKProvider`) attach model context to the tree. Components like `Summary` use this to call a model without you passing a custom function.
+Provider helpers (`Provider` classes in openai/anthropic/ai-sdk) attach model context to the tree via `.provider(...)`. Components like `Summary` use this to call a model without you passing a custom function.
+
+```ts
+import OpenAI from "openai";
+import { Provider as OpenAIProvider } from "@fastpaca/cria/openai";
+import { cria } from "@fastpaca/cria";
+
+const provider = new OpenAIProvider(new OpenAI(), "gpt-4o");
+
+const prompt = cria
+  .prompt()
+  .provider(provider, (p) =>
+    p.summary(history, { id: "conv", store, priority: 2 })
+  )
+  .user(question);
+```
 
 ## Works everywhere
 
-JSX here is just syntax. Cria does not depend on the DOM or React. It runs in Node, Deno, Bun, and Edge runtimes.
+Cria does not depend on the DOM or React. It runs in Node, Deno, Bun, and Edge runtimes. Prefer TSX? Use the optional JSX entry at `@fastpaca/cria/jsx`; the DSL remains the primary API.
