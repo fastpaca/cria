@@ -99,6 +99,19 @@
   "files": [
     "dist"
   ],
+  "typesVersions": {
+    "*": {
+      "jsx": [
+        "./dist/jsx/index.d.ts"
+      ],
+      "jsx-runtime": [
+        "./dist/jsx/jsx-runtime.d.ts"
+      ],
+      "jsx-dev-runtime": [
+        "./dist/jsx/jsx-dev-runtime.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "build": "tsc",
     "check": "ultracite check",
