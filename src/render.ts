@@ -68,8 +68,8 @@ export async function render<TOptions extends RenderOptions>(
   { tokenizer, budget, renderer, hooks }: TOptions
 ): Promise<RenderOutput<TOptions>> {
   /*
-   * The JSX runtime normalizes children and returns either a PromptElement or a
-   * native Promise. Render only awaits that root value and does not walk the tree.
+   * Builders and the optional JSX runtime both return a PromptElement (or Promise).
+   * render() awaits the root value and does not walk/normalize children here.
    * Non-Promise thenables are intentionally unsupported.
    */
   const resolvedElement = element instanceof Promise ? await element : element;

@@ -1,23 +1,16 @@
 /**
- * Cria - JSX-based prompt renderer with automatic token budget fitting.
+ * Cria - fluent DSL for prompt composition with automatic token budget fitting.
  *
  * @example
- * ```tsx
- * import { render, Region, Truncate, Omit } from "@fastpaca/cria";
+ * ```ts
+ * import { cria } from "@fastpaca/cria";
  *
- * const prompt = (
- *   <Region priority={0}>
- *     You are a helpful assistant.
- *     <Truncate budget={20000} from="start" priority={2}>
- *       {conversationHistory}
- *     </Truncate>
- *     <Omit priority={3}>
- *       {optionalContext}
- *     </Omit>
- *   </Region>
- * );
- *
- * const result = await render(prompt, { tokenizer, budget: 128000 });
+ * const result = await cria
+ *   .prompt()
+ *   .system("You are a helpful assistant.")
+ *   .truncate(conversationHistory, { budget: 20000, from: "start", priority: 2 })
+ *   .omit(optionalContext, { priority: 3 })
+ *   .render({ tokenizer, budget: 128000 });
  * ```
  *
  * @packageDocumentation

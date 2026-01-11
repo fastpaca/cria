@@ -280,7 +280,7 @@ export interface PromptRenderer<TOutput> {
 /**
  * Canonical normalized child node type stored in the IR.
  *
- * This is the only type you’ll find inside `PromptElement.children` after JSX normalization.
+ * This is the only type you’ll find inside `PromptElement.children` after child normalization.
  */
 export type JsonValue =
   | null
