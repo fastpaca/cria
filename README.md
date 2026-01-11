@@ -15,54 +15,50 @@
   <a href="https://opensource.org/license/mit"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/fastpaca/cria/stargazers">
-    <img src="https://img.shields.io/badge/Give%20a%20Star-Support%20the%20project-orange?style=for-the-badge" alt="Give a Star">
-  </a>
-</p>
-
-Cria is a lightweight JSX prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
+Cria is a fluent DSL for structured prompt engineering. Compose prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or AI SDK formats. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
 
 ## Example
 
-```tsx
-import { Message, Omit, Region, Truncate, render } from "@fastpaca/cria";
+```ts
+import { cria } from "@fastpaca/cria";
 
-const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system">You are a helpful assistant.</Message>
-    <Last N={12} priority={2}>{historyMessages}</Last>
-    <Omit priority={3}>{optionalExamples}</Omit>
-    <Message messageRole="user">{userQuestion}</Message>
-  </Region>
-);
-
-const output = await render(prompt, { budget: 8_000 });
+const messages = await cria
+  .prompt()
+  .system("You are a helpful assistant.")
+  .last(historyMessages, { N: 12, priority: 2 })
+  .omit(optionalExamples, { priority: 3 })
+  .user(userQuestion)
+  .render({ tokenizer, budget: 8_000, renderer: chatCompletions });
 ```
 
 See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
 
 ## Use Cria when you need...
 
-- **Need RAG?** Add `<VectorSearch>`!
-- **Need a summary for long conversations?** Add `<Summary>`!
-- **Need to cap history but keep structure?** Use `<Last>`.
-- **Need to drop optional context when the context window is full?** Add `<Omit>`.
-- **Need granular tool calling structure?** Add `<ToolCall>` and `<ToolResult>`.
+- **Need RAG?** Call `.vectorSearch({ store, query })`.
+- **Need a summary for long conversations?** Use `.summary(...)`.
+- **Need to cap history but keep structure?** Use `.last(...)`.
+- **Need to drop optional context when the context window is full?** Use `.omit(...)`.
+- **Need granular tool calling structure?** Use `.toolCall(...)` + `.toolResult(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
+- **Prefer TSX?** Import the optional JSX surface from `@fastpaca/cria/jsx`.
 
 ## Integrations
 
 <details>
 <summary><strong>OpenAI Chat Completions</strong></summary>
 
-```tsx
+```ts
 import OpenAI from "openai";
 import { chatCompletions } from "@fastpaca/cria/openai";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const messages = await render(prompt, { budget, renderer: chatCompletions });
+const messages = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer: chatCompletions });
 const response = await client.chat.completions.create({ model: "gpt-4o", messages });
 ```
 </details>
@@ -70,13 +66,17 @@ const response = await client.chat.completions.create({ model: "gpt-4o", message
 <details>
 <summary><strong>OpenAI Responses</strong></summary>
 
-```tsx
+```ts
 import OpenAI from "openai";
 import { responses } from "@fastpaca/cria/openai";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const input = await render(prompt, { budget, renderer: responses });
+const input = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer: responses });
 const response = await client.responses.create({ model: "o3", input });
 ```
 </details>
@@ -84,16 +84,17 @@ const response = await client.responses.create({ model: "o3", input });
 <details>
 <summary><strong>Anthropic</strong></summary>
 
-```tsx
+```ts
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@fastpaca/cria/anthropic";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const client = new Anthropic();
-const { system, messages } = await render(prompt, {
-  budget,
-  renderer: anthropic,
-});
+const { system, messages } = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer: anthropic });
 const response = await client.messages.create({ model: "claude-sonnet-4-20250514", system, messages });
 ```
 </details>
@@ -101,12 +102,16 @@ const response = await client.messages.create({ model: "claude-sonnet-4-20250514
 <details>
 <summary><strong>Vercel AI SDK</strong></summary>
 
-```tsx
+```ts
 import { renderer } from "@fastpaca/cria/ai-sdk";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 import { generateText } from "ai";
 
-const messages = await render(prompt, { budget, renderer });
+const messages = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer });
 const { text } = await generateText({ model, messages });
 ```
 </details>
@@ -115,7 +120,7 @@ const { text } = await generateText({ model, messages });
 
 **Done**
 
-- [x] JSX runtime and priority-based eviction
+- [x] Fluent DSL and priority-based eviction
 - [x] Components: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
 - [x] Renderers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
 - [x] AI SDK helpers: Messages component, DEFAULT_PRIORITIES
@@ -135,6 +140,7 @@ const { text } = await generateText({ model, messages });
 - Issues and PRs are welcome.
 - Keep changes small and focused.
 - If you add a feature, include a short example or doc note.
+- Prefer DSL-based examples in contributions; JSX lives under `@fastpaca/cria/jsx` as optional sugar.
 
 ## Support
 
