@@ -222,6 +222,7 @@ describe("PromptBuilder", () => {
     });
   });
 
+  // JSX compatibility: ensure DSL output matches JSX shape for parity. DSL is primary.
   describe("equivalence with JSX components", () => {
     test("DSL produces same output as JSX for messages", async () => {
       const dslElement = await cria
