@@ -7,41 +7,51 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { Message, Region, render, ToolCall, ToolResult } from "@fastpaca/cria";
+import { cria, Message, ToolCall, ToolResult } from "@fastpaca/cria";
 import { anthropic } from "@fastpaca/cria/anthropic";
 
 // Your tokenizer (use a proper tokenizer in production)
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
-// Build your prompt with Cria components
-const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system">You are a helpful weather assistant.</Message>
-    <Message messageRole="user">What's the weather in Paris?</Message>
-    <Message messageRole="assistant">
-      <ToolCall
-        input={{ city: "Paris" }}
-        priority={1}
-        toolCallId="call_123"
-        toolName="getWeather"
-      />
-    </Message>
-    <Message messageRole="user">
-      <ToolResult
-        output={{ temperature: 18, condition: "sunny" }}
-        priority={1}
-        toolCallId="call_123"
-        toolName="getWeather"
-      />
-    </Message>
-    <Message messageRole="user">Should I bring a jacket?</Message>
-  </Region>
-);
+// Build your prompt with the DSL
+const assistantToolCall = Message({
+  messageRole: "assistant",
+  priority: 1,
+  children: [
+    ToolCall({
+      input: { city: "Paris" },
+      priority: 1,
+      toolCallId: "call_123",
+      toolName: "getWeather",
+    }),
+  ],
+});
+
+const toolResultMessage = Message({
+  messageRole: "user",
+  priority: 1,
+  children: [
+    ToolResult({
+      output: { temperature: 18, condition: "sunny" },
+      priority: 1,
+      toolCallId: "call_123",
+      toolName: "getWeather",
+    }),
+  ],
+});
+
+const prompt = cria
+  .prompt()
+  .system("You are a helpful weather assistant.")
+  .user("What's the weather in Paris?")
+  .raw(assistantToolCall)
+  .raw(toolResultMessage)
+  .user("Should I bring a jacket?");
 
 async function main() {
   // Render to Anthropic format
   // Note: system message is extracted separately
-  const { system, messages } = await render(prompt, {
+  const { system, messages } = await prompt.render({
     tokenizer,
     budget: 200_000,
     renderer: anthropic,
