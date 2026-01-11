@@ -19,11 +19,11 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 - [ ] Add a minimal DSL-only example for each integration; move JSX versions under a clearly marked `jsx/` subfolder or README note (pending).
 
 ## Source comments and docs
-- [ ] src/index.ts header comment references “JSX-based prompt renderer”; rewrite to DSL-first and mention JSX optional entry.
-- [ ] src/render.ts comment about “The JSX runtime normalizes children…”: update to “builder/JSX produce PromptElement; render awaits root value” (include both surfaces).
-- [ ] src/types.ts comment “after JSX normalization”: broaden to “after child normalization”.
+- [x] src/index.ts header comment references “JSX-based prompt renderer”; rewrite to DSL-first and mention JSX optional entry.
+- [x] src/render.ts comment about “The JSX runtime normalizes children…”: update to “builder/JSX produce PromptElement; render awaits root value” (include both surfaces).
+- [x] src/types.ts comment “after JSX normalization”: broaden to “after child normalization”.
 - [ ] src/dsl.test.ts “equivalence with JSX” block: keep but ensure intent (compatibility) is documented; optionally add DSL-only golden tests.
-- [ ] Provider docs/types: document new Provider classes (OpenAI/Anthropic/AI SDK) for `.provider()` in DSL.
+- [x] Provider docs/types: document new Provider classes (OpenAI/Anthropic/AI SDK) for `.provider()` in DSL.
 
 ## Config/exports
 - [ ] tsconfig.json: currently sets `jsxImportSource: "@fastpaca/cria"`; evaluate if default config should target DSL (maybe move JSX config to examples or doc note).
