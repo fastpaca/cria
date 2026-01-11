@@ -9,7 +9,7 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 - [x] docs/concepts.md: adjust “Your JSX compiles…” phrasing to “Builder produces IR”; keep a sidebar for JSX translation.
 - [x] docs/custom-components.md: add DSL-based custom builder patterns; move JSX sample to optional section.
 - [x] docs/integrations/*.md: ensure code snippets use DSL; add one-liner on JSX entry path.
-- [ ] docs/strategies.md: swap JSX samples for DSL chains; ensure render calls use `.render()` convenience.
+- [x] docs/strategies.md: swap JSX samples for DSL chains; ensure render calls use `.render()` convenience.
 - [x] docs/errors.md / observability / recipes: swap JSX samples for DSL chains.
 - [x] Any docs mentioning “configure JSX runtime” need DSL-first wording and optional JSX appendix.
 
@@ -34,10 +34,6 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 - [ ] Add DSL-focused examples/tests mirroring prior JSX snapshot/fit tests (render.test.tsx currently JSX-based).
 - [ ] Add a small compatibility test to import `@fastpaca/cria/jsx` runtime to ensure optional entry works after build.
 - [ ] Consider snapshot tests for DSL chains to lock behavior (esp. async components like VectorSearch/Summary).
-
-## Migration guidance
-- [ ] Write a migration note/changelog entry describing DSL-first, JSX optional path, Provider classes, `.render()` convenience, `merge/union`.
-- [ ] Add inline deprecation notes (docs) for JSX-first usage, pointing to DSL equivalents.
 
 ## Nice-to-haves
 - [ ] Provide a DSL recipe for common patterns (system/context/ask) to replace JSX snippets across docs.
