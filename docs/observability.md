@@ -6,8 +6,9 @@ Cria provides tools for debugging, monitoring, and validating prompts.
 
 Lifecycle hooks observe the fitting process without affecting render behavior. Hooks are fire-and-forget: they never delay rendering and errors are silently swallowed.
 
-```tsx
+```ts
 import type { RenderHooks } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const hooks: RenderHooks = {
   onFitStart: (event) => {
@@ -27,7 +28,11 @@ const hooks: RenderHooks = {
   },
 };
 
-render(prompt, { tokenizer, budget: 128000, hooks });
+const output = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ tokenizer, budget: 128000, hooks });
 ```
 
 | Hook | Fires When | Event Properties |
@@ -42,7 +47,7 @@ render(prompt, { tokenizer, budget: 128000, hooks });
 
 Cria exports Zod schemas for runtime validation of prompt elements:
 
-```tsx
+```ts
 import { PromptElementSchema, PromptChildrenSchema } from "@fastpaca/cria";
 
 PromptElementSchema.parse(element);
@@ -53,7 +58,7 @@ PromptChildrenSchema.safeParse(children);
 
 Create deterministic snapshots of fitted prompts for diffing and debugging:
 
-```tsx
+```ts
 import { createSnapshot, diffSnapshots, createSnapshotHooks } from "@fastpaca/cria";
 
 // Manual snapshot
@@ -73,14 +78,18 @@ const hooks = createSnapshotHooks({
 
 Emit spans for fit lifecycle events:
 
-```tsx
+```ts
 import { createOtelRenderHooks } from "@fastpaca/cria";
 import { trace } from "@opentelemetry/api";
 
 const tracer = trace.getTracer("my-app");
 const hooks = createOtelRenderHooks({ tracer });
 
-render(prompt, { tokenizer, budget, hooks });
+await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ tokenizer, budget, hooks });
 ```
 
 Spans include:
