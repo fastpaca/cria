@@ -28,7 +28,7 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 ## Config/exports
 - [x] tsconfig.json: remove default `jsxImportSource` for core/examples; DSL is default, JSX is optional entry.
 - [ ] package.json exports: verify JSX optional entry messaging in README; consider deprecating root JSX exports in a future major (add TODO/release note).
-- [x] Ensure `@fastpaca/cria/jsx` path is documented; optionally add `package.json` `"typesVersions"` hint if needed. (Docs and examples now note optional JSX entry.)
+- [ ] Ensure `@fastpaca/cria/jsx` path is documented; optionally add `package.json` `"typesVersions"` hint if needed. (Docs and examples now note optional JSX entry.)
 
 ## Tests and tooling
 - [x] Add DSL-focused examples/tests mirroring prior JSX snapshot/fit tests (render.test.tsx currently JSX-based).
@@ -36,5 +36,5 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 - [x] Consider snapshot tests for DSL chains to lock behavior (esp. async components like VectorSearch/Summary).
 
 ## Nice-to-haves
-- [ ] Provide a DSL recipe for common patterns (system/context/ask) to replace JSX snippets across docs.
+- [x] Provide a DSL recipe for common patterns (system/context/ask) to replace JSX snippets across docs.
 - [ ] Add lint/example that enforces DSL in examples (or at least documents preferred style).
