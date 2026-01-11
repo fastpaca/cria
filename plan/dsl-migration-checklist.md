@@ -37,4 +37,4 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 
 ## Nice-to-haves
 - [x] Provide a DSL recipe for common patterns (system/context/ask) to replace JSX snippets across docs.
-- [ ] Add lint/example that enforces DSL in examples (or at least documents preferred style).
+- [x] Add lint/example that enforces DSL in examples (or at least documents preferred style).
