@@ -28,6 +28,12 @@ class StubSpan implements Span {
   addEvent(): this {
     return this;
   }
+  addLink(): this {
+    return this;
+  }
+  addLinks(): this {
+    return this;
+  }
   setStatus(status: any): this {
     this.status = status;
     return this;
@@ -54,6 +60,17 @@ class StubTracer implements Tracer {
     this.spans.push(span);
     return span;
   }
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    fn: F
+  ): ReturnType<F> {
+    const span = this.startSpan(name);
+    try {
+      return fn(span) as ReturnType<F>;
+    } finally {
+      span.end();
+    }
+  }
 }
 
 const tokenizer = (text: string): number => text.length;
@@ -79,8 +96,9 @@ describe("createOtelRenderHooks", () => {
     ]);
 
     const rootSpan = tracer.spans[0];
-    expect(rootSpan.attributes["cria.budget"]).toBe(1);
-    expect(typeof rootSpan.attributes["cria.total_tokens"]).toBe("number");
+    expect(rootSpan).toBeDefined();
+    expect(rootSpan?.attributes["cria.budget"]).toBe(1);
+    expect(typeof rootSpan?.attributes["cria.total_tokens"]).toBe("number");
   });
 
   test("records errors on fit failure", async () => {
@@ -102,11 +120,11 @@ describe("createOtelRenderHooks", () => {
   });
 
   test("propagates tracer errors", async () => {
-    const tracer: Tracer = {
+    const tracer = {
       startSpan: () => {
         throw new Error("boom");
       },
-    } as Tracer;
+    } as unknown as Tracer;
 
     const hooks = createOtelRenderHooks({ tracer });
     const element = <Region priority={0}>Hello</Region>;

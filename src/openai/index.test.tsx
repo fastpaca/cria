@@ -287,10 +287,9 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
       <Message messageRole="assistant">
         {[
           "Before",
-          <Reasoning key="r" priority={1} text="thinking..." />,
+          <Reasoning priority={1} text="thinking..." />,
           <ToolCall
             input={{ city: "Paris" }}
-            key="tc"
             priority={1}
             toolCallId="call_123"
             toolName="getWeather"

@@ -74,6 +74,23 @@ export interface CriaContext {
   provider?: ModelProvider | undefined;
 }
 
+// Convenience type for functions that can return a promise or a value.
+export type MaybePromise<T> = T | Promise<T>;
+
+/**
+ * A function that counts tokens in a string.
+ * Cria doesn't bundle a tokenizer. You provide one.
+ *
+ * @example
+ * ```typescript
+ * import { encoding_for_model } from "tiktoken";
+ *
+ * const enc = encoding_for_model("gpt-4");
+ * const tokenizer: Tokenizer = (text) => enc.encode(text).length;
+ * ```
+ */
+export type Tokenizer = (text: string) => number;
+
 /**
  * Semantic variants for a region node.
  *
@@ -114,23 +131,6 @@ export const PromptKindSchema = z.union([
 export type PromptKind = z.infer<typeof PromptKindSchema>;
 export type PromptNodeKind = PromptKind["kind"];
 
-// Convenience type for functions that can return a promise or a value.
-export type MaybePromise<T> = T | Promise<T>;
-
-/**
- * A function that counts tokens in a string.
- * Cria doesn't bundle a tokenizer. You provide one.
- *
- * @example
- * ```typescript
- * import { encoding_for_model } from "tiktoken";
- *
- * const enc = encoding_for_model("gpt-4");
- * const tokenizer: Tokenizer = (text) => enc.encode(text).length;
- * ```
- */
-export type Tokenizer = (text: string) => number;
-
 /**
  * The core IR node type. All Cria components return a `PromptElement`.
  *
@@ -146,25 +146,94 @@ export type Tokenizer = (text: string) => number;
 const strategyValidator = (value: unknown): value is Strategy =>
   typeof value === "function";
 
-const PromptElementBaseSchema = z.object({
-  priority: z.number(),
-  strategy: z.custom<Strategy>(strategyValidator).optional(),
-  id: z.string().optional(),
-  children: z.lazy(() => z.array(z.union([z.string(), PromptElementSchema]))),
-  context: z.custom<CriaContext>().optional(),
-});
+export interface PromptElementBase {
+  priority: number;
+  strategy?: Strategy | undefined;
+  id?: string | undefined;
+  context?: CriaContext | undefined;
+  children: PromptChildren;
+}
 
-export const PromptElementSchema = z.lazy(() =>
+export type PromptElement =
+  | (PromptElementBase & { kind?: undefined })
+  | (PromptElementBase & { kind: "message"; role: PromptRole })
+  | (PromptElementBase & {
+      kind: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    })
+  | (PromptElementBase & {
+      kind: "tool-result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+    })
+  | (PromptElementBase & { kind: "reasoning"; text: string });
+
+export type PromptChild = string | PromptElement;
+export type PromptChildren = PromptChild[];
+
+const PromptBaseSchema = z
+  .object({
+    priority: z.number(),
+    strategy: z.custom<Strategy>(strategyValidator).optional(),
+    id: z.string().optional(),
+    context: z.custom<CriaContext>().optional(),
+  })
+  .strict();
+
+export const PromptElementSchema: z.ZodType<PromptElement> = z.lazy(() =>
   z.union([
-    PromptElementBaseSchema.merge(PromptKindNoneSchema),
-    PromptElementBaseSchema.merge(PromptKindMessageSchema),
-    PromptElementBaseSchema.merge(PromptKindToolCallSchema),
-    PromptElementBaseSchema.merge(PromptKindToolResultSchema),
-    PromptElementBaseSchema.merge(PromptKindReasoningSchema),
+    PromptBaseSchema.extend({
+      kind: z.undefined().optional(),
+      children: z.array(
+        z.union([z.string(), z.lazy(() => PromptElementSchema)])
+      ),
+    }),
+    PromptBaseSchema.extend({
+      kind: z.literal("message"),
+      role: PromptRoleSchema,
+      children: z.array(
+        z.union([z.string(), z.lazy(() => PromptElementSchema)])
+      ),
+    }),
+    PromptBaseSchema.extend({
+      kind: z.literal("tool-call"),
+      toolCallId: z.string(),
+      toolName: z.string(),
+      input: z.unknown(),
+      children: z.array(
+        z.union([z.string(), z.lazy(() => PromptElementSchema)])
+      ),
+    }),
+    PromptBaseSchema.extend({
+      kind: z.literal("tool-result"),
+      toolCallId: z.string(),
+      toolName: z.string(),
+      output: z.unknown(),
+      children: z.array(
+        z.union([z.string(), z.lazy(() => PromptElementSchema)])
+      ),
+    }),
+    PromptBaseSchema.extend({
+      kind: z.literal("reasoning"),
+      text: z.string(),
+      children: z.array(
+        z.union([z.string(), z.lazy(() => PromptElementSchema)])
+      ),
+    }),
   ])
-);
+) as z.ZodType<PromptElement>;
 
-export type PromptElement = z.infer<typeof PromptElementSchema>;
+export const PromptChildSchema: z.ZodType<PromptChild> = z.union([
+  z.string(),
+  z.lazy(() => PromptElementSchema),
+]) as z.ZodType<PromptChild>;
+
+export const PromptChildrenSchema: z.ZodType<PromptChildren> = z.array(
+  PromptChildSchema
+) as z.ZodType<PromptChildren>;
 
 /**
  * A renderer that converts a fitted prompt tree into an output format.
@@ -213,18 +282,15 @@ export interface PromptRenderer<TOutput> {
  *
  * This is the only type you’ll find inside `PromptElement.children` after JSX normalization.
  */
-export const PromptChildSchema = z.lazy(() =>
-  z.union([z.string(), PromptElementSchema])
-);
-export type PromptChild = z.infer<typeof PromptChildSchema>;
+export type JsonValue =
+  | null
+  | string
+  | number
+  | boolean
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
-/**
- * Canonical normalized children list stored on `PromptElement.children`.
- */
-export const PromptChildrenSchema = z.lazy(() => z.array(PromptChildSchema));
-export type PromptChildren = z.infer<typeof PromptChildrenSchema>;
-
-export const JsonValueSchema = z.lazy(() =>
+export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     z.null(),
     z.string(),
@@ -234,8 +300,6 @@ export const JsonValueSchema = z.lazy(() =>
     z.record(JsonValueSchema),
   ])
 );
-
-export type JsonValue = z.infer<typeof JsonValueSchema>;
 
 export type StrategyResult = PromptElement | null;
 

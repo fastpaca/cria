@@ -32,7 +32,9 @@ function getTiktokenEncoder(modelHint?: string): Tiktoken | null {
     return encoder;
   } catch (error) {
     // Fall through to allow approximate fallback
-    if (process.env.DEBUG?.includes("cria:tokenizer")) {
+    const debugEnv = (process.env as NodeJS.ProcessEnv & { DEBUG?: string })
+      .DEBUG;
+    if (debugEnv?.includes("cria:tokenizer")) {
       // eslint-disable-next-line no-console
       console.warn("Falling back to approximate tokenizer:", error);
     }

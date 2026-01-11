@@ -126,7 +126,7 @@ async function safeInvoke<T>(
 interface TokenizerResolution {
   tokenizer: Tokenizer;
   source: "options" | "provider";
-  providerName?: string;
+  providerName?: string | undefined;
 }
 
 function resolveTokenizer(

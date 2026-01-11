@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { Omit, Region, render, Truncate } from "./index";
+import type { FitErrorEvent } from "./render";
 
 // Simple tokenizer: 1 token per 4 characters (approximates real tokenizers)
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
@@ -131,7 +132,7 @@ test("render: hooks fire in expected order", async () => {
 
 test("render: onFitError fires before FitError throws", async () => {
   const element = <Region priority={0}>Too long</Region>;
-  let errorEvent: { priority: number } | null = null;
+  let errorEvent: FitErrorEvent | null = null;
 
   await expect(
     render(element, {
@@ -139,13 +140,14 @@ test("render: onFitError fires before FitError throws", async () => {
       budget: 1,
       hooks: {
         onFitError: (event) => {
-          errorEvent = { priority: event.priority };
+          errorEvent = event;
         },
       },
     })
   ).rejects.toThrow(FIT_ERROR_PATTERN);
 
-  expect(errorEvent?.priority).toBe(-1);
+  expect(errorEvent).not.toBeNull();
+  expect((errorEvent as FitErrorEvent | null)?.priority).toBe(-1);
 });
 
 test("render: hook errors bubble (sync error)", async () => {
