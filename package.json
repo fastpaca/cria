@@ -9,6 +9,7 @@
     "url": "https://github.com/fastpaca/cria"
   },
   "type": "module",
+  "private": true,
   "publishConfig": {
     "access": "public"
   },
