@@ -4,70 +4,77 @@ Short patterns you can adapt to your app.
 
 ## Chat
 
-```tsx
-<Region>
-  <Message messageRole="system">System rules</Message>
-  <Region>{history}</Region>
-  <Message messageRole="user">Current request</Message>
-</Region>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("System rules")
+  .region((r) => r.raw(history))
+  .user("Current request");
 ```
 
 ## Tool use
 
-```tsx
-<Region>
-  <Message messageRole="system">Tool policy</Message>
-  <Message messageRole="user">Task</Message>
-  <Message messageRole="assistant">
-    <ToolCall toolCallId="1" toolName="search" input={{ q: "weather" }} />
-  </Message>
-  <Message messageRole="tool">
-    <ToolResult toolCallId="1" toolName="search" output={{ temp: 72 }} />
-  </Message>
-</Region>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("Tool policy")
+  .user("Task")
+  .message("assistant", "", {
+    priority: 0,
+  })
+  .toolCall({ q: "weather" }, { toolCallId: "1", toolName: "search" })
+  .toolResult({ temp: 72 }, { toolCallId: "1", toolName: "search" });
 ```
 
 ## RAG
 
-```tsx
-<Region>
-  <Message messageRole="system">Answer based on the retrieved context.</Message>
-  <VectorSearch store={vectorStore} limit={5}>
-    {query}
-  </VectorSearch>
-  <Message messageRole="user">{question}</Message>
-</Region>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("Answer based on the retrieved context.")
+  .vectorSearch({ store: vectorStore, query, limit: 5 })
+  .user(question);
 ```
 
 ## Reasoning replay for OpenAI Responses
 
-```tsx
-<Reasoning text={previousReasoning} />
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria.prompt().reasoning(previousReasoning);
 ```
 
 ## Budget fitting
 
 ### History with token limit
 
-```tsx
-<Region priority={0}>
-  <Message messageRole="system">System rules</Message>
-  <Truncate budget={6000} priority={2}>{history}</Truncate>
-  <Omit priority={3}>{examples}</Omit>
-  <Message messageRole="user">{question}</Message>
-</Region>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("System rules")
+  .truncate(history, { budget: 6000, priority: 2 })
+  .omit(examples, { priority: 3 })
+  .user(question);
 ```
 
 ### Progressive summarization
 
-```tsx
-import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
+```ts
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 
 const store = new InMemoryStore<StoredSummary>();
 
-<Summary id="history" store={store} priority={2}>
-  {conversationHistory}
-</Summary>
+const prompt = cria
+  .prompt()
+  .summary(conversationHistory, { id: "history", store, priority: 2 });
 ```
 
 ## Related
