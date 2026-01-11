@@ -31,7 +31,7 @@ Tracking all spots that still assume JSX-first or need updates to reflect the DS
 - [ ] Ensure `@fastpaca/cria/jsx` path is documented; optionally add `package.json` `"typesVersions"` hint if needed.
 
 ## Tests and tooling
-- [ ] Add DSL-focused examples/tests mirroring prior JSX snapshot/fit tests (render.test.tsx currently JSX-based).
+- [x] Add DSL-focused examples/tests mirroring prior JSX snapshot/fit tests (render.test.tsx currently JSX-based).
 - [x] Add a small compatibility test to import `@fastpaca/cria/jsx` runtime to ensure optional entry works after build.
 - [ ] Consider snapshot tests for DSL chains to lock behavior (esp. async components like VectorSearch/Summary).
 
