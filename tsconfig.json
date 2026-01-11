@@ -14,8 +14,6 @@
     "noPropertyAccessFromIndexSignature": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "@fastpaca/cria",
     "verbatimModuleSyntax": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
