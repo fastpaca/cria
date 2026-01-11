@@ -67,7 +67,7 @@ export function createSnapshotHooks({
       }
       const snapshot = createSnapshot(event.result, {
         tokenizer,
-        renderer,
+        ...(renderer && { renderer }),
       });
       await onSnapshot(snapshot);
     },
@@ -202,7 +202,7 @@ function snapshotElement(
   renderer: PromptRenderer<unknown>
 ): SnapshotElement {
   const childSnapshots = element.children.map(
-    (child): SnapshotChild =>
+    (child: string | PromptElement): SnapshotChild =>
       typeof child === "string"
         ? child
         : snapshotElement(child, tokenizer, renderer)
@@ -210,7 +210,7 @@ function snapshotElement(
 
   const contentProjection = renderer.tokenString(element);
   const tokens = tokenizer(contentProjection);
-  const childHashes = childSnapshots.map((child): string =>
+  const childHashes = childSnapshots.map((child: SnapshotChild): string =>
     typeof child === "string" ? hashString(child) : child.hash
   );
 
@@ -240,11 +240,11 @@ function snapshotElement(
 function hashElement(input: {
   kind: PromptElement["kind"];
   priority: number;
-  role?: PromptRole;
-  text?: string;
-  toolCallId?: string;
-  toolName?: string;
-  id?: string;
+  role?: PromptRole | undefined;
+  text?: string | undefined;
+  toolCallId?: string | undefined;
+  toolName?: string | undefined;
+  id?: string | undefined;
   tokens: number;
   childHashes: string[];
 }): string {
