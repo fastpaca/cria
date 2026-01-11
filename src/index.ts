@@ -44,6 +44,8 @@ export {
   Truncate,
   VectorSearch,
 } from "./components";
+// DSL
+export { cria, merge, PromptBuilder, prompt, union } from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,

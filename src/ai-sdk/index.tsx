@@ -513,6 +513,54 @@ interface AISDKProviderProps {
 type AISDKRole = "user" | "assistant" | "system";
 const VALID_AI_SDK_ROLES = new Set<string>(["user", "assistant", "system"]);
 
+/**
+ * ModelProvider implementation that wraps an AI SDK LanguageModel.
+ * Use this with the DSL's `.provider()` method.
+ *
+ * @example
+ * ```typescript
+ * import { cria } from "@fastpaca/cria";
+ * import { Provider } from "@fastpaca/cria/ai-sdk";
+ * import { openai } from "@ai-sdk/openai";
+ *
+ * const provider = new Provider(openai("gpt-4o"));
+ *
+ * const prompt = cria
+ *   .prompt()
+ *   .provider(provider, (p) =>
+ *     p.summary(content, { id: "summary", store })
+ *   )
+ *   .build();
+ * ```
+ */
+export class Provider implements ModelProvider {
+  readonly name = "ai-sdk";
+  private readonly model: LanguageModel;
+
+  constructor(model: LanguageModel) {
+    this.model = model;
+  }
+
+  async completion(request: CompletionRequest): Promise<CompletionResult> {
+    const messages: ModelMessage[] = request.system
+      ? [{ role: "system", content: request.system }]
+      : [];
+
+    for (const msg of request.messages) {
+      if (VALID_AI_SDK_ROLES.has(msg.role)) {
+        messages.push({ role: msg.role as AISDKRole, content: msg.content });
+      }
+    }
+
+    const { text } = await generateText({
+      model: this.model,
+      messages,
+    });
+
+    return { text };
+  }
+}
+
 export function AISDKProvider({
   model,
   tokenizer,

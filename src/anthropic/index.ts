@@ -244,6 +244,54 @@ function toToolResultBlock(part: ToolResultPart): ToolResultBlockParam {
 type AnthropicRole = "user" | "assistant";
 const VALID_ANTHROPIC_ROLES = new Set<string>(["user", "assistant"]);
 
+/**
+ * ModelProvider implementation that wraps an Anthropic client.
+ * Use this with the DSL's `.provider()` method.
+ *
+ * @example
+ * ```typescript
+ * import Anthropic from "@anthropic-ai/sdk";
+ * import { cria } from "@fastpaca/cria";
+ * import { Provider } from "@fastpaca/cria/anthropic";
+ *
+ * const client = new Anthropic();
+ * const provider = new Provider(client, "claude-sonnet-4-20250514");
+ *
+ * const prompt = cria
+ *   .prompt()
+ *   .provider(provider, (p) =>
+ *     p.summary(content, { id: "summary", store })
+ *   )
+ *   .build();
+ * ```
+ */
+export class Provider implements ModelProvider {
+  readonly name = "anthropic";
+  private readonly client: Anthropic;
+  private readonly model: Model;
+  private readonly maxTokens: number;
+
+  constructor(client: Anthropic, model: Model, maxTokens = 1024) {
+    this.client = client;
+    this.model = model;
+    this.maxTokens = maxTokens;
+  }
+
+  async completion(request: CompletionRequest): Promise<CompletionResult> {
+    const messages = convertToAnthropicMessages(request);
+
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: this.maxTokens,
+      ...(request.system ? { system: request.system } : {}),
+      messages,
+    });
+
+    const text = extractTextFromResponse(response.content);
+    return { text };
+  }
+}
+
 function convertToAnthropicMessages(
   request: CompletionRequest
 ): MessageParam[] {
