@@ -8,20 +8,20 @@ const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 
 test("DSL render: basic text output", async () => {
-  const prompt = cria.prompt().raw({ priority: 0, children: ["Hello, world!"] });
+  const prompt = cria
+    .prompt()
+    .raw({ priority: 0, children: ["Hello, world!"] });
   const result = await render(await prompt.build(), { tokenizer, budget: 100 });
   expect(result).toBe("Hello, world!");
 });
 
 test("DSL render: omit removes region when over budget", async () => {
-  const prompt = cria
-    .prompt()
-    .region((r) =>
-      r
-        .raw({ priority: 0, children: ["Important "] })
-        .omit("Less important content that should be removed", { priority: 1 })
-        .raw({ priority: 0, children: ["Also important"] })
-    );
+  const prompt = cria.prompt().region((r) =>
+    r
+      .raw({ priority: 0, children: ["Important "] })
+      .omit("Less important content that should be removed", { priority: 1 })
+      .raw({ priority: 0, children: ["Also important"] })
+  );
 
   const resultLarge = await prompt.render({ tokenizer, budget: 100 });
   expect(resultLarge).toContain("Less important");
@@ -33,14 +33,12 @@ test("DSL render: omit removes region when over budget", async () => {
 
 test("DSL render: truncate reduces content", async () => {
   const longContent = "A".repeat(100);
-  const prompt = cria
-    .prompt()
-    .region((r) =>
-      r.raw({ priority: 0, children: ["Header "] }).truncate(longContent, {
-        budget: 5,
-        priority: 1,
-      })
-    );
+  const prompt = cria.prompt().region((r) =>
+    r.raw({ priority: 0, children: ["Header "] }).truncate(longContent, {
+      budget: 5,
+      priority: 1,
+    })
+  );
 
   const result = await prompt.render({ tokenizer, budget: 10 });
   expect(result.length).toBeLessThan(100);
@@ -50,9 +48,7 @@ test("DSL render: truncate reduces content", async () => {
 test("DSL render: priority ordering - lower priority removed first", async () => {
   const prompt = cria.prompt().region((r) =>
     r
-      .region((child) => child.raw({ priority: 0, children: ["Critical"] }), {
-        priority: 0,
-      })
+      .region((child) => child.raw({ priority: 0, children: ["Critical"] }))
       .omit("Medium importance", { priority: 1 })
       .omit("Low importance", { priority: 2 })
   );
@@ -64,9 +60,10 @@ test("DSL render: priority ordering - lower priority removed first", async () =>
 });
 
 test("DSL render: throws FitError when cannot fit", async () => {
-  const prompt = cria
-    .prompt()
-    .raw({ priority: 0, children: ["This content has no strategy and cannot be reduced"] });
+  const prompt = cria.prompt().raw({
+    priority: 0,
+    children: ["This content has no strategy and cannot be reduced"],
+  });
 
   await expect(prompt.render({ tokenizer, budget: 1 })).rejects.toThrow(
     FIT_ERROR_PATTERN
@@ -77,7 +74,9 @@ test("DSL render: hook order via render() convenience", async () => {
   const calls: string[] = [];
   const prompt = cria
     .prompt()
-    .region((r) => r.raw({ priority: 0, children: ["A"] }).omit("BBBB", { priority: 1 }));
+    .region((r) =>
+      r.raw({ priority: 0, children: ["A"] }).omit("BBBB", { priority: 1 })
+    );
 
   const result = await prompt.render({
     tokenizer,

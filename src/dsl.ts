@@ -197,7 +197,14 @@ export class PromptBuilder {
     nameOrFn: string | ((builder: PromptBuilder) => PromptBuilder),
     maybeFn?: (builder: PromptBuilder) => PromptBuilder
   ): PromptBuilder {
-    return this.section(nameOrFn as never, maybeFn as never);
+    if (typeof nameOrFn === "string") {
+      if (!maybeFn) {
+        throw new Error("region() requires a callback function");
+      }
+      return this.section(nameOrFn, maybeFn);
+    }
+
+    return this.section(nameOrFn);
   }
 
   /**
