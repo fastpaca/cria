@@ -18,52 +18,16 @@
 Cria is a fluent DSL for structured prompt engineering. Compose prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or AI SDK formats. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
 
 ```ts
-import { openai } from "@ai-sdk/openai";
-import { generateText } from "ai";
-import { cria, InMemoryStore } from "@fastpaca/cria";
-import { renderer as aiSdkRenderer } from "@fastpaca/cria/ai-sdk";
-import { encoding_for_model } from "tiktoken";
-
-// Real tokenizer: GPT-4o token estimate
-const enc = encoding_for_model("gpt-4o-mini");
-const tokenizer = (text: string) => enc.encode(text).length;
-
-const history: Array<{ role: "user" | "assistant"; content: string }> = [
-  { role: "user", content: "Give me a quick rundown of Rust's ownership model." },
-  { role: "assistant", content: "Ownership enforces single owners, borrowing, and lifetimes." },
-  { role: "user", content: "And how does it differ from GC languages?" },
-];
-
-const supportingDocs = [
-  "Blog: Rust ownership vs GC — focus on deterministic drops and borrow checker.",
-  "RFC: Lifetimes ensure references outlive their use sites.",
-];
-
-const store = new InMemoryStore();
-
 const messages = await cria
   .prompt()
-  .system("You are a concise research assistant who cites sources.")
-  .summary(
-    history.map((m) => `${m.role}: ${m.content}`).join("\n"),
-    {
-      id: "thread-42",
-      store,
-      summarize: ({ content }) => summarizeWithModel(content), // plug in any summarizer
-      priority: 1, // keep summaries if possible
-    }
+  .system("You are a research assistant.")
+  .vectorSearch({ store, query: question, limit: 10 })
+  .provider(openai("gpt-5-nano"), p => p
+    .summary(conversation, { store: memory })
+    .last(conversation, { N: 20 })
   )
-  .last(history.map((m) => `${m.role}: ${m.content}`), { N: 6, priority: 2 }) // keep recent turns verbatim
-  .omit(supportingDocs, { priority: 3 }) // drop nice-to-have context first
-  .user("Summarize the key differences between Rust ownership and GC.", {
-    priority: 1,
-  })
-  .render({ tokenizer, budget: 8_000, renderer: aiSdkRenderer });
-
-const { text } = await generateText({
-  model: openai("gpt-4o-mini"),
-  messages,
-});
+  .user(question)
+  .render({ budget: 200_000, renderer });
 ```
 
 See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
