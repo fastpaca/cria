@@ -236,20 +236,6 @@ export const PromptChildrenSchema: z.ZodType<PromptChildren> = z.array(
 ) as z.ZodType<PromptChildren>;
 
 /**
- * A function that counts tokens in a string.
- * Cria doesn't bundle a tokenizer. You provide one.
- *
- * @example
- * ```typescript
- * import { encoding_for_model } from "tiktoken";
- *
- * const enc = encoding_for_model("gpt-4");
- * const tokenizer: Tokenizer = (text) => enc.encode(text).length;
- * ```
- */
-export type Tokenizer = (text: string) => number;
-
-/**
  * A renderer that converts a fitted prompt tree into an output format.
  *
  * Renderers are used for two things:

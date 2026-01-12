@@ -1,5 +1,4 @@
-import { cria } from "@fastpaca/cria";
-import { InMemoryStore, type StoredSummary } from "@fastpaca/cria/memory";
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 import { chatCompletions, Provider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 import { encoding_for_model } from "tiktoken";

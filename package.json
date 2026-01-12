@@ -41,6 +41,10 @@
       "types": "./dist/anthropic/index.d.ts",
       "import": "./dist/anthropic/index.js"
     },
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "import": "./dist/memory/index.js"
+    },
     "./memory/redis": {
       "types": "./dist/memory/redis.d.ts",
       "import": "./dist/memory/redis.js"
