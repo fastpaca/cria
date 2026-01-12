@@ -105,15 +105,15 @@ describe("VectorSearch", () => {
     expect(element.children[0]).toContain("First Document");
   });
 
-  it("throws when no results found", async () => {
+  it("handles empty results without throwing", async () => {
     const { store } = createMockStore<TestDocument>([]);
 
-    await expect(
-      VectorSearch({
-        store,
-        query: "nothing here",
-      })
-    ).rejects.toThrow("no results found");
+    const element = await VectorSearch({
+      store,
+      query: "nothing here",
+    });
+
+    expect(element.children[0]).toContain("no results");
   });
 
   it("throws when no query is available", async () => {

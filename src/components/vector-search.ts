@@ -20,11 +20,11 @@ export type ResultFormatter<T = unknown> = (
 
 /**
  * Default formatter that renders results as a numbered list.
- * Throws if no results found - provide a custom formatter to handle empty results differently.
+ * Returns a placeholder string when no results are found so prompts can degrade gracefully.
  */
 function defaultFormatter<T>(results: VectorSearchResult<T>[]): string {
   if (results.length === 0) {
-    throw new Error("VectorSearch: no results found");
+    return "Vector search returned no results.";
   }
 
   return results
