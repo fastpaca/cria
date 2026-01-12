@@ -18,24 +18,32 @@
 Cria is a fluent DSL for structured prompt engineering. Compose prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or AI SDK formats. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
 
 ```ts
+import OpenAI from "openai";
 import { cria, InMemoryStore } from "@fastpaca/cria";
-import { anthropic } from "@fastpaca/cria/anthropic";
+import { chatCompletions } from "@fastpaca/cria/openai";
 
+const tokenizer = (text: string) => Math.ceil(text.length / 4); // use your tokenizer
+const client = new OpenAI();
 const store = new InMemoryStore();
 
-const { system, messages } = await cria
+const messages = await cria
   .prompt()
-  .system("You are a concise research assistant.")
+  .system("You are a concise research assistant who cites sources.")
   .summary(historyMessages, {
-    id: "conversation",
+    id: "thread-42",
     store,
-    summarize: ({ content }) => summarizeWithModel(content), // any summarizer
-    priority: 1, // keep this if possible
+    summarize: ({ content }) => summarizeWithModel(content), // plug in any summarizer
+    priority: 1, // keep summaries if possible
   })
-  .last(historyMessages, { N: 8, priority: 2 }) // keep latest turns
-  .omit(optionalExamples, { priority: 3 }) // drop when tight on budget
+  .last(historyMessages, { N: 10, priority: 2 }) // keep recent turns verbatim
+  .omit(optionalContext, { priority: 3 }) // drop nice-to-have context first
   .user(userQuestion)
-  .render({ tokenizer, budget: 8_000, renderer: anthropic });
+  .render({ tokenizer, budget: 8_000, renderer: chatCompletions });
+
+const response = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages,
+});
 ```
 
 See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
