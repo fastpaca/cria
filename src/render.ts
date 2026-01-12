@@ -191,7 +191,13 @@ async function fitToBudget(
 
     const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
-      const error = new FitError(totalTokens - budget, -1, iteration);
+      const error = new FitError({
+        overBudgetBy: totalTokens - budget,
+        priority: -1,
+        iteration,
+        budget,
+        totalTokens,
+      });
       await safeInvoke(hooks?.onFitError, {
         error,
         iteration,
@@ -227,11 +233,13 @@ async function fitToBudget(
 
     const nextTokens = current ? tokenizer(tokenString(current)) : 0;
     if (nextTokens >= totalTokens) {
-      const error = new FitError(
-        nextTokens - budget,
-        lowestImportancePriority,
-        iteration
-      );
+      const error = new FitError({
+        overBudgetBy: nextTokens - budget,
+        priority: lowestImportancePriority,
+        iteration,
+        budget,
+        totalTokens: nextTokens,
+      });
       await safeInvoke(hooks?.onFitError, {
         error,
         iteration,

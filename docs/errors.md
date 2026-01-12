@@ -17,3 +17,10 @@ try {
 ```
 
 Handle this by reporting the gap to the user or adjusting priorities.
+
+`FitError` provides extra context to help decide what to trim:
+- `totalTokens`: current token count of the prompt
+- `budget`: configured budget
+- `overBudgetBy`: how far over budget the prompt is
+- `priority`: priority level that failed fitting (-1 when no strategies remain)
+- `iteration`: which fit loop iteration failed

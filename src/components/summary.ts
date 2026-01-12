@@ -99,7 +99,7 @@ function createSummaryStrategy({
       newSummary = await defaultSummarizer(summarizerContext, context.provider);
     } else {
       throw new Error(
-        `Summary "${id}" requires either a 'summarize' function or a provider component ancestor (e.g. <AISDKProvider>)`
+        `Summary "${id}" requires either a 'summarize' function or a provider scope. DSL: wrap in cria.provider(new Provider(), (p) => p.summary(...)). JSX: wrap with <AISDKProvider>...</AISDKProvider>.`
       );
     }
 

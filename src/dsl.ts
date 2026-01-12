@@ -233,7 +233,10 @@ export class PromptBuilder {
     const fn = typeof nameOrFn === "string" ? maybeFn : nameOrFn;
 
     if (!fn) {
-      throw new Error("section() requires a callback function");
+      const received = typeof nameOrFn === "string" ? typeof maybeFn : typeof nameOrFn;
+      throw new Error(
+        `section() requires a callback function (e.g. cria.prompt().section("name", (s) => ...)). Received: ${received}`
+      );
     }
 
     const inner = fn(new PromptBuilder([], this.context));

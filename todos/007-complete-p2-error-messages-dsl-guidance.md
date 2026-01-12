@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "007"
 tags: [code-review, agent-native, dx]
@@ -85,16 +85,23 @@ Update all user-facing error messages to include actionable guidance for both DS
 
 ## Acceptance Criteria
 
-- [ ] All error messages include DSL-specific guidance
-- [ ] FitError includes budget and totalTokens
-- [ ] Error messages tell user what was actually passed
-- [ ] Documentation reflects error message format
+- [x] All error messages include DSL-specific guidance
+- [x] FitError includes budget and totalTokens
+- [x] Error messages tell user what was actually passed
+- [x] Documentation reflects error message format
 
 ## Work Log
 
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from agent-native review | Finding documented |
+| 2026-01-11 | Error messages updated with DSL/JSX guidance + diagnostics | Implemented |
+
+## Resolution
+
+- Summary component error now points to both DSL `.provider()` usage and JSX provider wrapping.
+- `section()`/`region()` errors report the received type and an example DSL usage.
+- `FitError` captures `budget` and `totalTokens` and surfaces them in the error message; docs updated with the new fields.
 
 ## Resources
 
