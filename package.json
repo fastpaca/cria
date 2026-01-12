@@ -6,7 +6,7 @@
   "author": "seb@fastpaca.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/fastpaca/cria"
+    "url": "git+https://github.com/fastpaca/cria.git"
   },
   "type": "module",
   "publishConfig": {
