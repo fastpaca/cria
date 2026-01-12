@@ -47,11 +47,10 @@ async function normalizeChildren(
   }
 
   if (isChildrenArray(children)) {
-    const result: PromptChildren = [];
-    for (const child of children) {
-      result.push(...(await normalizeChildren(child)));
-    }
-    return result;
+    const normalized = await Promise.all(
+      children.map((child) => normalizeChildren(child))
+    );
+    return normalized.flat();
   }
 
   // It's a PromptElement (or a promise for one)

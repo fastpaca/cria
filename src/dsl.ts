@@ -505,9 +505,6 @@ async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
 async function normalizeChildren(
   children: readonly BuilderChild[]
 ): Promise<PromptChildren> {
-  const result: PromptChildren = [];
-  for (const child of children) {
-    result.push(...(await normalizeChild(child)));
-  }
-  return result;
+  const normalized = await Promise.all(children.map((child) => normalizeChild(child)));
+  return normalized.flat();
 }
