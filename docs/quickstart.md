@@ -1,6 +1,6 @@
 # Quickstart
 
-Cria lets you build prompts as reusable JSX components. Write your prompt structure once, render it to any provider.
+Cria lets you build prompts with a fluent DSL. Define your structure once, render it to any provider. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
 
 ## Install
 
@@ -8,35 +8,19 @@ Cria lets you build prompts as reusable JSX components. Write your prompt struct
 npm install @fastpaca/cria
 ```
 
-## Configure the JSX runtime
-
-Add this to `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "@fastpaca/cria"
-  }
-}
-```
-
 ## Build your first prompt
 
-```tsx
-import { Message, Region, render } from "@fastpaca/cria";
+```ts
+import { cria } from "@fastpaca/cria";
 
-const prompt = (
-  <Region>
-    <Message messageRole="system">You are a helpful assistant.</Message>
-    <Message messageRole="user">{userQuestion}</Message>
-  </Region>
-);
-
-const markdown = await render(prompt);
+const markdown = await cria
+  .prompt()
+  .system("You are a helpful assistant.")
+  .user(userQuestion)
+  .render({ tokenizer });
 ```
 
-That's it. `render()` returns a markdown string by default.
+That's it. `.render()` returns a markdown string by default (it uses the markdown renderer if you don't pass one).
 
 ## Recommended layout
 
@@ -55,19 +39,25 @@ Keep the user's current request last so the model sees it right before respondin
 
 The same prompt structure works with OpenAI, Anthropic, or Vercel AI SDK. Just swap the renderer:
 
-```tsx
+```ts
+import { cria } from "@fastpaca/cria";
 import { chatCompletions } from "@fastpaca/cria/openai";
 import { anthropic } from "@fastpaca/cria/anthropic";
-import { renderer } from "@fastpaca/cria/ai-sdk";
+import { renderer as aiSdk } from "@fastpaca/cria/ai-sdk";
+
+const prompt = cria.prompt().system("You are helpful.").user(userQuestion);
 
 // OpenAI
-const messages = await render(prompt, { renderer: chatCompletions });
+const messages = await prompt.render({ renderer: chatCompletions, tokenizer });
 
 // Anthropic
-const { system, messages } = await render(prompt, { renderer: anthropic });
+const { system, messages: anthropicMessages } = await prompt.render({
+  renderer: anthropic,
+  tokenizer,
+});
 
 // AI SDK
-const messages = await render(prompt, { renderer });
+const aiSdkMessages = await prompt.render({ renderer: aiSdk, tokenizer });
 ```
 
 No changes to your prompt structure. The renderer handles the format.
@@ -76,21 +66,16 @@ No changes to your prompt structure. The renderer handles the format.
 
 Because your prompt is a tree, you can assign priorities and let Cria trim low-priority content when you hit a token limit:
 
-```tsx
-import { Message, Omit, Region, Truncate, render } from "@fastpaca/cria";
+```ts
+import { cria } from "@fastpaca/cria";
 
-const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system">You are a helpful assistant.</Message>
-    <Truncate budget={4000} priority={2}>
-      {conversationHistory}
-    </Truncate>
-    <Omit priority={3}>{optionalExamples}</Omit>
-    <Message messageRole="user">{userQuestion}</Message>
-  </Region>
-);
-
-const output = await render(prompt, { tokenizer, budget: 8000 });
+const output = await cria
+  .prompt()
+  .system("You are a helpful assistant.")
+  .truncate(conversationHistory, { budget: 4000, priority: 2 })
+  .omit(optionalExamples, { priority: 3 })
+  .user(userQuestion)
+  .render({ tokenizer, budget: 8000 });
 ```
 
 Lower priority number = more important. Cria shrinks priority 3 first, then 2, and so on.
@@ -116,3 +101,18 @@ Budget fitting needs token counts. Pass a tokenizer to `render()`, or use a prov
 - **Providers**: OpenAIProvider, AnthropicProvider, AISDKProvider
 - **Memory**: InMemoryStore, Redis/Postgres adapters, Chroma/Qdrant vector stores
 - **Observability**: Render hooks, validation schemas, snapshots, OpenTelemetry
+
+## Optional JSX
+
+If you prefer TSX, install the same package and point your JSX runtime at `@fastpaca/cria/jsx`:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@fastpaca/cria/jsx"
+  }
+}
+```
+
+The JSX entry is sugar over the same IR; the DSL remains the primary API.

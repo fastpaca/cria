@@ -21,92 +21,101 @@
   </a>
 </p>
 
-Cria is a lightweight JSX prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
+Cria is a lightweight prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
-## Example
-
-```tsx
-import { Message, Omit, Region, Truncate, render } from "@fastpaca/cria";
-
-const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system">You are a helpful assistant.</Message>
-    <Last N={12} priority={2}>{historyMessages}</Last>
-    <Omit priority={3}>{optionalExamples}</Omit>
-    <Message messageRole="user">{userQuestion}</Message>
-  </Region>
-);
-
-const output = await render(prompt, { budget: 8_000 });
+```ts
+const messages = await cria
+  .prompt()
+  .system("You are a research assistant.")
+  .vectorSearch({ store, query: question, limit: 10 })
+  .provider(openai("gpt-5-nano"), p => p
+    .summary(conversation, { store: memory })
+    .last(conversation, { N: 20 })
+  )
+  .user(question)
+  .render({ budget: 200_000, renderer });
 ```
 
 See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
 
 ## Use Cria when you need...
 
-- **Need RAG?** Add `<VectorSearch>`!
-- **Need a summary for long conversations?** Add `<Summary>`!
-- **Need to cap history but keep structure?** Use `<Last>`.
-- **Need to drop optional context when the context window is full?** Add `<Omit>`.
-- **Need granular tool calling structure?** Add `<ToolCall>` and `<ToolResult>`.
+- **Need RAG?** Call `.vectorSearch({ store, query })`.
+- **Need a summary for long conversations?** Use `.summary(...)`.
+- **Need to cap history but keep structure?** Use `.last(...)`.
+- **Need to drop optional context when the context window is full?** Use `.omit(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
+- **Prefer TSX?** Import the optional JSX surface from `@fastpaca/cria/jsx`.
 
 ## Integrations
 
 <details>
 <summary><strong>OpenAI Chat Completions</strong></summary>
 
-```tsx
+```ts
 import OpenAI from "openai";
 import { chatCompletions } from "@fastpaca/cria/openai";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const messages = await render(prompt, { budget, renderer: chatCompletions });
-const response = await client.chat.completions.create({ model: "gpt-4o", messages });
+const messages = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer: chatCompletions });
+const response = await client.chat.completions.create({ model: "gpt-4o-mini", messages });
 ```
 </details>
 
 <details>
 <summary><strong>OpenAI Responses</strong></summary>
 
-```tsx
+```ts
 import OpenAI from "openai";
 import { responses } from "@fastpaca/cria/openai";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const input = await render(prompt, { budget, renderer: responses });
-const response = await client.responses.create({ model: "o3", input });
+const input = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer: responses });
+const response = await client.responses.create({ model: "gpt-5-nano", input });
 ```
 </details>
 
 <details>
 <summary><strong>Anthropic</strong></summary>
 
-```tsx
+```ts
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "@fastpaca/cria/anthropic";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const client = new Anthropic();
-const { system, messages } = await render(prompt, {
-  budget,
-  renderer: anthropic,
-});
-const response = await client.messages.create({ model: "claude-sonnet-4-20250514", system, messages });
+const { system, messages } = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer: anthropic });
+const response = await client.messages.create({ model: "claude-haiku-4-5", system, messages });
 ```
 </details>
 
 <details>
 <summary><strong>Vercel AI SDK</strong></summary>
 
-```tsx
+```ts
 import { renderer } from "@fastpaca/cria/ai-sdk";
-import { render } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 import { generateText } from "ai";
 
-const messages = await render(prompt, { budget, renderer });
+const messages = await cria
+  .prompt()
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget, tokenizer, renderer });
 const { text } = await generateText({ model, messages });
 ```
 </details>
@@ -115,26 +124,27 @@ const { text } = await generateText({ model, messages });
 
 **Done**
 
-- [x] JSX runtime and priority-based eviction
+- [x] Fluent DSL and priority-based eviction
 - [x] Components: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
 - [x] Renderers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
 - [x] AI SDK helpers: Messages component, DEFAULT_PRIORITIES
 - [x] Memory: InMemoryStore, Redis, Postgres, Chroma, Qdrant
 - [x] Observability: render hooks, validation schemas, snapshots, OpenTelemetry
+- [x] Tokenizer helpers
 
 **Planned**
 
-- [ ] Message storage (conversation history management)
-- [ ] Tokenizer helpers
 - [ ] Next.js adapter
 - [ ] GenAI semantic conventions for OpenTelemetry
 - [ ] Visualization tool
+- [ ] Prompt eval / testing functionality
 
 ## Contributing
 
 - Issues and PRs are welcome.
 - Keep changes small and focused.
 - If you add a feature, include a short example or doc note.
+- Prefer DSL-based examples in contributions; JSX lives under `@fastpaca/cria/jsx` as optional sugar.
 
 ## Support
 
@@ -145,7 +155,7 @@ const { text } = await generateText({ model, messages });
 
 - **Does this replace my LLM SDK?** No - Cria builds prompt structures. You still use your SDK to call the model.
 - **How do I tune token budgets?** Pass `budget` to `render()` and set priorities on regions. Providers include tiktoken defaults; see [docs/tokenization.md](docs/tokenization.md) to bring your own.
-- **Is this production-ready?** The core features are stable; see the docs for what's in progress.
+- **Is this production-ready?** Not yet! It is a work in progress and you should test it out before you run this in production.
 
 ## License
 

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { Omit, Region, render, Truncate } from "./index";
+import { cria, Omit, Region, render, Truncate } from "./index";
 import type { FitErrorEvent } from "./render";
 
 // Simple tokenizer: 1 token per 4 characters (approximates real tokenizers)
@@ -8,75 +8,75 @@ const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 
 test("render: basic text output", async () => {
-  const element = <Region priority={0}>Hello, world!</Region>;
+  const element = Region({ priority: 0, children: ["Hello, world!"] });
   const result = await render(element, { tokenizer, budget: 100 });
   expect(result).toBe("Hello, world!");
 });
 
 test("render: nested regions", async () => {
-  const element = (
-    <Region priority={0}>
-      Start <Region priority={1}>Middle</Region> End
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: ["Start ", Region({ priority: 1, children: ["Middle"] }), " End"],
+  });
   const result = await render(element, { tokenizer, budget: 100 });
   expect(result).toBe("Start Middle End");
 });
 
 test("render: omit removes region when over budget", async () => {
-  const element = (
-    <Region priority={0}>
-      Important{" "}
-      <Omit priority={1}>Less important content that should be removed</Omit>
-      Also important
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      "Important ",
+      Omit({
+        priority: 1,
+        children: ["Less important content that should be removed"],
+      }),
+      "Also important",
+    ],
+  });
 
   const resultLarge = await render(element, { tokenizer, budget: 100 });
-  expect(resultLarge).toContain("Less important");
+  expect(resultLarge).toBe(
+    "Important Less important content that should be removedAlso important"
+  );
 
   const resultSmall = await render(element, { tokenizer, budget: 10 });
-  expect(resultSmall).not.toContain("Less important");
-  expect(resultSmall).toContain("Important");
+  expect(resultSmall).toBe("Important Also important");
 });
 
 test("render: truncate reduces content", async () => {
   const longContent = "A".repeat(100);
-  const element = (
-    <Region priority={0}>
-      Header{" "}
-      <Truncate budget={5} priority={1}>
-        {longContent}
-      </Truncate>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      "Header ",
+      Truncate({ budget: 5, priority: 1, children: [longContent] }),
+    ],
+  });
 
   const result = await render(element, { tokenizer, budget: 10 });
-  expect(result.length).toBeLessThan(100);
-  expect(result).toContain("Header");
+  expect(result).toBe(`Header ${"A".repeat(20)}`);
 });
 
 test("render: priority ordering - lower priority removed first", async () => {
-  const element = (
-    <Region priority={0}>
-      <Region priority={0}>Critical</Region>
-      <Omit priority={1}>Medium importance</Omit>
-      <Omit priority={2}>Low importance</Omit>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Region({ priority: 0, children: ["Critical"] }),
+      Omit({ priority: 1, children: ["Medium importance"] }),
+      Omit({ priority: 2, children: ["Low importance"] }),
+    ],
+  });
 
   const result = await render(element, { tokenizer, budget: 5 });
-  expect(result).toContain("Critical");
-  expect(result).not.toContain("Medium");
-  expect(result).not.toContain("Low");
+  expect(result).toBe("Critical");
 });
 
 test("render: throws FitError when cannot fit", async () => {
-  const element = (
-    <Region priority={0}>
-      This content has no strategy and cannot be reduced
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: ["This content has no strategy and cannot be reduced"],
+  });
 
   await expect(render(element, { tokenizer, budget: 1 })).rejects.toThrow(
     FIT_ERROR_PATTERN
@@ -84,16 +84,13 @@ test("render: throws FitError when cannot fit", async () => {
 });
 
 test("render: multiple strategies at same priority applied together", async () => {
-  const element = (
-    <Region priority={0}>
-      <Omit id="a" priority={1}>
-        AAA
-      </Omit>
-      <Omit id="b" priority={1}>
-        BBB
-      </Omit>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Omit({ id: "a", priority: 1, children: ["AAA"] }),
+      Omit({ id: "b", priority: 1, children: ["BBB"] }),
+    ],
+  });
 
   const result = await render(element, { tokenizer, budget: 0 });
   expect(result).toBe("");
@@ -101,11 +98,10 @@ test("render: multiple strategies at same priority applied together", async () =
 
 test("render: hooks fire in expected order", async () => {
   const calls: string[] = [];
-  const element = (
-    <Region priority={0}>
-      A<Omit priority={1}>BBBB</Omit>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
+  });
 
   const result = await render(element, {
     tokenizer,
@@ -131,7 +127,7 @@ test("render: hooks fire in expected order", async () => {
 });
 
 test("render: onFitError fires before FitError throws", async () => {
-  const element = <Region priority={0}>Too long</Region>;
+  const element = Region({ priority: 0, children: ["Too long"] });
   let errorEvent: FitErrorEvent | null = null;
 
   await expect(
@@ -151,11 +147,10 @@ test("render: onFitError fires before FitError throws", async () => {
 });
 
 test("render: hook errors bubble (sync error)", async () => {
-  const element = (
-    <Region priority={0}>
-      A<Omit priority={1}>BBBB</Omit>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
+  });
 
   await expect(
     render(element, {
@@ -171,11 +166,10 @@ test("render: hook errors bubble (sync error)", async () => {
 });
 
 test("render: hook errors bubble (async error)", async () => {
-  const element = (
-    <Region priority={0}>
-      A<Omit priority={1}>BBBB</Omit>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
+  });
 
   await expect(
     render(element, {
@@ -192,7 +186,7 @@ test("render: hook errors bubble (async error)", async () => {
 });
 
 test("render: onFitError hook errors bubble", async () => {
-  const element = <Region priority={0}>Too long</Region>;
+  const element = Region({ priority: 0, children: ["Too long"] });
 
   await expect(
     render(element, {
@@ -207,16 +201,109 @@ test("render: onFitError hook errors bubble", async () => {
   ).rejects.toThrow("Error hook failed");
 });
 
-test("render: fit decisions are deterministic", async () => {
-  const buildTree = () => (
-    <Region priority={0}>
-      Head <Omit priority={3}>Drop</Omit>
-      <Truncate budget={4} priority={2}>
-        LongTail
-      </Truncate>
-      <Region priority={1}>End</Region>
-    </Region>
+test("render: DSL builder basic text output", async () => {
+  const prompt = cria
+    .prompt()
+    .raw({ priority: 0, children: ["Hello, world!"] });
+  const result = await render(await prompt.build(), { tokenizer, budget: 100 });
+  expect(result).toBe("Hello, world!");
+});
+
+test("render: DSL omit removes region when over budget", async () => {
+  const prompt = cria.prompt().region((r) =>
+    r
+      .raw({ priority: 0, children: ["Important "] })
+      .omit("Less important content that should be removed", { priority: 1 })
+      .raw({ priority: 0, children: ["Also important"] })
   );
+
+  const resultLarge = await prompt.render({ tokenizer, budget: 100 });
+  expect(resultLarge).toBe(
+    "Important Less important content that should be removedAlso important"
+  );
+
+  const resultSmall = await prompt.render({ tokenizer, budget: 10 });
+  expect(resultSmall).toBe("Important Also important");
+});
+
+test("render: DSL truncate reduces content", async () => {
+  const longContent = "A".repeat(100);
+  const prompt = cria.prompt().region((r) =>
+    r.raw({ priority: 0, children: ["Header "] }).truncate(longContent, {
+      budget: 5,
+      priority: 1,
+    })
+  );
+
+  const result = await prompt.render({ tokenizer, budget: 10 });
+  expect(result).toBe(`Header ${"A".repeat(20)}`);
+});
+
+test("render: DSL priority ordering - lower priority removed first", async () => {
+  const prompt = cria.prompt().region((r) =>
+    r
+      .region((child) => child.raw({ priority: 0, children: ["Critical"] }))
+      .omit("Medium importance", { priority: 1 })
+      .omit("Low importance", { priority: 2 })
+  );
+
+  const result = await prompt.render({ tokenizer, budget: 5 });
+  expect(result).toBe("Critical");
+});
+
+test("render: DSL throws FitError when cannot fit", async () => {
+  const prompt = cria.prompt().raw({
+    priority: 0,
+    children: ["This content has no strategy and cannot be reduced"],
+  });
+
+  await expect(prompt.render({ tokenizer, budget: 1 })).rejects.toThrow(
+    FIT_ERROR_PATTERN
+  );
+});
+
+test("render: DSL hook order via render() convenience", async () => {
+  const calls: string[] = [];
+  const prompt = cria
+    .prompt()
+    .region((r) =>
+      r.raw({ priority: 0, children: ["A"] }).omit("BBBB", { priority: 1 })
+    );
+
+  const result = await prompt.render({
+    tokenizer,
+    budget: 1,
+    hooks: {
+      onFitStart: () => {
+        calls.push("start");
+      },
+      onFitIteration: () => {
+        calls.push("iteration");
+      },
+      onStrategyApplied: () => {
+        calls.push("strategy");
+      },
+      onFitComplete: () => {
+        calls.push("complete");
+      },
+    },
+  });
+
+  expect(result).toBe("A");
+  expect(calls).toEqual(["start", "iteration", "strategy", "complete"]);
+});
+
+test("render: fit decisions are deterministic", async () => {
+  const buildTree = () =>
+    Region({
+      priority: 0,
+      children: [
+        "Head ",
+        Omit({ priority: 3, children: ["Drop"] }),
+        Truncate({ budget: 4, priority: 2, children: ["LongTail"] }),
+        Region({ priority: 1, children: ["End"] }),
+      ],
+    });
 
   type EventLog =
     | { type: "start"; totalTokens: number }

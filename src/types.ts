@@ -280,7 +280,7 @@ export interface PromptRenderer<TOutput> {
 /**
  * Canonical normalized child node type stored in the IR.
  *
- * This is the only type you’ll find inside `PromptElement.children` after JSX normalization.
+ * This is the only type you’ll find inside `PromptElement.children` after child normalization.
  */
 export type JsonValue =
   | null
@@ -357,14 +357,25 @@ export class FitError extends Error {
   overBudgetBy: number;
   priority: number;
   iteration: number;
+  budget: number;
+  totalTokens: number;
 
-  constructor(overBudgetBy: number, priority: number, iteration: number) {
+  constructor(params: {
+    overBudgetBy: number;
+    priority: number;
+    iteration: number;
+    budget: number;
+    totalTokens: number;
+  }) {
+    const { overBudgetBy, priority, iteration, budget, totalTokens } = params;
     super(
-      `Cannot fit prompt: ${overBudgetBy} tokens over budget at priority ${priority} (iteration ${iteration})`
+      `Cannot fit prompt: ${totalTokens} tokens exceeds budget ${budget} by ${overBudgetBy} at priority ${priority} (iteration ${iteration})`
     );
     this.name = "FitError";
     this.overBudgetBy = overBudgetBy;
     this.priority = priority;
     this.iteration = iteration;
+    this.budget = budget;
+    this.totalTokens = totalTokens;
   }
 }

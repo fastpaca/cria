@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "tsx main.tsx"
+    "start": "tsx main.ts"
   },
   "dependencies": {
     "ai": "^6.0.0",

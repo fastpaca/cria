@@ -4,7 +4,9 @@ Welcome to the Cria docs. This set is short by design and focuses on the core co
 
 ## What is Cria?
 
-Cria lets you build prompts as composable JSX components. Define your prompt structure once, reuse it across providers, and render to OpenAI, Anthropic, or Vercel AI SDK formats with no changes.
+Cria is a fluent DSL for structured prompt engineering. Build prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or Vercel AI SDK formats with no changes.
+
+Prefer TSX? Import the optional JSX surface from `@fastpaca/cria/jsx`. The default API is DSL-first.
 
 Because prompts are structured as a tree, you get budget fitting for free: assign priorities to regions and Cria trims low-priority content when you hit your token limit.
 

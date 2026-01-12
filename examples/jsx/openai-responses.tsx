@@ -8,38 +8,38 @@
  * API responses. For fresh requests, the model generates its own reasoning.
  */
 
-import { Message, Region, render, ToolCall, ToolResult } from "@fastpaca/cria";
+import { cria, ToolCall, ToolResult } from "@fastpaca/cria";
 import { responses } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
 // Your tokenizer (use tiktoken in production for accurate counts)
 const tokenizer = (text: string) => Math.ceil(text.length / 4);
 
-// Build your prompt with Cria components
-const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system">You are a helpful weather assistant.</Message>
-    <Message messageRole="user">
-      What's the weather in Paris? Should I bring a jacket?
-    </Message>
-    <ToolCall
-      input={{ city: "Paris" }}
-      priority={1}
-      toolCallId="call_abc123"
-      toolName="getWeather"
-    />
-    <ToolResult
-      output={{ temperature: 18, condition: "sunny" }}
-      priority={1}
-      toolCallId="call_abc123"
-      toolName="getWeather"
-    />
-  </Region>
-);
+// Build your prompt with the DSL
+const prompt = cria
+  .prompt()
+  .system("You are a helpful weather assistant.")
+  .user("What's the weather in Paris? Should I bring a jacket?")
+  .raw(
+    ToolCall({
+      input: { city: "Paris" },
+      priority: 1,
+      toolCallId: "call_abc123",
+      toolName: "getWeather",
+    })
+  )
+  .raw(
+    ToolResult({
+      output: { temperature: 18, condition: "sunny" },
+      priority: 1,
+      toolCallId: "call_abc123",
+      toolName: "getWeather",
+    })
+  );
 
 async function main() {
   // Render to OpenAI Responses format
-  const input = await render(prompt, {
+  const input = await prompt.render({
     tokenizer,
     budget: 128_000,
     renderer: responses,

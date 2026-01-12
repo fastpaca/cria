@@ -35,7 +35,7 @@ Key inputs:
 - `budget`, `totalTokens`, `iteration`: current fit state
 - `context`: provider context injected by ancestor providers
 
-## Example: drop a region
+## Example: drop a region (custom strategy)
 
 ```ts
 import type { Strategy } from "@fastpaca/cria";
@@ -79,3 +79,21 @@ const summarize: Strategy = async ({ target, tokenizer }) => {
 - Always reduce tokens (or return `null`) to avoid infinite loops.
 - Avoid heavy side effects; use context providers if you need model calls.
 - Use `Summary` when possible; it already handles persistence and providers.
+
+## Built-in strategies via DSL
+
+The DSL gives you common strategies without writing custom code:
+
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("Rules")
+  .truncate(history, { budget: 4000, priority: 2 }) // trims content
+  .omit(optionalExamples, { priority: 3 }) // drops content entirely
+  .summary(conversationHistory, { id: "history", store, priority: 2 }) // replaces content with summary when over budget
+  .last(messages, { N: 10, priority: 1 }); // keeps only last N items
+```
+
+For async behaviors (like `VectorSearch`), the DSL handles promises internally; you just chain the builder and call `.render()`.

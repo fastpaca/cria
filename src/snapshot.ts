@@ -4,6 +4,7 @@ import type { RenderHooks } from "./render";
 import { markdownRenderer } from "./renderers/markdown";
 import type {
   MaybePromise,
+  PromptChild,
   PromptElement,
   PromptRenderer,
   PromptRole,
@@ -202,7 +203,7 @@ function snapshotElement(
   renderer: PromptRenderer<unknown>
 ): SnapshotElement {
   const childSnapshots = element.children.map(
-    (child: string | PromptElement): SnapshotChild =>
+    (child: PromptChild): SnapshotChild =>
       typeof child === "string"
         ? child
         : snapshotElement(child, tokenizer, renderer)
@@ -217,14 +218,19 @@ function snapshotElement(
   const hasToolId =
     element.kind === "tool-call" || element.kind === "tool-result";
 
+  const role = element.kind === "message" ? element.role : undefined;
+  const text = element.kind === "reasoning" ? element.text : undefined;
+  const toolCallId = hasToolId ? element.toolCallId : undefined;
+  const toolName = hasToolId ? element.toolName : undefined;
+
   const hash = hashElement({
     kind: element.kind,
     priority: element.priority,
-    role: element.kind === "message" ? element.role : undefined,
-    text: element.kind === "reasoning" ? element.text : undefined,
-    toolCallId: hasToolId ? element.toolCallId : undefined,
-    toolName: hasToolId ? element.toolName : undefined,
-    id: element.id,
+    ...(role !== undefined ? { role } : {}),
+    ...(text !== undefined ? { text } : {}),
+    ...(toolCallId !== undefined ? { toolCallId } : {}),
+    ...(toolName !== undefined ? { toolName } : {}),
+    ...(element.id !== undefined ? { id: element.id } : {}),
     tokens,
     childHashes,
   });

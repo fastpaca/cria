@@ -12,7 +12,6 @@ import type {
   ResponseInputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
-import type { Child } from "../jsx-runtime";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -331,7 +330,7 @@ interface OpenAIProviderProps {
   /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
   tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -361,6 +360,58 @@ interface OpenAIProviderProps {
  */
 type OpenAIRole = "user" | "assistant" | "system";
 const VALID_OPENAI_ROLES = new Set<string>(["user", "assistant", "system"]);
+
+/**
+ * ModelProvider implementation that wraps an OpenAI client.
+ * Use this with the DSL's `.provider()` method.
+ *
+ * @example
+ * ```typescript
+ * import OpenAI from "openai";
+ * import { cria } from "@fastpaca/cria";
+ * import { Provider } from "@fastpaca/cria/openai";
+ *
+ * const client = new OpenAI();
+ * const provider = new Provider(client, "gpt-4o");
+ *
+ * const prompt = cria
+ *   .prompt()
+ *   .provider(provider, (p) =>
+ *     p.summary(content, { id: "summary", store })
+ *   )
+ *   .build();
+ * ```
+ */
+export class Provider implements ModelProvider {
+  readonly name = "openai";
+  private readonly client: OpenAI;
+  private readonly model: string;
+
+  constructor(client: OpenAI, model: string) {
+    this.client = client;
+    this.model = model;
+  }
+
+  async completion(request: CompletionRequest): Promise<CompletionResult> {
+    const messages: ChatCompletionMessageParam[] = request.system
+      ? [{ role: "system", content: request.system }]
+      : [];
+
+    for (const msg of request.messages) {
+      if (VALID_OPENAI_ROLES.has(msg.role)) {
+        messages.push({ role: msg.role as OpenAIRole, content: msg.content });
+      }
+    }
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages,
+    });
+
+    const text = response.choices[0]?.message?.content ?? "";
+    return { text };
+  }
+}
 
 export function OpenAIProvider({
   client,
@@ -394,7 +445,7 @@ export function OpenAIProvider({
 
   return {
     priority: 0,
-    children: children as PromptChildren,
+    children,
     context: { provider },
   };
 }

@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "tsx main.tsx"
+    "start": "tsx main.ts"
   },
   "dependencies": {
     "chromadb": "^2.0.0",

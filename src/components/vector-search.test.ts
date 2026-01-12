@@ -72,7 +72,19 @@ describe("VectorSearch", () => {
 
     expect(getLastQuery()).toBe("Find docs about RAG");
     expect(getLastOptions()).toEqual({ limit: 2 });
-    expect(element.children[0]).toContain("First Document");
+    expect(element.children[0]).toBe(
+      `[1] (score: 0.950)
+{
+  "title": "First Document",
+  "content": "This is the first document."
+}
+
+[2] (score: 0.820)
+{
+  "title": "Second Document",
+  "content": "This is the second document."
+}`
+    );
   });
 
   it("derives query from the last user message by default", async () => {
@@ -85,7 +97,19 @@ describe("VectorSearch", () => {
     const element = await VectorSearch({ store, messages });
 
     expect(getLastQuery()).toBe("What is RAG?");
-    expect(element.children[0]).toContain("First Document");
+    expect(element.children[0]).toBe(
+      `[1] (score: 0.950)
+{
+  "title": "First Document",
+  "content": "This is the first document."
+}
+
+[2] (score: 0.820)
+{
+  "title": "Second Document",
+  "content": "This is the second document."
+}`
+    );
   });
 
   it("uses a custom extractor when provided", async () => {
@@ -102,18 +126,30 @@ describe("VectorSearch", () => {
     });
 
     expect(getLastQuery()).toBe("custom-query");
-    expect(element.children[0]).toContain("First Document");
+    expect(element.children[0]).toBe(
+      `[1] (score: 0.950)
+{
+  "title": "First Document",
+  "content": "This is the first document."
+}
+
+[2] (score: 0.820)
+{
+  "title": "Second Document",
+  "content": "This is the second document."
+}`
+    );
   });
 
-  it("throws when no results found", async () => {
+  it("handles empty results without throwing", async () => {
     const { store } = createMockStore<TestDocument>([]);
 
-    await expect(
-      VectorSearch({
-        store,
-        query: "nothing here",
-      })
-    ).rejects.toThrow("no results found");
+    const element = await VectorSearch({
+      store,
+      query: "nothing here",
+    });
+
+    expect(element.children[0]).toBe("Vector search returned no results.");
   });
 
   it("throws when no query is available", async () => {

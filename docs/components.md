@@ -1,17 +1,19 @@
 # Components
 
-Cria ships a small set of composable components. All are available from `@fastpaca/cria` unless noted.
+Cria ships a small set of composable building blocks. The DSL is the primary surface (`cria.prompt()`), with an optional JSX entry at `@fastpaca/cria/jsx` if you prefer TSX.
 
 ## Structure
 
-- `Region`: groups children into a logical block.
-- `Message`: semantic message with `messageRole` (system, user, assistant, tool).
+- `region()`: groups children into a logical block.
+- `system/user/assistant/message()`: semantic messages with `role` (system, user, assistant, tool).
 
-```tsx
-<Region>
-  <Message messageRole="system">System rules</Message>
-  <Message messageRole="user">Current request</Message>
-</Region>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("System rules")
+  .user("Current request");
 ```
 
 These are your building blocks. Regions group related content; Messages carry semantic roles that renderers convert to provider formats.
@@ -20,16 +22,18 @@ These are your building blocks. Regions group related content; Messages carry se
 
 When you need to fit prompts to token limits, add priorities and strategies:
 
-- `Truncate`: trims content to a token budget.
-- `Omit`: drops content entirely when shrinking.
-- `Last`: keeps only the last N children.
+- `truncate()`: trims content to a token budget.
+- `omit()`: drops content entirely when shrinking.
+- `last()`: keeps only the last N children.
 
-```tsx
-<Region priority={0}>
-  <Message messageRole="system">System rules</Message>
-  <Truncate budget={8000} priority={2}>{history}</Truncate>
-  <Omit priority={3}>{examples}</Omit>
-</Region>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("System rules")
+  .truncate(history, { budget: 8000, priority: 2 })
+  .omit(examples, { priority: 3 });
 ```
 
 Content without a priority is never trimmed. It stays in the prompt no matter what.
@@ -48,14 +52,14 @@ These map cleanly to OpenAI and Anthropic tool formats via renderers.
 
 Summarizes its children when the prompt needs to shrink. Requires a store to cache summaries.
 
-```tsx
-import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
+```ts
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 
 const store = new InMemoryStore<StoredSummary>();
 
-<Summary id="history" store={store} priority={2}>
-  {conversationHistory}
-</Summary>
+const prompt = cria
+  .prompt()
+  .summary(conversationHistory, { id: "history", store, priority: 2 });
 ```
 
 If you do not pass `summarize`, the nearest provider (`OpenAIProvider`, `AnthropicProvider`, or `AISDKProvider`) is used with a default prompt.
@@ -64,10 +68,12 @@ If you do not pass `summarize`, the nearest provider (`OpenAIProvider`, `Anthrop
 
 Injects vector search results at render time.
 
-```tsx
-<VectorSearch store={vectorStore} limit={5}>
-  {query}
-</VectorSearch>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .vectorSearch({ store: vectorStore, query, limit: 5, threshold: 0.2 });
 ```
 
 Query sources, in order:
@@ -83,26 +89,33 @@ If no results are found, the default formatter throws. Provide a custom `formatR
 
 Inserts a separator between children.
 
-```tsx
-<Separator value="\n\n">
-  {paragraphs}
-</Separator>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .separator("\n\n")
+  .raw(paragraphs);
 ```
 
 ### Examples
 
 Wraps example content with an optional title and separators between items.
 
-```tsx
-<Examples title="Examples:" separator="\n\n" priority={2}>
-  {exampleList}
-</Examples>
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .examples("Examples:", exampleList, { separator: "\n\n", priority: 2 });
 ```
 
 ### CodeBlock
 
 Wraps code in a fenced code block.
 
-```tsx
-<CodeBlock code={sourceCode} language="typescript" />
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria.prompt().codeBlock(sourceCode, { language: "typescript" });
 ```

@@ -22,21 +22,27 @@ test("Summary: triggers summarization when over budget", async () => {
 
   const longContent = "A".repeat(200);
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-1" priority={1} store={store} summarize={summarize}>
-        {longContent}
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-1",
+        priority: 1,
+        store,
+        summarize,
+        children: [longContent],
+      }),
+    ],
+  });
 
   // Render with small budget to trigger summarization
   // Budget needs to fit the summary output + "[Summary of earlier conversation]\n" prefix
   const result = await render(element, { tokenizer, budget: 30 });
 
   expect(summarizeCalled).toBe(true);
-  expect(result).toContain("Summary of:");
-  expect(result.length).toBeLessThan(longContent.length);
+  expect(result).toBe(
+    "Assistant: [Summary of earlier conversation]\nSummary of: AAAAAAAAAAAAAAAAAAAA...\n\n"
+  );
 });
 
 test("Summary: stores summary in store", async () => {
@@ -44,20 +50,29 @@ test("Summary: stores summary in store", async () => {
 
   const summarize = () => "This is the summary";
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-2" priority={1} store={store} summarize={summarize}>
-        {"Long content ".repeat(50)}
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-2",
+        priority: 1,
+        store,
+        summarize,
+        children: ["Long content ".repeat(50)],
+      }),
+    ],
+  });
 
-  await render(element, { tokenizer, budget: 20 });
+  const output = await render(element, { tokenizer, budget: 20 });
+
+  expect(output).toBe(
+    "Assistant: [Summary of earlier conversation]\nThis is the summary\n\n"
+  );
 
   const entry = store.get("test-2");
   expect(entry).not.toBeNull();
   expect(entry?.data.content).toBe("This is the summary");
-  expect(entry?.data.tokenCount).toBeGreaterThan(0);
+  expect(entry?.data.tokenCount).toBe(5);
   expect(entry?.updatedAt).toBeGreaterThan(0);
 });
 
@@ -82,17 +97,25 @@ test("Summary: passes existing summary to summarizer", async () => {
     return "Updated summary";
   };
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-3" priority={1} store={store} summarize={summarize}>
-        {"Content ".repeat(100)}
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-3",
+        priority: 1,
+        store,
+        summarize,
+        children: ["Content ".repeat(100)],
+      }),
+    ],
+  });
 
-  await render(element, { tokenizer, budget: 20 });
+  const output = await render(element, { tokenizer, budget: 20 });
 
   expect(receivedExisting).toBe("Previous summary");
+  expect(output).toBe(
+    "Assistant: [Summary of earlier conversation]\nUpdated summary\n\n"
+  );
 });
 
 test("Summary: does not trigger when under budget", async () => {
@@ -104,51 +127,50 @@ test("Summary: does not trigger when under budget", async () => {
     return "Summary";
   };
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-4" priority={1} store={store} summarize={summarize}>
-        Short
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-4",
+        priority: 1,
+        store,
+        summarize,
+        children: ["Short"],
+      }),
+    ],
+  });
 
   // Large budget - no need to summarize
-  await render(element, { tokenizer, budget: 1000 });
+  const output = await render(element, { tokenizer, budget: 1000 });
 
   expect(summarizeCalled).toBe(false);
+  expect(output).toBe("Short");
 });
 
 test("Last: keeps only last N children", async () => {
   const messages = ["First", "Second", "Third", "Fourth", "Fifth"];
 
-  const element = (
-    <Region priority={0}>
-      <Last N={2}>{messages}</Last>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [Last({ N: 2, children: messages })],
+  });
 
   const result = await render(element, { tokenizer, budget: 1000 });
 
-  expect(result).not.toContain("First");
-  expect(result).not.toContain("Second");
-  expect(result).not.toContain("Third");
-  expect(result).toContain("Fourth");
-  expect(result).toContain("Fifth");
+  expect(result).toBe("FourthFifth");
 });
 
 test("Last: handles N larger than children count", async () => {
   const messages = ["One", "Two"];
 
-  const element = (
-    <Region priority={0}>
-      <Last N={10}>{messages}</Last>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [Last({ N: 10, children: messages })],
+  });
 
   const result = await render(element, { tokenizer, budget: 1000 });
 
-  expect(result).toContain("One");
-  expect(result).toContain("Two");
+  expect(result).toBe("OneTwo");
 });
 
 test("Summary + Last: typical usage pattern", async () => {
@@ -166,24 +188,25 @@ test("Summary + Last: typical usage pattern", async () => {
     "Message 5: Final message",
   ];
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="conv" priority={2} store={store} summarize={summarize}>
-        {messages.slice(0, -2)}
-      </Summary>
-      <Last N={2}>{messages}</Last>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "conv",
+        priority: 2,
+        store,
+        summarize,
+        children: messages.slice(0, -2),
+      }),
+      Last({ N: 2, children: messages }),
+    ],
+  });
 
   // Full content: ~180 chars = 45 tokens
   // Summarized: prefix (34) + summary (19) + last 2 msgs (~50) = ~103 chars = 26 tokens
   const result = await render(element, { tokenizer, budget: 30 });
 
-  // Should have summary of older messages (wrapped with prefix)
-  expect(result).toContain("[Summary of earlier conversation]");
-  expect(result).toContain("Discussed greetings");
-
-  // Should have recent messages in full
-  expect(result).toContain("Message 4: Recent message here");
-  expect(result).toContain("Message 5: Final message");
+  expect(result).toBe(
+    "Assistant: [Summary of earlier conversation]\nDiscussed greetings\n\nMessage 4: Recent message hereMessage 5: Final message"
+  );
 });

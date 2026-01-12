@@ -21,13 +21,17 @@
       "types": "./dist/ai-sdk/index.d.ts",
       "import": "./dist/ai-sdk/index.js"
     },
+    "./jsx": {
+      "types": "./dist/jsx/index.d.ts",
+      "import": "./dist/jsx/index.js"
+    },
     "./jsx-runtime": {
-      "types": "./dist/jsx-runtime.d.ts",
-      "import": "./dist/jsx-runtime.js"
+      "types": "./dist/jsx/jsx-runtime.d.ts",
+      "import": "./dist/jsx/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
-      "types": "./dist/jsx-dev-runtime.d.ts",
-      "import": "./dist/jsx-dev-runtime.js"
+      "types": "./dist/jsx/jsx-dev-runtime.d.ts",
+      "import": "./dist/jsx/jsx-dev-runtime.js"
     },
     "./openai": {
       "types": "./dist/openai/index.d.ts",
@@ -36,6 +40,10 @@
     "./anthropic": {
       "types": "./dist/anthropic/index.d.ts",
       "import": "./dist/anthropic/index.js"
+    },
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "import": "./dist/memory/index.js"
     },
     "./memory/redis": {
       "types": "./dist/memory/redis.d.ts",
@@ -94,13 +102,30 @@
   "files": [
     "dist"
   ],
+  "typesVersions": {
+    "*": {
+      "jsx": [
+        "./dist/jsx/index.d.ts"
+      ],
+      "jsx-runtime": [
+        "./dist/jsx/jsx-runtime.d.ts"
+      ],
+      "jsx-dev-runtime": [
+        "./dist/jsx/jsx-dev-runtime.d.ts"
+      ]
+    }
+  },
   "scripts": {
-    "build": "tsc",
-    "check": "ultracite check",
+    "build": "pnpm run build:core && pnpm run typecheck:examples",
+    "build:core": "tsc",
+    "check": "ultracite check && pnpm run typecheck",
     "fix": "ultracite fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "husky"
+    "prepare": "husky",
+    "typecheck": "pnpm run typecheck:core && pnpm run typecheck:examples",
+    "typecheck:core": "tsc --noEmit",
+    "typecheck:examples": "pnpm exec tsc --noEmit -p examples/ai-sdk/tsconfig.json && pnpm exec tsc --noEmit -p examples/anthropic/tsconfig.json && pnpm exec tsc --noEmit -p examples/openai-chat-completions/tsconfig.json && pnpm exec tsc --noEmit -p examples/openai-responses/tsconfig.json && pnpm exec tsc --noEmit -p examples/rag/tsconfig.json && pnpm exec tsc --noEmit -p examples/summary/tsconfig.json"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

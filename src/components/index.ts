@@ -1,4 +1,3 @@
-import type { Child } from "../jsx-runtime";
 import type {
   PromptChildren,
   PromptElement,
@@ -14,7 +13,7 @@ interface RegionProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content of this region */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -38,7 +37,7 @@ export function Region({
 }: RegionProps): PromptElement {
   return {
     priority,
-    children: children as PromptChildren,
+    children,
     ...(strategy && { strategy }),
     ...(id && { id }),
   };
@@ -56,7 +55,7 @@ interface SemanticRegionProps {
 interface MessageProps extends SemanticRegionProps {
   /** The message role (user, assistant, system, etc.) */
   messageRole: PromptRole;
-  children?: Child;
+  children?: PromptChildren;
 }
 
 export function Message({
@@ -70,7 +69,7 @@ export function Message({
     kind: "message",
     role: messageRole,
     priority,
-    children: children as PromptChildren,
+    children,
     ...(strategy && { strategy }),
     ...(id && { id }),
   };
@@ -158,7 +157,7 @@ interface TruncateProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content to truncate */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -208,7 +207,7 @@ export function Truncate({
 
   return {
     priority,
-    children: children as PromptChildren,
+    children,
     strategy,
     ...(id && { id }),
   };
@@ -220,7 +219,7 @@ interface OmitProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content that may be omitted */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -245,7 +244,7 @@ export function Omit({
 
   return {
     priority,
-    children: children as PromptChildren,
+    children,
     strategy,
     ...(id && { id }),
   };
@@ -257,7 +256,7 @@ interface LastProps {
   /** Priority for this region. Default: 0 */
   priority?: number;
   /** Children to filter */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -273,8 +272,7 @@ export function Last({
   priority = 0,
   children = [],
 }: LastProps): PromptElement {
-  const normalizedChildren = children as PromptChildren;
-  const lastN = normalizedChildren.slice(-N);
+  const lastN = children.slice(-N);
 
   return {
     priority,
@@ -301,7 +299,7 @@ interface SeparatorProps {
   value?: string;
   priority?: number;
   id?: string;
-  children?: Child;
+  children?: PromptChildren;
 }
 
 export function Separator({
@@ -310,10 +308,9 @@ export function Separator({
   id,
   children = [],
 }: SeparatorProps): PromptElement {
-  const normalized = children as PromptChildren;
   return {
     priority,
-    children: intersperse(normalized, value),
+    children: intersperse(children, value),
     ...(id && { id }),
   };
 }
@@ -323,7 +320,7 @@ interface ExamplesProps {
   separator?: string;
   priority?: number;
   id?: string;
-  children?: Child;
+  children?: PromptChildren;
 }
 
 export function Examples({
@@ -333,11 +330,10 @@ export function Examples({
   id,
   children = [],
 }: ExamplesProps): PromptElement {
-  const normalized = children as PromptChildren;
-  const withSeparators = intersperse(normalized, separator);
+  const withSeparators = intersperse(children, separator);
 
-  const prefixed = title
-    ? ([`${title}\n`, ...withSeparators] as PromptChildren)
+  const prefixed: PromptChildren = title
+    ? [`${title}\n`, ...withSeparators]
     : withSeparators;
 
   return {

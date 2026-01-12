@@ -68,8 +68,8 @@ export async function render<TOptions extends RenderOptions>(
   { tokenizer, budget, renderer, hooks }: TOptions
 ): Promise<RenderOutput<TOptions>> {
   /*
-   * The JSX runtime normalizes children and returns either a PromptElement or a
-   * native Promise. Render only awaits that root value and does not walk the tree.
+   * Builders and the optional JSX runtime both return a PromptElement (or Promise).
+   * render() awaits the root value and does not walk/normalize children here.
    * Non-Promise thenables are intentionally unsupported.
    */
   const resolvedElement = element instanceof Promise ? await element : element;
@@ -191,7 +191,13 @@ async function fitToBudget(
 
     const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
-      const error = new FitError(totalTokens - budget, -1, iteration);
+      const error = new FitError({
+        overBudgetBy: totalTokens - budget,
+        priority: -1,
+        iteration,
+        budget,
+        totalTokens,
+      });
       await safeInvoke(hooks?.onFitError, {
         error,
         iteration,
@@ -227,11 +233,13 @@ async function fitToBudget(
 
     const nextTokens = current ? tokenizer(tokenString(current)) : 0;
     if (nextTokens >= totalTokens) {
-      const error = new FitError(
-        nextTokens - budget,
-        lowestImportancePriority,
-        iteration
-      );
+      const error = new FitError({
+        overBudgetBy: nextTokens - budget,
+        priority: lowestImportancePriority,
+        iteration,
+        budget,
+        totalTokens: nextTokens,
+      });
       await safeInvoke(hooks?.onFitError, {
         error,
         iteration,

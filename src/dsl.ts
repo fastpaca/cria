@@ -1,0 +1,511 @@
+/**
+ * Fluent DSL for building prompts without JSX.
+ *
+ * @example
+ * ```typescript
+ * import { cria } from "@fastpaca/cria";
+ *
+ * const prompt = await cria
+ *   .prompt()
+ *   .system("You are a helpful assistant.")
+ *   .user("What is the capital of France?")
+ *   .render({tokenizer, budget: 4000, renderer});
+ * ```
+ *
+ * @packageDocumentation
+ */
+
+import type { ResultFormatter, StoredSummary, Summarizer } from "./components";
+import {
+  Examples,
+  Message,
+  Omit,
+  Region,
+  Summary,
+  Truncate,
+  VectorSearch,
+} from "./components";
+import type { KVMemory, VectorMemory } from "./memory";
+import type { RenderOptions } from "./render";
+import { render as renderPrompt } from "./render";
+import type {
+  CriaContext,
+  ModelProvider,
+  PromptChildren,
+  PromptElement,
+  PromptRenderer,
+  PromptRole,
+} from "./types";
+
+/**
+ * Children can include promises (async components like VectorSearch).
+ * These are resolved when `.build()` resolves the tree.
+ */
+type BuilderChild =
+  | PromptElement
+  | PromptBuilder
+  | string
+  | Promise<PromptElement>
+  | Promise<string>;
+
+type RenderResult<TOptions extends RenderOptions> = TOptions extends {
+  renderer: PromptRenderer<infer TOutput>;
+}
+  ? TOutput
+  : string;
+
+/**
+ * Fluent builder for constructing prompt trees without JSX.
+ *
+ * Every method returns a new immutable builder instance.
+ * Call `.build()` to get the final `PromptElement`.
+ */
+export class PromptBuilder {
+  private readonly children: BuilderChild[];
+  private readonly context: CriaContext | undefined;
+
+  private constructor(
+    children: BuilderChild[] = [],
+    context: CriaContext | undefined = undefined
+  ) {
+    this.children = children;
+    this.context = context;
+  }
+
+  /**
+   * Create a new empty prompt builder.
+   */
+  static create(): PromptBuilder {
+    return new PromptBuilder();
+  }
+
+  /**
+   * Add a system message.
+   */
+  system(
+    text: string,
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const priority = opts?.priority;
+    return this.addChild(
+      Message({
+        messageRole: "system",
+        children: [text],
+        ...(priority !== undefined ? { priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      })
+    );
+  }
+
+  /**
+   * Add a user message.
+   */
+  user(text: string, opts?: { priority?: number; id?: string }): PromptBuilder {
+    const priority = opts?.priority;
+    return this.addChild(
+      Message({
+        messageRole: "user",
+        children: [text],
+        ...(priority !== undefined ? { priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      })
+    );
+  }
+
+  /**
+   * Add an assistant message.
+   */
+  assistant(
+    text: string,
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const priority = opts?.priority;
+    return this.addChild(
+      Message({
+        messageRole: "assistant",
+        children: [text],
+        ...(priority !== undefined ? { priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      })
+    );
+  }
+
+  /**
+   * Add a message with a custom role.
+   */
+  message(
+    role: PromptRole,
+    text: string,
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const priority = opts?.priority;
+    return this.addChild(
+      Message({
+        messageRole: role,
+        children: [text],
+        ...(priority !== undefined ? { priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      })
+    );
+  }
+
+  /**
+   * Add content that will be truncated when over budget.
+   */
+  truncate(
+    content: string | PromptElement | PromptBuilder,
+    opts: {
+      budget: number;
+      from?: "start" | "end";
+      priority?: number;
+      id?: string;
+    }
+  ): PromptBuilder {
+    const node = (async (): Promise<PromptElement> => {
+      const children = await normalizeChild(content);
+      const props: Parameters<typeof Truncate>[0] = {
+        children,
+        budget: opts.budget,
+        ...(opts.from ? { from: opts.from } : {}),
+        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+        ...(opts.id ? { id: opts.id } : {}),
+      };
+      return Truncate({
+        ...props,
+      });
+    })();
+
+    return this.addChild(node);
+  }
+
+  /**
+   * Add content that will be entirely removed when over budget.
+   */
+  omit(
+    content: string | PromptElement | PromptBuilder,
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const node = (async (): Promise<PromptElement> => {
+      const children = await normalizeChild(content);
+      const props: Parameters<typeof Omit>[0] = {
+        children,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      };
+      return Omit(props);
+    })();
+
+    return this.addChild(node);
+  }
+
+  /**
+   * Create a nested section.
+   *
+   * @example Anonymous section
+   * ```typescript
+   * .section((s) => s.truncate(content, { budget: 1000 }))
+   * ```
+   *
+   * @example Named section
+   * ```typescript
+   * .section("context", (s) => s.truncate(content, { budget: 1000 }))
+   * ```
+   */
+  region(fn: (builder: PromptBuilder) => PromptBuilder): PromptBuilder;
+  region(
+    name: string,
+    fn: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder;
+  region(
+    nameOrFn: string | ((builder: PromptBuilder) => PromptBuilder),
+    maybeFn?: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder {
+    if (typeof nameOrFn === "string") {
+      if (!maybeFn) {
+        throw new Error("region() requires a callback function");
+      }
+      return this.section(nameOrFn, maybeFn);
+    }
+
+    return this.section(nameOrFn);
+  }
+
+  /**
+   * Create a nested section/region.
+   *
+   * @example Anonymous section
+   * ```typescript
+   * .section((s) => s.truncate(content, { budget: 1000 }))
+   * ```
+   *
+   * @example Named section
+   * ```typescript
+   * .section("context", (s) => s.truncate(content, { budget: 1000 }))
+   * ```
+   */
+  section(fn: (builder: PromptBuilder) => PromptBuilder): PromptBuilder;
+  section(
+    name: string,
+    fn: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder;
+  section(
+    nameOrFn: string | ((builder: PromptBuilder) => PromptBuilder),
+    maybeFn?: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder {
+    const name = typeof nameOrFn === "string" ? nameOrFn : undefined;
+    const fn = typeof nameOrFn === "string" ? maybeFn : nameOrFn;
+
+    if (!fn) {
+      const received =
+        typeof nameOrFn === "string" ? typeof maybeFn : typeof nameOrFn;
+      throw new Error(
+        `section() requires a callback function (e.g. cria.prompt().section("name", (s) => ...)). Received: ${received}`
+      );
+    }
+
+    const inner = fn(new PromptBuilder([], this.context));
+
+    const element = (async (): Promise<PromptElement> => {
+      const built = await inner.build();
+      return {
+        ...built,
+        ...(name ? { id: name } : {}),
+      };
+    })();
+
+    return this.addChild(element);
+  }
+
+  /**
+   * Merge another builder's contents into this one (zod-like merge).
+   * Contexts must be compatible (either identical or undefined).
+   */
+  merge(...builders: PromptBuilder[]): PromptBuilder {
+    const sources = [this, ...builders];
+    let nextContext = this.context;
+    const totalChildren = sources.reduce(
+      (sum, builder) => sum + builder.children.length,
+      0
+    );
+    const mergedChildren = new Array<BuilderChild>(totalChildren);
+    let writeIndex = 0;
+
+    for (const builder of sources) {
+      if (builder.context && nextContext && builder.context !== nextContext) {
+        throw new Error(
+          "Cannot merge builders with different contexts/providers"
+        );
+      }
+      if (!nextContext) {
+        nextContext = builder.context;
+      }
+      for (const child of builder.children) {
+        mergedChildren[writeIndex] = child;
+        writeIndex += 1;
+      }
+    }
+
+    mergedChildren.length = writeIndex;
+
+    return new PromptBuilder(mergedChildren, nextContext);
+  }
+
+  /**
+   * Create a provider scope for AI-powered operations like Summary.
+   *
+   * @example
+   * ```typescript
+   * import { Provider } from "@fastpaca/cria/ai-sdk";
+   *
+   * const provider = new Provider(openai("gpt-4o"));
+   * .provider(provider, (p) =>
+   *   p.summary(content, { id: "conv", store })
+   * )
+   * ```
+   */
+  provider(
+    modelProvider: ModelProvider,
+    fn: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder {
+    const context: CriaContext = { provider: modelProvider };
+    const inner = fn(new PromptBuilder([], context));
+
+    const element = (async (): Promise<PromptElement> => {
+      const built = await inner.build();
+      return {
+        priority: 0,
+        children: built.children,
+        context,
+      };
+    })();
+
+    return this.addChild(element);
+  }
+
+  /**
+   * Add vector search results (async, resolved at render time).
+   */
+  vectorSearch<T = unknown>(opts: {
+    store: VectorMemory<T>;
+    query: string;
+    limit?: number;
+    threshold?: number;
+    formatter?: ResultFormatter<T>;
+    priority?: number;
+    id?: string;
+  }): PromptBuilder {
+    const props: Parameters<typeof VectorSearch<T>>[0] = {
+      store: opts.store,
+      query: opts.query,
+      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.threshold !== undefined ? { threshold: opts.threshold } : {}),
+      ...(opts.formatter ? { formatResults: opts.formatter } : {}),
+      ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+      ...(opts.id !== undefined ? { id: opts.id } : {}),
+    };
+    const asyncElement = VectorSearch<T>(props);
+    return this.addChild(asyncElement);
+  }
+
+  /**
+   * Add content that will be summarized when over budget.
+   */
+  summary(
+    content: string | PromptElement | PromptBuilder,
+    opts: {
+      id: string;
+      store: KVMemory<StoredSummary>;
+      summarize?: Summarizer;
+      priority?: number;
+    }
+  ): PromptBuilder {
+    const element = (async (): Promise<PromptElement> => {
+      const children = await normalizeChild(content);
+      const props: Parameters<typeof Summary>[0] = {
+        id: opts.id,
+        store: opts.store,
+        children,
+        ...(opts.summarize ? { summarize: opts.summarize } : {}),
+        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+      };
+      return Summary(props);
+    })();
+
+    return this.addChild(element);
+  }
+
+  /**
+   * Add a formatted list of examples.
+   */
+  examples(
+    title: string,
+    items: (string | PromptElement)[],
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    return this.addChild(
+      Examples({
+        title,
+        children: items,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      })
+    );
+  }
+
+  /**
+   * Add a raw PromptElement (escape hatch for advanced usage).
+   */
+  raw(element: PromptElement | Promise<PromptElement>): PromptBuilder {
+    return this.addChild(element);
+  }
+
+  /**
+   * Build the final PromptElement tree.
+   */
+  async build(): Promise<PromptElement> {
+    return Region({
+      priority: 0,
+      children: await normalizeChildren(this.children),
+      ...(this.context && { context: this.context }),
+    });
+  }
+
+  /**
+   * Render the prompt directly using the provided options.
+   * Equivalent to `render(await builder.build(), options)`.
+   */
+  async render<TOptions extends RenderOptions>(
+    options: TOptions
+  ): Promise<RenderResult<TOptions>> {
+    const element = await this.build();
+    return (await renderPrompt(element, options)) as RenderResult<TOptions>;
+  }
+
+  private addChild(child: BuilderChild): PromptBuilder {
+    return new PromptBuilder([...this.children, child], this.context);
+  }
+}
+
+/**
+ * Namespace for building prompts without JSX.
+ *
+ * @example
+ * ```typescript
+ * import { cria } from "@fastpaca/cria";
+ *
+ * const prompt = cria
+ *   .prompt()
+ *   .system("You are helpful.")
+ *   .user("Hello!")
+ *   .build();
+ * ```
+ */
+export const cria = {
+  prompt: () => PromptBuilder.create(),
+  merge: (...builders: PromptBuilder[]) => {
+    const [first, ...rest] = builders;
+    if (!first) {
+      return PromptBuilder.create();
+    }
+    return first.merge(...rest);
+  },
+} as const;
+
+/**
+ * Standalone function to create a new prompt builder.
+ */
+export const prompt = () => PromptBuilder.create();
+
+/**
+ * Merge multiple builders into one (zod-like merge).
+ */
+export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
+  cria.merge(...builders);
+
+// Utility to recursively build and expand / resolve children
+async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
+  if (typeof child === "string") {
+    return [child];
+  }
+
+  if (child instanceof Promise) {
+    const resolved = await child;
+    return [resolved];
+  }
+
+  if (child instanceof PromptBuilder) {
+    const built = await child.build();
+    return [built];
+  }
+
+  return [child];
+}
+
+async function normalizeChildren(
+  children: readonly BuilderChild[]
+): Promise<PromptChildren> {
+  const normalized = await Promise.all(
+    children.map((child) => normalizeChild(child))
+  );
+  return normalized.flat();
+}

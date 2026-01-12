@@ -5,13 +5,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "@fastpaca/cria",
     "baseUrl": ".",
     "paths": {
-      "@fastpaca/cria": ["../../dist/index.d.ts"],
-      "@fastpaca/cria/*": ["../../dist/*"]
+      "@fastpaca/cria": ["../../src/index.ts"],
+      "@fastpaca/cria/*": ["../../src/*"]
     }
   },
-  "include": ["*.tsx", "*.ts"]
+  "include": ["*.ts"]
 }

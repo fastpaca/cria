@@ -1,4 +1,3 @@
-import type { Child } from "../jsx-runtime";
 import type { KVMemory } from "../memory";
 import type {
   MaybePromise,
@@ -99,7 +98,7 @@ function createSummaryStrategy({
       newSummary = await defaultSummarizer(summarizerContext, context.provider);
     } else {
       throw new Error(
-        `Summary "${id}" requires either a 'summarize' function or a provider component ancestor (e.g. <AISDKProvider>)`
+        `Summary "${id}" requires either a 'summarize' function or a provider scope. DSL: wrap in cria.provider(new Provider(), (p) => p.summary(...)). JSX: wrap with <AISDKProvider>...</AISDKProvider>.`
       );
     }
 
@@ -133,7 +132,7 @@ interface SummaryProps {
   /** Priority for this region (higher number = reduced first). Default: 0 */
   priority?: number;
   /** Content to potentially summarize */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -194,6 +193,6 @@ export function Summary({
   return {
     priority,
     strategy: createSummaryStrategy({ id, store, summarize }),
-    children: children as PromptChildren,
+    children,
   };
 }

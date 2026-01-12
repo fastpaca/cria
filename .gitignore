@@ -37,3 +37,6 @@ coverage/
 .design-docs/
 .code/
 .plans/
+plan/
+plans/
+todos/

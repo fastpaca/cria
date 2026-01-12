@@ -6,19 +6,20 @@ Cria provides memory interfaces and adapters for summaries and retrieval.
 
 `KVMemory` stores structured entries for components like `Summary`.
 
-```tsx
-import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
+```ts
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 
 const store = new InMemoryStore<StoredSummary>();
 
-<Summary id="history" store={store} priority={2}>
-  {conversationHistory}
-</Summary>
+const prompt = await cria
+  .prompt()
+  .summary(conversationHistory, { id: "history", store, priority: 2 })
+  .render({ tokenizer, budget: 8000 });
 ```
 
 Adapters (subpath imports):
 
-```tsx
+```ts
 import { RedisStore } from "@fastpaca/cria/memory/redis";
 import { PostgresStore } from "@fastpaca/cria/memory/postgres";
 ```
@@ -27,21 +28,20 @@ import { PostgresStore } from "@fastpaca/cria/memory/postgres";
 
 `VectorMemory` extends `KVMemory` with semantic search. Cria ships adapters for Chroma and Qdrant.
 
-```tsx
+```ts
 import { ChromaClient } from "chromadb";
 import { ChromaStore } from "@fastpaca/cria/memory/chroma";
-import { VectorSearch } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 
 const chroma = new ChromaClient({ path: "http://localhost:8000" });
 const collection = await chroma.getOrCreateCollection({ name: "docs" });
 
 const store = new ChromaStore({ collection, embed: async (text) => embed(text) });
 
-const prompt = (
-  <VectorSearch store={store} limit={5} threshold={0.2}>
-    {query}
-  </VectorSearch>
-);
+const prompt = await cria
+  .prompt()
+  .vectorSearch({ store, query, limit: 5, threshold: 0.2 })
+  .render({ tokenizer, budget: 8000 });
 ```
 
 Notes:

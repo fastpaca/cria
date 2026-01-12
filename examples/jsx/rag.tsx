@@ -12,7 +12,7 @@
  * Run with: pnpm start
  */
 
-import { Message, Region, render, VectorSearch } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 import { chatCompletions } from "@fastpaca/cria/openai";
 import { ChromaClient } from "chromadb";
@@ -112,23 +112,25 @@ const userQuestion =
   "What's included in the Pro plan and how do I get started?";
 
 // Build the prompt - VectorSearch automatically retrieves relevant context
-const prompt = (
-  <Region priority={0}>
-    <Message messageRole="system" priority={0}>
-      You are a helpful customer support agent for FastPaca. Answer questions
-      based on the knowledge base context provided. Be concise and helpful. If
-      information isn't in the context, say you don't know. ## Relevant
-      Knowledge Base Articles
-      <VectorSearch limit={3} store={knowledgeBase}>
-        {userQuestion}
-      </VectorSearch>
-    </Message>
-
-    <Message messageRole="user" priority={0}>
-      {userQuestion}
-    </Message>
-  </Region>
-);
+const prompt = cria
+  .prompt()
+  .message(
+    "system",
+    [
+      "You are a helpful customer support agent for FastPaca.",
+      "Answer questions based on the knowledge base context provided.",
+      "Be concise and helpful. If information isn't in the context, say you don't know.",
+      "## Relevant Knowledge Base Articles\n",
+    ].join(" "),
+    { priority: 0 }
+  )
+  .vectorSearch({
+    limit: 3,
+    store: knowledgeBase,
+    query: userQuestion,
+    priority: 0,
+  })
+  .user(userQuestion, { priority: 0 });
 
 // ============================================================================
 // Step 5: Render and use with OpenAI
@@ -137,7 +139,7 @@ const prompt = (
 console.log("🔍 User Question:", userQuestion);
 console.log("\n⏳ Searching knowledge base and rendering prompt...\n");
 
-const messages = await render(prompt, {
+const messages = await prompt.render({
   tokenizer,
   budget: 128_000,
   renderer: chatCompletions,

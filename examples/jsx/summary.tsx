@@ -1,14 +1,6 @@
 import { openai } from "@ai-sdk/openai";
-import {
-  InMemoryStore,
-  Last,
-  Message,
-  Region,
-  render,
-  type StoredSummary,
-  Summary,
-} from "@fastpaca/cria";
-import { AISDKProvider, renderer } from "@fastpaca/cria/ai-sdk";
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
+import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
 
@@ -50,48 +42,50 @@ const conversationHistory = [
   { role: "user", content: "Now tell me about Berlin." },
 ];
 
+const provider = new Provider(openai("gpt-4o-mini"));
+
+const historyBuilder = conversationHistory.slice(0, -4).reduce(
+  (acc, msg, i) =>
+    acc.merge(
+      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
+        priority: 2,
+        id: `history-${i}`,
+      })
+    ),
+  cria.prompt()
+);
+
+const recentBuilder = conversationHistory.reduce(
+  (acc, msg, i) =>
+    acc.merge(
+      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
+        priority: 1,
+        id: `recent-${i}`,
+      })
+    ),
+  cria.prompt()
+);
+
 // Build the prompt with Summary for older messages and Last for recent ones
-// The AISDKProvider wraps the tree and provides the model for auto-summarization
-const prompt = (
-  <AISDKProvider model={openai("gpt-4o-mini")}>
-    <Region priority={0}>
-      <Message messageRole="system" priority={0}>
-        You are a helpful AI assistant. You have access to a summary of earlier
-        conversation and the recent messages.
-      </Message>
-
-      {/* Older messages get summarized when over budget - no summarize prop needed! */}
-      <Summary id="conversation-summary" priority={2} store={store}>
-        {conversationHistory.slice(0, -4).map((msg, i) => (
-          <Message
-            id={`history-${i}`}
-            messageRole={msg.role as "user" | "assistant"}
-            priority={2}
-          >
-            {msg.content}
-          </Message>
-        ))}
-      </Summary>
-
-      {/* Recent messages kept in full */}
-      <Last N={4}>
-        {conversationHistory.map((msg, i) => (
-          <Message
-            id={`recent-${i}`}
-            messageRole={msg.role as "user" | "assistant"}
-            priority={1}
-          >
-            {msg.content}
-          </Message>
-        ))}
-      </Last>
-    </Region>
-  </AISDKProvider>
+const prompt = cria.prompt().provider(provider, (p) =>
+  p
+    .system(
+      "You are a helpful AI assistant. You have access to a summary of earlier conversation and the recent messages.",
+      { priority: 0 }
+    )
+    // Older messages get summarized when over budget - no summarize prop needed!
+    .summary(historyBuilder, {
+      id: "conversation-summary",
+      store,
+      priority: 2,
+    })
+    // Recent messages kept in full
+    .last(recentBuilder, { N: 4, priority: 1 })
 );
 
 // Render with a tight budget to trigger summarization
 const budget = 240; // Budget that triggers summarization (full content ~243 tokens)
-const messages = await render(prompt, {
+const messages = await prompt.render({
   tokenizer,
   budget,
   renderer,
