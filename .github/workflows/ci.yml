@@ -42,3 +42,10 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+      - name: Typecheck examples
+        run: |
+          for config in examples/*/tsconfig.json; do
+            echo "Typechecking $config"
+            pnpm exec tsc --noEmit -p "$config"
+          done
