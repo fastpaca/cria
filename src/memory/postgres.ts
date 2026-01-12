@@ -2,6 +2,27 @@ import type { PoolConfig } from "pg";
 import { Pool } from "pg";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
+const sanitizeIdentifier = (identifier: string): string => {
+  const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  const parts = identifier.split(".");
+
+  if (parts.length === 0) {
+    throw new Error("Table name must not be empty");
+  }
+
+  const sanitized = parts.map((part) => {
+    if (!identifierPattern.test(part)) {
+      throw new Error(
+        "Invalid table name: use letters, numbers, and underscores (optionally schema.table)"
+      );
+    }
+
+    return `"${part}"`;
+  });
+
+  return sanitized.join(".");
+};
+
 /**
  * Configuration options for the Postgres store.
  */
@@ -75,8 +96,9 @@ export class PostgresStore<T = unknown> implements KVMemory<T> {
   constructor(options: PostgresStoreOptions = {}) {
     const { tableName, autoCreateTable, ...poolConfig } = options;
 
+    const sanitizedTableName = sanitizeIdentifier(tableName ?? "cria_kv_store");
+    this.tableName = sanitizedTableName;
     this.pool = new Pool(poolConfig);
-    this.tableName = tableName ?? "cria_kv_store";
     this.autoCreateTable = autoCreateTable ?? true;
   }
 
