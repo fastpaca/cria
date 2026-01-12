@@ -28,23 +28,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
-          cache: npm
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: npm clean-install
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Run tests
-        run: npm test
+        run: pnpm test
 
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+        run: pnpm exec semantic-release
