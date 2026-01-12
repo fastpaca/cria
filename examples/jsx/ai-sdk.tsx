@@ -52,12 +52,10 @@ const documentSections = documents.reduce(
 const historySection = conversationHistory.reduce(
   (acc, msg, i) =>
     acc.merge(
-      cria
-        .prompt()
-        .message(msg.role as "user" | "assistant", msg.content, {
-          priority: 2,
-          id: `msg-${i}`,
-        })
+      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
+        priority: 2,
+        id: `msg-${i}`,
+      })
     ),
   cria.prompt()
 );
@@ -69,7 +67,12 @@ const prompt = cria
   // Assistant message with reference documents - can be omitted if over budget
   .omit(documentSections, { priority: 3, id: "documents" })
   // Conversation history - truncate from start if needed
-  .truncate(historySection, { budget: 500, from: "start", priority: 2, id: "history" })
+  .truncate(historySection, {
+    budget: 500,
+    from: "start",
+    priority: 2,
+    id: "history",
+  })
   // Current question - high priority
   .user(userQuestion, { priority: 1, id: "question" });
 

@@ -44,52 +44,44 @@ const conversationHistory = [
 
 const provider = new Provider(openai("gpt-4o-mini"));
 
-const historyBuilder = conversationHistory
-  .slice(0, -4)
-  .reduce(
-    (acc, msg, i) =>
-      acc.merge(
-        cria
-          .prompt()
-          .message(msg.role as "user" | "assistant", msg.content, {
-            priority: 2,
-            id: `history-${i}`,
-          })
-      ),
-    cria.prompt()
-  );
+const historyBuilder = conversationHistory.slice(0, -4).reduce(
+  (acc, msg, i) =>
+    acc.merge(
+      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
+        priority: 2,
+        id: `history-${i}`,
+      })
+    ),
+  cria.prompt()
+);
 
 const recentBuilder = conversationHistory.reduce(
   (acc, msg, i) =>
     acc.merge(
-      cria
-        .prompt()
-        .message(msg.role as "user" | "assistant", msg.content, {
-          priority: 1,
-          id: `recent-${i}`,
-        })
+      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
+        priority: 1,
+        id: `recent-${i}`,
+      })
     ),
   cria.prompt()
 );
 
 // Build the prompt with Summary for older messages and Last for recent ones
-const prompt = cria
-  .prompt()
-  .provider(provider, (p) =>
-    p
-      .system(
-        "You are a helpful AI assistant. You have access to a summary of earlier conversation and the recent messages.",
-        { priority: 0 }
-      )
-      // Older messages get summarized when over budget - no summarize prop needed!
-      .summary(historyBuilder, {
-        id: "conversation-summary",
-        store,
-        priority: 2,
-      })
-      // Recent messages kept in full
-      .last(recentBuilder, { N: 4, priority: 1 })
-  );
+const prompt = cria.prompt().provider(provider, (p) =>
+  p
+    .system(
+      "You are a helpful AI assistant. You have access to a summary of earlier conversation and the recent messages.",
+      { priority: 0 }
+    )
+    // Older messages get summarized when over budget - no summarize prop needed!
+    .summary(historyBuilder, {
+      id: "conversation-summary",
+      store,
+      priority: 2,
+    })
+    // Recent messages kept in full
+    .last(recentBuilder, { N: 4, priority: 1 })
+);
 
 // Render with a tight budget to trigger summarization
 const budget = 240; // Budget that triggers summarization (full content ~243 tokens)

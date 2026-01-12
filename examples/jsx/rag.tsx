@@ -124,7 +124,12 @@ const prompt = cria
     ].join(" "),
     { priority: 0 }
   )
-  .vectorSearch({ limit: 3, store: knowledgeBase, query: userQuestion, priority: 0 })
+  .vectorSearch({
+    limit: 3,
+    store: knowledgeBase,
+    query: userQuestion,
+    priority: 0,
+  })
   .user(userQuestion, { priority: 0 });
 
 // ============================================================================

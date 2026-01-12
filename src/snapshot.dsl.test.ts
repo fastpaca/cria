@@ -6,10 +6,7 @@ const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
 describe("DSL snapshots", () => {
   test("snapshot captures structure and tokens", async () => {
-    const prompt = cria
-      .prompt()
-      .system("Rules")
-      .user("Hello");
+    const prompt = cria.prompt().system("Rules").user("Hello");
 
     const element = await prompt.build();
     const snap = createSnapshot(element, { tokenizer });
