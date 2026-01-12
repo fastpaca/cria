@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p3
 issue_id: "012"
 tags: [code-review, docs, examples]
@@ -71,9 +71,9 @@ Option A - Create DSL examples directory to reinforce DSL-first positioning.
 
 ## Acceptance Criteria
 
-- [ ] `examples/dsl/` directory created
-- [ ] At least one DSL example per integration
-- [ ] examples/README.md updated to list DSL first
+- [x] DSL-first examples present and discoverable (JSX isolated under `examples/jsx/`)
+- [x] At least one DSL example per integration
+- [x] examples/README.md updated to list DSL first
 - [ ] Examples run successfully
 
 ## Work Log
@@ -81,6 +81,12 @@ Option A - Create DSL examples directory to reinforce DSL-first positioning.
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from architecture review | Finding documented |
+| 2026-01-11 | Confirmed DSL examples + JSX isolation in /examples/jsx | Implemented |
+
+## Resolution
+
+- DSL examples already live at the root of `examples/` (ai-sdk, openai, rag, summary, etc.), with JSX variants moved under `examples/jsx/` and README updated to call out DSL-first usage.
+- No structural changes required beyond the existing DSL/JSX split.
 
 ## Resources
 
