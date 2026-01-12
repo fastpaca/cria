@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "006"
 tags: [code-review, performance]
@@ -86,7 +86,7 @@ Option A - Pre-allocate and copy for optimal performance.
 
 ## Acceptance Criteria
 
-- [ ] merge() uses O(n) algorithm instead of O(k^2 * n)
+- [x] merge() uses O(n) algorithm instead of O(k^2 * n)
 - [ ] All tests pass
 - [ ] Benchmark shows improvement for large merges
 
@@ -95,6 +95,12 @@ Option A - Pre-allocate and copy for optimal performance.
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from performance review | Finding documented |
+| 2026-01-11 | merge preallocated + cria helpers avoid repeated copies | Implemented |
+
+## Resolution
+
+- `PromptBuilder.merge()` now preallocates the combined child array and copies each child exactly once while validating contexts.
+- `cria.merge()`/`union()` delegate to a single merge call instead of reduce-based repeated merges, eliminating compounded copying.
 
 ## Resources
 

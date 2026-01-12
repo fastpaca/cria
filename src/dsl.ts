@@ -254,20 +254,31 @@ export class PromptBuilder {
    * Contexts must be compatible (either identical or undefined).
    */
   merge(...builders: PromptBuilder[]): PromptBuilder {
+    const sources = [this, ...builders];
     let nextContext = this.context;
-    const mergedChildren: BuilderChild[] = [...this.children];
+    const totalChildren = sources.reduce(
+      (sum, builder) => sum + builder.children.length,
+      0
+    );
+    const mergedChildren = new Array<BuilderChild>(totalChildren);
+    let writeIndex = 0;
 
-    for (const b of builders) {
-      if (b.context && nextContext && b.context !== nextContext) {
+    for (const builder of sources) {
+      if (builder.context && nextContext && builder.context !== nextContext) {
         throw new Error(
           "Cannot merge builders with different contexts/providers"
         );
       }
       if (!nextContext) {
-        nextContext = b.context;
+        nextContext = builder.context;
       }
-      mergedChildren.push(...b.children);
+      for (const child of builder.children) {
+        mergedChildren[writeIndex] = child;
+        writeIndex += 1;
+      }
     }
+
+    mergedChildren.length = writeIndex;
 
     return new PromptBuilder(mergedChildren, nextContext);
   }
@@ -446,13 +457,15 @@ export const cria = {
     if (builders.length === 0) {
       return PromptBuilder.create();
     }
-    return builders.slice(1).reduce((acc, b) => acc.merge(b), builders[0]);
+    const [first, ...rest] = builders;
+    return first.merge(...rest);
   },
   union: (...builders: PromptBuilder[]) => {
     if (builders.length === 0) {
       return PromptBuilder.create();
     }
-    return builders.slice(1).reduce((acc, b) => acc.union(b), builders[0]);
+    const [first, ...rest] = builders;
+    return first.union(...rest);
   },
 } as const;
 
