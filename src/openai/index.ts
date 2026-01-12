@@ -12,7 +12,6 @@ import type {
   ResponseInputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
-import type { Child } from "../jsx-runtime";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -331,7 +330,7 @@ interface OpenAIProviderProps {
   /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
   tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -446,7 +445,7 @@ export function OpenAIProvider({
 
   return {
     priority: 0,
-    children: children as PromptChildren,
+    children,
     context: { provider },
   };
 }

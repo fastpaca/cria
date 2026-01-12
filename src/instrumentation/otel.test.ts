@@ -80,11 +80,10 @@ describe("createOtelRenderHooks", () => {
   test("emits spans for fit lifecycle", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = (
-      <Region priority={0}>
-        A<Omit priority={1}>BBBB</Omit>
-      </Region>
-    );
+    const element = Region({
+      priority: 0,
+      children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
+    });
 
     await render(element, { tokenizer, budget: 1, hooks });
 
@@ -104,7 +103,7 @@ describe("createOtelRenderHooks", () => {
   test("records errors on fit failure", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = <Region priority={0}>Too long</Region>;
+    const element = Region({ priority: 0, children: ["Too long"] });
 
     await expect(
       render(element, {
@@ -127,7 +126,7 @@ describe("createOtelRenderHooks", () => {
     } as unknown as Tracer;
 
     const hooks = createOtelRenderHooks({ tracer });
-    const element = <Region priority={0}>Hello</Region>;
+    const element = Region({ priority: 0, children: ["Hello"] });
 
     await expect(
       render(element, {

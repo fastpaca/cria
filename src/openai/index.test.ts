@@ -12,11 +12,15 @@ import { chatCompletions, responses } from "./index";
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
 test("chatCompletions: renders system message", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="system">You are a helpful assistant.</Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "system",
+        children: ["You are a helpful assistant."],
+      }),
+    ],
+  });
 
   const messages = await render(prompt, {
     tokenizer,
@@ -32,12 +36,16 @@ test("chatCompletions: renders system message", async () => {
 });
 
 test("chatCompletions: renders user and assistant messages", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="user">Hello!</Message>
-      <Message messageRole="assistant">Hi there! How can I help?</Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({ messageRole: "user", children: ["Hello!"] }),
+      Message({
+        messageRole: "assistant",
+        children: ["Hi there! How can I help?"],
+      }),
+    ],
+  });
 
   const messages = await render(prompt, {
     tokenizer,
@@ -54,19 +62,23 @@ test("chatCompletions: renders user and assistant messages", async () => {
 });
 
 test("chatCompletions: renders tool calls on assistant message", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        Let me check the weather.
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
+          "Let me check the weather.",
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+    ],
+  });
 
   const messages = await render(prompt, {
     tokenizer,
@@ -92,24 +104,28 @@ test("chatCompletions: renders tool calls on assistant message", async () => {
 });
 
 test("chatCompletions: renders tool results as separate tool messages", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-        <ToolResult
-          output={{ temperature: 20 }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+          ToolResult({
+            output: { temperature: 20 },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+    ],
+  });
 
   const messages = await render(prompt, {
     tokenizer,
@@ -139,29 +155,40 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
 });
 
 test("chatCompletions: full conversation flow", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="system">You are a weather assistant.</Message>
-      <Message messageRole="user">What's the weather in Paris?</Message>
-      <Message messageRole="assistant">
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_1"
-          toolName="getWeather"
-        />
-        <ToolResult
-          output={{ temp: 18, condition: "sunny" }}
-          priority={1}
-          toolCallId="call_1"
-          toolName="getWeather"
-        />
-      </Message>
-      <Message messageRole="assistant">
-        The weather in Paris is sunny with a temperature of 18°C.
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "system",
+        children: ["You are a weather assistant."],
+      }),
+      Message({
+        messageRole: "user",
+        children: ["What's the weather in Paris?"],
+      }),
+      Message({
+        messageRole: "assistant",
+        children: [
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_1",
+            toolName: "getWeather",
+          }),
+          ToolResult({
+            output: { temp: 18, condition: "sunny" },
+            priority: 1,
+            toolCallId: "call_1",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+      Message({
+        messageRole: "assistant",
+        children: ["The weather in Paris is sunny with a temperature of 18°C."],
+      }),
+    ],
+  });
 
   const messages = await render(prompt, {
     tokenizer,
@@ -182,12 +209,16 @@ test("chatCompletions: full conversation flow", async () => {
 // ============================================================================
 
 test("responses: renders messages as EasyInputMessage", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="system">You are a helpful assistant.</Message>
-      <Message messageRole="user">Hello!</Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "system",
+        children: ["You are a helpful assistant."],
+      }),
+      Message({ messageRole: "user", children: ["Hello!"] }),
+    ],
+  });
 
   const input = await render(prompt, {
     tokenizer,
@@ -207,18 +238,22 @@ test("responses: renders messages as EasyInputMessage", async () => {
 });
 
 test("responses: renders tool calls as function_call items", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+    ],
+  });
 
   const input = await render(prompt, {
     tokenizer,
@@ -236,16 +271,17 @@ test("responses: renders tool calls as function_call items", async () => {
 });
 
 test("responses: renders tool results as function_call_output items", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <ToolResult
-        output={{ temperature: 20 }}
-        priority={1}
-        toolCallId="call_123"
-        toolName="getWeather"
-      />
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      ToolResult({
+        output: { temperature: 20 },
+        priority: 1,
+        toolCallId: "call_123",
+        toolName: "getWeather",
+      }),
+    ],
+  });
 
   const input = await render(prompt, {
     tokenizer,
@@ -262,11 +298,10 @@ test("responses: renders tool results as function_call_output items", async () =
 });
 
 test("responses: renders reasoning as native reasoning item", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Reasoning priority={1} text="Let me think about this..." />
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [Reasoning({ priority: 1, text: "Let me think about this..." })],
+  });
 
   const input = await render(prompt, {
     tokenizer,
@@ -282,23 +317,25 @@ test("responses: renders reasoning as native reasoning item", async () => {
 });
 
 test("responses: preserves reasoning inside messages and keeps ordering", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        {[
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
           "Before",
-          <Reasoning priority={1} text="thinking..." />,
-          <ToolCall
-            input={{ city: "Paris" }}
-            priority={1}
-            toolCallId="call_123"
-            toolName="getWeather"
-          />,
+          Reasoning({ priority: 1, text: "thinking..." }),
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
           "After",
-        ]}
-      </Message>
-    </Region>
-  );
+        ],
+      }),
+    ],
+  });
 
   const input = await render(prompt, {
     tokenizer,
@@ -327,14 +364,18 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
 });
 
 test("responses: full conversation with reasoning", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="system">You are a helpful assistant.</Message>
-      <Message messageRole="user">What is 2+2?</Message>
-      <Reasoning priority={1} text="This is basic arithmetic." />
-      <Message messageRole="assistant">The answer is 4.</Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "system",
+        children: ["You are a helpful assistant."],
+      }),
+      Message({ messageRole: "user", children: ["What is 2+2?"] }),
+      Reasoning({ priority: 1, text: "This is basic arithmetic." }),
+      Message({ messageRole: "assistant", children: ["The answer is 4."] }),
+    ],
+  });
 
   const input = await render(prompt, {
     tokenizer,

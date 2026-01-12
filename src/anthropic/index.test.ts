@@ -12,12 +12,16 @@ import { anthropic } from "./index";
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
 test("anthropic: extracts system message separately", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="system">You are a helpful assistant.</Message>
-      <Message messageRole="user">Hello!</Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "system",
+        children: ["You are a helpful assistant."],
+      }),
+      Message({ messageRole: "user", children: ["Hello!"] }),
+    ],
+  });
 
   const result = await render(prompt, {
     tokenizer,
@@ -34,12 +38,13 @@ test("anthropic: extracts system message separately", async () => {
 });
 
 test("anthropic: renders user and assistant messages", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="user">Hello!</Message>
-      <Message messageRole="assistant">Hi there!</Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({ messageRole: "user", children: ["Hello!"] }),
+      Message({ messageRole: "assistant", children: ["Hi there!"] }),
+    ],
+  });
 
   const result = await render(prompt, {
     tokenizer,
@@ -60,18 +65,22 @@ test("anthropic: renders user and assistant messages", async () => {
 });
 
 test("anthropic: renders tool calls as tool_use blocks", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+    ],
+  });
 
   const result = await render(prompt, {
     tokenizer,
@@ -94,24 +103,28 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
 });
 
 test("anthropic: renders tool results in user messages", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-        <ToolResult
-          output={{ temperature: 20 }}
-          priority={1}
-          toolCallId="call_123"
-          toolName="getWeather"
-        />
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+          ToolResult({
+            output: { temperature: 20 },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+    ],
+  });
 
   const result = await render(prompt, {
     tokenizer,
@@ -136,32 +149,46 @@ test("anthropic: renders tool results in user messages", async () => {
 });
 
 test("anthropic: full conversation with tool use", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="system">You are a weather assistant.</Message>
-      <Message messageRole="user">What's the weather in Paris?</Message>
-      <Message messageRole="assistant">
-        Let me check.
-        <ToolCall
-          input={{ city: "Paris" }}
-          priority={1}
-          toolCallId="call_1"
-          toolName="getWeather"
-        />
-      </Message>
-      <Message messageRole="user">
-        <ToolResult
-          output={{ temp: 18 }}
-          priority={1}
-          toolCallId="call_1"
-          toolName="getWeather"
-        />
-      </Message>
-      <Message messageRole="assistant">
-        The temperature in Paris is 18°C.
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "system",
+        children: ["You are a weather assistant."],
+      }),
+      Message({
+        messageRole: "user",
+        children: ["What's the weather in Paris?"],
+      }),
+      Message({
+        messageRole: "assistant",
+        children: [
+          "Let me check.",
+          ToolCall({
+            input: { city: "Paris" },
+            priority: 1,
+            toolCallId: "call_1",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+      Message({
+        messageRole: "user",
+        children: [
+          ToolResult({
+            output: { temp: 18 },
+            priority: 1,
+            toolCallId: "call_1",
+            toolName: "getWeather",
+          }),
+        ],
+      }),
+      Message({
+        messageRole: "assistant",
+        children: ["The temperature in Paris is 18°C."],
+      }),
+    ],
+  });
 
   const result = await render(prompt, {
     tokenizer,
@@ -178,14 +205,18 @@ test("anthropic: full conversation with tool use", async () => {
 });
 
 test("anthropic: includes reasoning as text with thinking tags", async () => {
-  const prompt = (
-    <Region priority={0}>
-      <Message messageRole="assistant">
-        <Reasoning priority={1} text="Let me think about this..." />
-        The answer is 4.
-      </Message>
-    </Region>
-  );
+  const prompt = Region({
+    priority: 0,
+    children: [
+      Message({
+        messageRole: "assistant",
+        children: [
+          Reasoning({ priority: 1, text: "Let me think about this..." }),
+          "The answer is 4.",
+        ],
+      }),
+    ],
+  });
 
   const result = await render(prompt, {
     tokenizer,

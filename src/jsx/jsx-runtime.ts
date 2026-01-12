@@ -87,18 +87,19 @@ export async function jsxs(
   return await jsx(type, props);
 }
 
-export namespace JSX {
-  export type Element = MaybePromise<PromptElement>;
+// biome-ignore lint/style/noNamespace: JSX namespace is required for TSX support
+export declare namespace JSX {
+  type Element = MaybePromise<PromptElement>;
   // Allow JSX children to use raw Child inputs even if props expect PromptChildren.
-  export type LibraryManagedAttributes<_C, P> = P extends {
+  type LibraryManagedAttributes<_C, P> = P extends {
     children?: PromptChildren;
   }
     ? Omit<P, "children"> & { children?: Child }
     : P;
-  export interface IntrinsicElements {
+  interface IntrinsicElements {
     [key: string]: never;
   }
-  export interface ElementChildrenAttribute {
+  interface ElementChildrenAttribute {
     children: unknown;
   }
 }

@@ -12,7 +12,6 @@ import {
   ToolCall,
   ToolResult,
 } from "../components";
-import type { Child } from "../jsx-runtime";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -28,6 +27,7 @@ import type {
   CompletionResult,
   MaybePromise,
   ModelProvider,
+  PromptChild,
   PromptChildren,
   PromptElement,
   PromptRenderer,
@@ -73,20 +73,22 @@ export function Messages({
   includeReasoning = false,
   priorities,
   id,
-}: MessagesProps): MaybePromise<PromptElement> {
+}: MessagesProps): PromptElement {
   const resolvedPriorities = resolvePriorities(priorities);
 
-  return (
-    <Region priority={0} {...(id === undefined ? {} : { id })}>
-      {messages.map((message) => (
-        <UIMessageElement
-          includeReasoning={includeReasoning}
-          message={message}
-          priorities={resolvedPriorities}
-        />
-      ))}
-    </Region>
+  const children = messages.map((message) =>
+    UIMessageElement({
+      includeReasoning,
+      message,
+      priorities: resolvedPriorities,
+    })
   );
+
+  return Region({
+    priority: 0,
+    ...(id === undefined ? {} : { id }),
+    children,
+  });
 }
 
 const omitStrategy: Strategy = () => null;
@@ -101,66 +103,66 @@ function UIMessageElement({
   message,
   priorities,
   includeReasoning,
-}: UIMessageElementProps): MaybePromise<PromptElement> {
+}: UIMessageElementProps): PromptElement {
   const messagePriority = rolePriority(message.role, priorities);
 
-  return (
-    <Message
-      id={`message:${message.id}`}
-      messageRole={message.role}
-      priority={messagePriority}
-    >
-      {message.parts.map((part) => {
-        if (part.type === "text") {
-          return part.text;
-        }
+  const children: PromptChild[] = [];
 
-        if (part.type === "reasoning") {
-          if (!includeReasoning) {
-            return null;
-          }
+  for (const part of message.parts) {
+    if (part.type === "text") {
+      children.push(part.text);
+      continue;
+    }
 
-          return (
-            <Reasoning
-              priority={priorities.reasoning}
-              strategy={omitStrategy}
-              text={part.text}
-            />
-          );
-        }
+    if (part.type === "reasoning") {
+      if (!includeReasoning) {
+        continue;
+      }
 
-        const toolInvocation = parseToolInvocationPart(part);
-        if (!toolInvocation) {
-          return null;
-        }
+      children.push(
+        Reasoning({
+          priority: priorities.reasoning,
+          strategy: omitStrategy,
+          text: part.text,
+        })
+      );
+      continue;
+    }
 
-        const toolCall = (
-          <ToolCall
-            input={toolInvocation.input}
-            priority={priorities.toolCall}
-            strategy={omitStrategy}
-            toolCallId={toolInvocation.toolCallId}
-            toolName={toolInvocation.toolName}
-          />
-        );
+    const toolInvocation = parseToolInvocationPart(part);
+    if (!toolInvocation) {
+      continue;
+    }
 
-        if (toolInvocation.output === undefined) {
-          return toolCall;
-        }
+    const toolCall = ToolCall({
+      input: toolInvocation.input,
+      priority: priorities.toolCall,
+      strategy: omitStrategy,
+      toolCallId: toolInvocation.toolCallId,
+      toolName: toolInvocation.toolName,
+    });
 
-        return [
-          toolCall,
-          <ToolResult
-            output={toolInvocation.output}
-            priority={priorities.toolResult}
-            strategy={omitStrategy}
-            toolCallId={toolInvocation.toolCallId}
-            toolName={toolInvocation.toolName}
-          />,
-        ];
-      })}
-    </Message>
-  );
+    children.push(toolCall);
+
+    if (toolInvocation.output !== undefined) {
+      children.push(
+        ToolResult({
+          output: toolInvocation.output,
+          priority: priorities.toolResult,
+          strategy: omitStrategy,
+          toolCallId: toolInvocation.toolCallId,
+          toolName: toolInvocation.toolName,
+        })
+      );
+    }
+  }
+
+  return Message({
+    id: `message:${message.id}`,
+    messageRole: message.role,
+    priority: messagePriority,
+    children,
+  });
 }
 
 function resolvePriorities(
@@ -484,7 +486,7 @@ interface AISDKProviderProps {
   /** Optional tokenizer to use for budgeting; defaults to an approximate counter */
   tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -593,7 +595,7 @@ export function AISDKProvider({
 
   return {
     priority: 0,
-    children: children as PromptChildren,
+    children,
     context: { provider },
   };
 }

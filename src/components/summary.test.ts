@@ -22,13 +22,18 @@ test("Summary: triggers summarization when over budget", async () => {
 
   const longContent = "A".repeat(200);
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-1" priority={1} store={store} summarize={summarize}>
-        {longContent}
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-1",
+        priority: 1,
+        store,
+        summarize,
+        children: [longContent],
+      }),
+    ],
+  });
 
   // Render with small budget to trigger summarization
   // Budget needs to fit the summary output + "[Summary of earlier conversation]\n" prefix
@@ -44,13 +49,18 @@ test("Summary: stores summary in store", async () => {
 
   const summarize = () => "This is the summary";
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-2" priority={1} store={store} summarize={summarize}>
-        {"Long content ".repeat(50)}
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-2",
+        priority: 1,
+        store,
+        summarize,
+        children: ["Long content ".repeat(50)],
+      }),
+    ],
+  });
 
   await render(element, { tokenizer, budget: 20 });
 
@@ -82,13 +92,18 @@ test("Summary: passes existing summary to summarizer", async () => {
     return "Updated summary";
   };
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-3" priority={1} store={store} summarize={summarize}>
-        {"Content ".repeat(100)}
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-3",
+        priority: 1,
+        store,
+        summarize,
+        children: ["Content ".repeat(100)],
+      }),
+    ],
+  });
 
   await render(element, { tokenizer, budget: 20 });
 
@@ -104,13 +119,18 @@ test("Summary: does not trigger when under budget", async () => {
     return "Summary";
   };
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="test-4" priority={1} store={store} summarize={summarize}>
-        Short
-      </Summary>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "test-4",
+        priority: 1,
+        store,
+        summarize,
+        children: ["Short"],
+      }),
+    ],
+  });
 
   // Large budget - no need to summarize
   await render(element, { tokenizer, budget: 1000 });
@@ -121,11 +141,10 @@ test("Summary: does not trigger when under budget", async () => {
 test("Last: keeps only last N children", async () => {
   const messages = ["First", "Second", "Third", "Fourth", "Fifth"];
 
-  const element = (
-    <Region priority={0}>
-      <Last N={2}>{messages}</Last>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [Last({ N: 2, children: messages })],
+  });
 
   const result = await render(element, { tokenizer, budget: 1000 });
 
@@ -139,11 +158,10 @@ test("Last: keeps only last N children", async () => {
 test("Last: handles N larger than children count", async () => {
   const messages = ["One", "Two"];
 
-  const element = (
-    <Region priority={0}>
-      <Last N={10}>{messages}</Last>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [Last({ N: 10, children: messages })],
+  });
 
   const result = await render(element, { tokenizer, budget: 1000 });
 
@@ -166,14 +184,19 @@ test("Summary + Last: typical usage pattern", async () => {
     "Message 5: Final message",
   ];
 
-  const element = (
-    <Region priority={0}>
-      <Summary id="conv" priority={2} store={store} summarize={summarize}>
-        {messages.slice(0, -2)}
-      </Summary>
-      <Last N={2}>{messages}</Last>
-    </Region>
-  );
+  const element = Region({
+    priority: 0,
+    children: [
+      Summary({
+        id: "conv",
+        priority: 2,
+        store,
+        summarize,
+        children: messages.slice(0, -2),
+      }),
+      Last({ N: 2, children: messages }),
+    ],
+  });
 
   // Full content: ~180 chars = 45 tokens
   // Summarized: prefix (34) + summary (19) + last 2 msgs (~50) = ~103 chars = 26 tokens

@@ -62,9 +62,12 @@ type RenderResult<TOptions extends RenderOptions> = TOptions extends {
  */
 export class PromptBuilder {
   private readonly children: BuilderChild[];
-  private readonly context?: CriaContext;
+  private readonly context: CriaContext | undefined;
 
-  private constructor(children: BuilderChild[] = [], context?: CriaContext) {
+  private constructor(
+    children: BuilderChild[] = [],
+    context: CriaContext | undefined = undefined
+  ) {
     this.children = children;
     this.context = context;
   }
@@ -80,11 +83,12 @@ export class PromptBuilder {
    * Add a system message.
    */
   system(text: string, opts?: { priority?: number }): PromptBuilder {
+    const priority = opts?.priority;
     return this.addChild(
       Message({
         messageRole: "system",
         children: [text],
-        priority: opts?.priority,
+        ...(priority !== undefined ? { priority } : {}),
       })
     );
   }
@@ -93,11 +97,12 @@ export class PromptBuilder {
    * Add a user message.
    */
   user(text: string, opts?: { priority?: number }): PromptBuilder {
+    const priority = opts?.priority;
     return this.addChild(
       Message({
         messageRole: "user",
         children: [text],
-        priority: opts?.priority,
+        ...(priority !== undefined ? { priority } : {}),
       })
     );
   }
@@ -106,11 +111,12 @@ export class PromptBuilder {
    * Add an assistant message.
    */
   assistant(text: string, opts?: { priority?: number }): PromptBuilder {
+    const priority = opts?.priority;
     return this.addChild(
       Message({
         messageRole: "assistant",
         children: [text],
-        priority: opts?.priority,
+        ...(priority !== undefined ? { priority } : {}),
       })
     );
   }
@@ -123,11 +129,12 @@ export class PromptBuilder {
     text: string,
     opts?: { priority?: number }
   ): PromptBuilder {
+    const priority = opts?.priority;
     return this.addChild(
       Message({
         messageRole: role,
         children: [text],
-        priority: opts?.priority,
+        ...(priority !== undefined ? { priority } : {}),
       })
     );
   }
@@ -141,11 +148,14 @@ export class PromptBuilder {
   ): PromptBuilder {
     const node = (async (): Promise<PromptElement> => {
       const children = await normalizeChild(content);
-      return Truncate({
+      const props: Parameters<typeof Truncate>[0] = {
         children,
         budget: opts.budget,
-        from: opts.from,
-        priority: opts.priority,
+        ...(opts.from ? { from: opts.from } : {}),
+        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+      };
+      return Truncate({
+        ...props,
       });
     })();
 
@@ -161,7 +171,11 @@ export class PromptBuilder {
   ): PromptBuilder {
     const node = (async (): Promise<PromptElement> => {
       const children = await normalizeChild(content);
-      return Omit({ children, priority: opts?.priority });
+      const props: Parameters<typeof Omit>[0] = {
+        children,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+      };
+      return Omit(props);
     })();
 
     return this.addChild(node);
@@ -323,15 +337,16 @@ export class PromptBuilder {
     priority?: number;
     id?: string;
   }): PromptBuilder {
-    const asyncElement = VectorSearch<T>({
+    const props: Parameters<typeof VectorSearch<T>>[0] = {
       store: opts.store,
       query: opts.query,
-      limit: opts.limit,
-      threshold: opts.threshold,
-      formatResults: opts.formatter,
-      priority: opts.priority,
-      id: opts.id,
-    });
+      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.threshold !== undefined ? { threshold: opts.threshold } : {}),
+      ...(opts.formatter ? { formatResults: opts.formatter } : {}),
+      ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+      ...(opts.id !== undefined ? { id: opts.id } : {}),
+    };
+    const asyncElement = VectorSearch<T>(props);
     return this.addChild(asyncElement);
   }
 
@@ -349,13 +364,14 @@ export class PromptBuilder {
   ): PromptBuilder {
     const element = (async (): Promise<PromptElement> => {
       const children = await normalizeChild(content);
-      return Summary({
+      const props: Parameters<typeof Summary>[0] = {
         id: opts.id,
         store: opts.store,
-        summarize: opts.summarize,
         children,
-        priority: opts.priority,
-      });
+        ...(opts.summarize ? { summarize: opts.summarize } : {}),
+        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+      };
+      return Summary(props);
     })();
 
     return this.addChild(element);
@@ -370,7 +386,11 @@ export class PromptBuilder {
     opts?: { priority?: number }
   ): PromptBuilder {
     return this.addChild(
-      Examples({ title, children: items, priority: opts?.priority })
+      Examples({
+        title,
+        children: items,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+      })
     );
   }
 
@@ -425,10 +445,10 @@ export class PromptBuilder {
 export const cria = {
   prompt: () => PromptBuilder.create(),
   merge: (...builders: PromptBuilder[]) => {
-    if (builders.length === 0) {
+    const [first, ...rest] = builders;
+    if (!first) {
       return PromptBuilder.create();
     }
-    const [first, ...rest] = builders;
     return first.merge(...rest);
   },
 } as const;

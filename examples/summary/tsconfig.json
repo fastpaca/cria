@@ -11,5 +11,5 @@
       "@fastpaca/cria/*": ["../../dist/*"]
     }
   },
-  "include": ["*.tsx", "*.ts"]
+  "include": ["*.ts"]
 }

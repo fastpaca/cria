@@ -6,7 +6,6 @@ import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
-import type { Child } from "../jsx-runtime";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -326,7 +325,7 @@ interface AnthropicProviderProps {
   /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
   tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
-  children?: Child;
+  children?: PromptChildren;
 }
 
 /**
@@ -381,7 +380,7 @@ export function AnthropicProvider({
 
   return {
     priority: 0,
-    children: children as PromptChildren,
+    children,
     context: { provider },
   };
 }

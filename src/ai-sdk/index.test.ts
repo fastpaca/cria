@@ -25,7 +25,7 @@ test("Messages: renders text + dynamic-tool output as tool-call/tool-result", as
     },
   ];
 
-  const prompt = await render(<Messages messages={messages} />, {
+  const prompt = await render(Messages({ messages }), {
     tokenizer,
     budget: 10_000,
   });
@@ -65,7 +65,7 @@ test("Messages: includeReasoning controls reasoning rendering", async () => {
     },
   ];
 
-  const withoutReasoning = await render(<Messages messages={messages} />, {
+  const withoutReasoning = await render(Messages({ messages }), {
     tokenizer,
     budget: 10_000,
   });
@@ -73,7 +73,7 @@ test("Messages: includeReasoning controls reasoning rendering", async () => {
   expect(withoutReasoning).toContain("public answer");
 
   const withReasoning = await render(
-    <Messages includeReasoning messages={messages} />,
+    Messages({ includeReasoning: true, messages }),
     { tokenizer, budget: 10_000 }
   );
   expect(withReasoning).toContain("<thinking>");
@@ -101,7 +101,7 @@ test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result s
     },
   ];
 
-  const modelMessages = await render(<Messages messages={messages} />, {
+  const modelMessages = await render(Messages({ messages }), {
     tokenizer,
     budget: 10_000,
     renderer,

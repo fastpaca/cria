@@ -5,21 +5,25 @@ import { createSnapshot, createSnapshotHooks, diffSnapshots } from "./snapshot";
 
 const tokenizer = (text: string): number => text.length;
 
-const buildBaseTree = () => (
-  <Region priority={0}>
-    Intro
-    <Region priority={1}>Keep</Region>
-    <Omit priority={2}>Drop</Omit>
-  </Region>
-);
+const buildBaseTree = () =>
+  Region({
+    priority: 0,
+    children: [
+      "Intro",
+      Region({ priority: 1, children: ["Keep"] }),
+      Omit({ priority: 2, children: ["Drop"] }),
+    ],
+  });
 
-const buildChangedTree = () => (
-  <Region priority={0}>
-    Intro updated
-    <Region priority={1}>Keep</Region>
-    <Region priority={2}>Replace</Region>
-  </Region>
-);
+const buildChangedTree = () =>
+  Region({
+    priority: 0,
+    children: [
+      "Intro updated",
+      Region({ priority: 1, children: ["Keep"] }),
+      Region({ priority: 2, children: ["Replace"] }),
+    ],
+  });
 
 describe("createSnapshot", () => {
   test("produces deterministic snapshots for the same input", async () => {
@@ -63,11 +67,10 @@ describe("diffSnapshots", () => {
 describe("createSnapshotHooks", () => {
   test("invokes callback with snapshot on fit complete", async () => {
     const snapshots: string[] = [];
-    const element = (
-      <Region priority={0}>
-        A<Omit priority={1}>BBBB</Omit>
-      </Region>
-    );
+    const element = Region({
+      priority: 0,
+      children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
+    });
 
     const hooks = createSnapshotHooks({
       tokenizer,
@@ -82,7 +85,7 @@ describe("createSnapshotHooks", () => {
   });
 
   test("propagates errors from snapshot creation", async () => {
-    const element = <Region priority={0}>Hi</Region>;
+    const element = Region({ priority: 0, children: ["Hi"] });
 
     const hooks = createSnapshotHooks({
       tokenizer: () => {

@@ -4,14 +4,15 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "tsx main.tsx"
+    "start": "tsx main.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@fastpaca/cria": "link:../.."
+    "@fastpaca/cria": "link:../..",
+    "tiktoken": "^1.0.22"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0"
   }
 }

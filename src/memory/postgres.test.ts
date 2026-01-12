@@ -20,6 +20,7 @@ const DELETE_REGEX = new RegExp(
   `DELETE FROM (${TABLE_PATTERN}) WHERE key = \\$1`,
   "i"
 );
+const INVALID_TABLE_REGEX = /Invalid table name/;
 
 const normalizeTableName = (identifier: string): string =>
   identifier.replace(/"/g, "");
@@ -189,7 +190,7 @@ test("PostgresStore: rejects unsafe table names", () => {
       tableName: 'users; DROP TABLE "users"; --',
       autoCreateTable: false,
     });
-  }).toThrow(/Invalid table name/);
+  }).toThrow(INVALID_TABLE_REGEX);
 });
 
 test("PostgresStore: supports schema-qualified table names", async () => {

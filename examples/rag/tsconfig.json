@@ -7,5 +7,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["*.tsx", "*.ts"]
+  "include": ["*.ts"]
 }
