@@ -38,7 +38,7 @@ export {
   VectorSearch,
 } from "./components";
 // DSL
-export { cria, merge, PromptBuilder, prompt, union } from "./dsl";
+export { cria, merge, PromptBuilder, prompt } from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p3
 issue_id: "009"
 tags: [code-review, simplification, yagni]
@@ -68,17 +68,23 @@ Option A - Remove union() since this is a new API with no existing users.
 
 ## Acceptance Criteria
 
-- [ ] union() method removed from PromptBuilder
-- [ ] union property removed from cria namespace
-- [ ] union standalone export removed
+- [x] union() method removed from PromptBuilder
+- [x] union property removed from cria namespace
+- [x] union standalone export removed
 - [ ] All remaining tests pass
-- [ ] merge() documented as the way to combine builders
+- [x] merge() documented as the way to combine builders
 
 ## Work Log
 
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from simplicity review | Finding documented |
+| 2026-01-11 | union alias removed in favor of merge | Implemented |
+
+## Resolution
+
+- Removed the `union` instance method, namespace property, and export; `merge()` remains the single way to combine builders.
+- Updated tests to drop the alias coverage; docs already point to `merge()` patterns.
 
 ## Resources
 

@@ -286,13 +286,6 @@ export class PromptBuilder {
     return new PromptBuilder(mergedChildren, nextContext);
   }
 
-  /**
-   * Union is an alias of merge for prompt composition; it concatenates builders.
-   */
-  union(...builders: PromptBuilder[]): PromptBuilder {
-    return this.merge(...builders);
-  }
-
   // ─── Provider/Context ───────────────────────────────────────
 
   /**
@@ -463,13 +456,6 @@ export const cria = {
     const [first, ...rest] = builders;
     return first.merge(...rest);
   },
-  union: (...builders: PromptBuilder[]) => {
-    if (builders.length === 0) {
-      return PromptBuilder.create();
-    }
-    const [first, ...rest] = builders;
-    return first.union(...rest);
-  },
 } as const;
 
 /**
@@ -482,12 +468,6 @@ export const prompt = () => PromptBuilder.create();
  */
 export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
   cria.merge(...builders);
-
-/**
- * Union is an alias of merge for prompt composition.
- */
-export const union = (...builders: PromptBuilder[]): PromptBuilder =>
-  cria.union(...builders);
 
 async function normalizeContent(
   content: string | PromptElement | PromptBuilder

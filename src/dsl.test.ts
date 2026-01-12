@@ -210,16 +210,6 @@ describe("PromptBuilder", () => {
       expect(result).toContain("B");
     });
 
-    test("union aliases merge", async () => {
-      const a = cria.prompt().system("A");
-      const b = cria.prompt().user("B");
-
-      const merged = cria.union(a, b);
-      const result = await merged.render({ tokenizer, budget: 100 });
-
-      expect(result).toContain("A");
-      expect(result).toContain("B");
-    });
   });
 
   // JSX compatibility: ensure DSL output matches JSX shape for parity. DSL is primary.
