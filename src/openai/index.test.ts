@@ -196,12 +196,38 @@ test("chatCompletions: full conversation flow", async () => {
     renderer: chatCompletions,
   });
 
-  expect(messages).toHaveLength(5);
-  expect(messages[0]?.role).toBe("system");
-  expect(messages[1]?.role).toBe("user");
-  expect(messages[2]?.role).toBe("assistant");
-  expect(messages[3]?.role).toBe("tool");
-  expect(messages[4]?.role).toBe("assistant");
+  expect(messages).toEqual([
+    {
+      role: "system",
+      content: "You are a weather assistant.",
+    },
+    {
+      role: "user",
+      content: "What's the weather in Paris?",
+    },
+    {
+      role: "assistant",
+      tool_calls: [
+        {
+          id: "call_1",
+          type: "function",
+          function: {
+            name: "getWeather",
+            arguments: '{"city":"Paris"}',
+          },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      content: '{"temp":18,"condition":"sunny"}',
+    },
+    {
+      role: "assistant",
+      content: "The weather in Paris is sunny with a temperature of 18°C.",
+    },
+  ]);
 });
 
 // ============================================================================
@@ -226,15 +252,10 @@ test("responses: renders messages as EasyInputMessage", async () => {
     renderer: responses,
   });
 
-  expect(input).toHaveLength(2);
-  expect(input[0]).toMatchObject({
-    role: "system",
-    content: "You are a helpful assistant.",
-  });
-  expect(input[1]).toMatchObject({
-    role: "user",
-    content: "Hello!",
-  });
+  expect(input).toEqual([
+    { role: "system", content: "You are a helpful assistant." },
+    { role: "user", content: "Hello!" },
+  ]);
 });
 
 test("responses: renders tool calls as function_call items", async () => {
@@ -261,13 +282,14 @@ test("responses: renders tool calls as function_call items", async () => {
     renderer: responses,
   });
 
-  expect(input).toHaveLength(1);
-  expect(input[0]).toMatchObject({
-    type: "function_call",
-    call_id: "call_123",
-    name: "getWeather",
-    arguments: '{"city":"Paris"}',
-  });
+  expect(input).toEqual([
+    {
+      type: "function_call",
+      call_id: "call_123",
+      name: "getWeather",
+      arguments: '{"city":"Paris"}',
+    },
+  ]);
 });
 
 test("responses: renders tool results as function_call_output items", async () => {
@@ -289,18 +311,25 @@ test("responses: renders tool results as function_call_output items", async () =
     renderer: responses,
   });
 
-  expect(input).toHaveLength(1);
-  expect(input[0]).toMatchObject({
-    type: "function_call_output",
-    call_id: "call_123",
-    output: '{"temperature":20}',
-  });
+  expect(input).toEqual([
+    {
+      type: "function_call_output",
+      call_id: "call_123",
+      output: '{"temperature":20}',
+    },
+  ]);
 });
 
 test("responses: renders reasoning as native reasoning item", async () => {
   const prompt = Region({
     priority: 0,
-    children: [Reasoning({ priority: 1, text: "Let me think about this..." })],
+    children: [
+      Reasoning({
+        id: "r1",
+        priority: 1,
+        text: "Let me think about this...",
+      }),
+    ],
   });
 
   const input = await render(prompt, {
@@ -309,11 +338,13 @@ test("responses: renders reasoning as native reasoning item", async () => {
     renderer: responses,
   });
 
-  expect(input).toHaveLength(1);
-  expect(input[0]).toMatchObject({
-    type: "reasoning",
-    summary: [{ type: "summary_text", text: "Let me think about this..." }],
-  });
+  expect(input).toEqual([
+    {
+      id: "r1",
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "Let me think about this..." }],
+    },
+  ]);
 });
 
 test("responses: preserves reasoning inside messages and keeps ordering", async () => {
@@ -321,6 +352,7 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
     priority: 0,
     children: [
       Message({
+        id: "assistant-1",
         messageRole: "assistant",
         children: [
           "Before",
@@ -343,24 +375,21 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
     renderer: responses,
   });
 
-  expect(input).toHaveLength(4);
-  expect(input[0]).toMatchObject({
-    role: "assistant",
-    content: "Before",
-  });
-  expect(input[1]).toMatchObject({
-    type: "reasoning",
-    summary: [{ type: "summary_text", text: "thinking..." }],
-  });
-  expect(input[2]).toMatchObject({
-    type: "function_call",
-    call_id: "call_123",
-    name: "getWeather",
-  });
-  expect(input[3]).toMatchObject({
-    role: "assistant",
-    content: "After",
-  });
+  expect(input).toEqual([
+    { role: "assistant", content: "Before" },
+    {
+      id: "assistant-1-reasoning-0",
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "thinking..." }],
+    },
+    {
+      type: "function_call",
+      call_id: "call_123",
+      name: "getWeather",
+      arguments: '{"city":"Paris"}',
+    },
+    { role: "assistant", content: "After" },
+  ]);
 });
 
 test("responses: full conversation with reasoning", async () => {
@@ -372,7 +401,11 @@ test("responses: full conversation with reasoning", async () => {
         children: ["You are a helpful assistant."],
       }),
       Message({ messageRole: "user", children: ["What is 2+2?"] }),
-      Reasoning({ priority: 1, text: "This is basic arithmetic." }),
+      Reasoning({
+        id: "r-global",
+        priority: 1,
+        text: "This is basic arithmetic.",
+      }),
       Message({ messageRole: "assistant", children: ["The answer is 4."] }),
     ],
   });
@@ -383,9 +416,14 @@ test("responses: full conversation with reasoning", async () => {
     renderer: responses,
   });
 
-  expect(input).toHaveLength(4);
-  expect(input[0]).toMatchObject({ role: "system" });
-  expect(input[1]).toMatchObject({ role: "user" });
-  expect(input[2]).toMatchObject({ type: "reasoning" });
-  expect(input[3]).toMatchObject({ role: "assistant" });
+  expect(input).toEqual([
+    { role: "system", content: "You are a helpful assistant." },
+    { role: "user", content: "What is 2+2?" },
+    {
+      id: "r-global",
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "This is basic arithmetic." }],
+    },
+    { role: "assistant", content: "The answer is 4." },
+  ]);
 });

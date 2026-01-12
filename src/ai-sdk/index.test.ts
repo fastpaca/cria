@@ -69,16 +69,15 @@ test("Messages: includeReasoning controls reasoning rendering", async () => {
     tokenizer,
     budget: 10_000,
   });
-  expect(withoutReasoning).not.toContain("secret reasoning");
-  expect(withoutReasoning).toContain("public answer");
+  expect(withoutReasoning).toBe("Assistant: public answer\n\n");
 
   const withReasoning = await render(
     Messages({ includeReasoning: true, messages }),
     { tokenizer, budget: 10_000 }
   );
-  expect(withReasoning).toContain("<thinking>");
-  expect(withReasoning).toContain("secret reasoning");
-  expect(withReasoning).toContain("public answer");
+  expect(withReasoning).toBe(
+    "Assistant: <thinking>\nsecret reasoning\n</thinking>\npublic answer\n\n"
+  );
 });
 
 test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result split)", async () => {
@@ -107,8 +106,30 @@ test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result s
     renderer,
   });
 
-  expect(modelMessages).toHaveLength(3);
-  expect(modelMessages[0]?.role).toBe("user");
-  expect(modelMessages[1]?.role).toBe("assistant");
-  expect(modelMessages[2]?.role).toBe("tool");
+  expect(modelMessages).toEqual([
+    { role: "user", content: "hi" },
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: "checking weather" },
+        {
+          type: "tool-call",
+          toolCallId: "w1",
+          toolName: "getWeather",
+          input: { city: "Paris" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "w1",
+          toolName: "getWeather",
+          output: { type: "json", value: { tempC: 10 } },
+        },
+      ],
+    },
+  ]);
 });

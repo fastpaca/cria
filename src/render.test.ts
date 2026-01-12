@@ -36,11 +36,12 @@ test("render: omit removes region when over budget", async () => {
   });
 
   const resultLarge = await render(element, { tokenizer, budget: 100 });
-  expect(resultLarge).toContain("Less important");
+  expect(resultLarge).toBe(
+    "Important Less important content that should be removedAlso important"
+  );
 
   const resultSmall = await render(element, { tokenizer, budget: 10 });
-  expect(resultSmall).not.toContain("Less important");
-  expect(resultSmall).toContain("Important");
+  expect(resultSmall).toBe("Important Also important");
 });
 
 test("render: truncate reduces content", async () => {
@@ -54,8 +55,7 @@ test("render: truncate reduces content", async () => {
   });
 
   const result = await render(element, { tokenizer, budget: 10 });
-  expect(result.length).toBeLessThan(100);
-  expect(result).toContain("Header");
+  expect(result).toBe(`Header ${"A".repeat(20)}`);
 });
 
 test("render: priority ordering - lower priority removed first", async () => {
@@ -69,9 +69,7 @@ test("render: priority ordering - lower priority removed first", async () => {
   });
 
   const result = await render(element, { tokenizer, budget: 5 });
-  expect(result).toContain("Critical");
-  expect(result).not.toContain("Medium");
-  expect(result).not.toContain("Low");
+  expect(result).toBe("Critical");
 });
 
 test("render: throws FitError when cannot fit", async () => {

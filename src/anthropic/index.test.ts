@@ -29,11 +29,9 @@ test("anthropic: extracts system message separately", async () => {
     renderer: anthropic,
   });
 
-  expect(result.system).toBe("You are a helpful assistant.");
-  expect(result.messages).toHaveLength(1);
-  expect(result.messages[0]).toMatchObject({
-    role: "user",
-    content: [{ type: "text", text: "Hello!" }],
+  expect(result).toEqual({
+    system: "You are a helpful assistant.",
+    messages: [{ role: "user", content: [{ type: "text", text: "Hello!" }] }],
   });
 });
 
@@ -52,15 +50,11 @@ test("anthropic: renders user and assistant messages", async () => {
     renderer: anthropic,
   });
 
-  expect(result.system).toBeUndefined();
-  expect(result.messages).toHaveLength(2);
-  expect(result.messages[0]).toMatchObject({
-    role: "user",
-    content: [{ type: "text", text: "Hello!" }],
-  });
-  expect(result.messages[1]).toMatchObject({
-    role: "assistant",
-    content: [{ type: "text", text: "Hi there!" }],
+  expect(result).toEqual({
+    messages: [
+      { role: "user", content: [{ type: "text", text: "Hello!" }] },
+      { role: "assistant", content: [{ type: "text", text: "Hi there!" }] },
+    ],
   });
 });
 
@@ -88,15 +82,18 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
     renderer: anthropic,
   });
 
-  expect(result.messages).toHaveLength(1);
-  expect(result.messages[0]).toMatchObject({
-    role: "assistant",
-    content: [
+  expect(result).toEqual({
+    messages: [
       {
-        type: "tool_use",
-        id: "call_123",
-        name: "getWeather",
-        input: { city: "Paris" },
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_123",
+            name: "getWeather",
+            input: { city: "Paris" },
+          },
+        ],
       },
     ],
   });
@@ -132,17 +129,28 @@ test("anthropic: renders tool results in user messages", async () => {
     renderer: anthropic,
   });
 
-  // Tool result should be moved to a separate user message
-  expect(result.messages).toHaveLength(2);
-  expect(result.messages[0]?.role).toBe("assistant");
-  expect(result.messages[1]?.role).toBe("user");
-  expect(result.messages[1]).toMatchObject({
-    role: "user",
-    content: [
+  expect(result).toEqual({
+    messages: [
       {
-        type: "tool_result",
-        tool_use_id: "call_123",
-        content: '{"temperature":20}',
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_123",
+            name: "getWeather",
+            input: { city: "Paris" },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call_123",
+            content: '{"temperature":20}',
+          },
+        ],
       },
     ],
   });
@@ -196,12 +204,46 @@ test("anthropic: full conversation with tool use", async () => {
     renderer: anthropic,
   });
 
-  expect(result.system).toBe("You are a weather assistant.");
-  expect(result.messages).toHaveLength(4);
-  expect(result.messages[0]?.role).toBe("user");
-  expect(result.messages[1]?.role).toBe("assistant");
-  expect(result.messages[2]?.role).toBe("user");
-  expect(result.messages[3]?.role).toBe("assistant");
+  expect(result).toEqual({
+    system: "You are a weather assistant.",
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "What's the weather in Paris?" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Let me check." },
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "getWeather",
+            input: { city: "Paris" },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call_1",
+            content: '{"temp":18}',
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "The temperature in Paris is 18°C.",
+          },
+        ],
+      },
+    ],
+  });
 });
 
 test("anthropic: includes reasoning as text with thinking tags", async () => {
@@ -224,16 +266,17 @@ test("anthropic: includes reasoning as text with thinking tags", async () => {
     renderer: anthropic,
   });
 
-  expect(result.messages).toHaveLength(1);
-  const content = result.messages[0]?.content;
-  expect(Array.isArray(content)).toBe(true);
-  if (Array.isArray(content)) {
-    const textBlock = content.find((c) => c.type === "text");
-    expect(textBlock).toBeDefined();
-    if (textBlock && "text" in textBlock) {
-      expect(textBlock.text).toContain("<thinking>");
-      expect(textBlock.text).toContain("Let me think about this...");
-      expect(textBlock.text).toContain("The answer is 4.");
-    }
-  }
+  expect(result).toEqual({
+    messages: [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "<thinking>\nLet me think about this...\n</thinking>The answer is 4.",
+          },
+        ],
+      },
+    ],
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * Cria - fluent DSL for prompt composition with automatic token budget fitting.
+ * Cria - fluent DSL for prompt composition.
  *
  * @example
  * ```ts

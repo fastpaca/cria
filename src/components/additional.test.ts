@@ -34,10 +34,7 @@ describe("Examples", () => {
     });
 
     const result = await render(element, { tokenizer, budget: 100 });
-    expect(result).toContain("Examples:\n");
-    expect(result).toContain("One");
-    expect(result).toContain("Two");
-    expect(result).toContain("---");
+    expect(result).toBe("Examples:\nOne\n---\nTwo");
   });
 });
 
@@ -45,7 +42,6 @@ describe("CodeBlock", () => {
   test("renders fenced code", async () => {
     const element = CodeBlock({ code: "console.log('hi');", language: "js" });
     const result = await render(element, { tokenizer, budget: 100 });
-    expect(result).toContain("```js");
-    expect(result).toContain("console.log('hi');");
+    expect(result).toBe("```js\nconsole.log('hi');\n```\n");
   });
 });

@@ -40,8 +40,9 @@ test("Summary: triggers summarization when over budget", async () => {
   const result = await render(element, { tokenizer, budget: 30 });
 
   expect(summarizeCalled).toBe(true);
-  expect(result).toContain("Summary of:");
-  expect(result.length).toBeLessThan(longContent.length);
+  expect(result).toBe(
+    "Assistant: [Summary of earlier conversation]\nSummary of: AAAAAAAAAAAAAAAAAAAA...\n\n"
+  );
 });
 
 test("Summary: stores summary in store", async () => {
@@ -62,12 +63,16 @@ test("Summary: stores summary in store", async () => {
     ],
   });
 
-  await render(element, { tokenizer, budget: 20 });
+  const output = await render(element, { tokenizer, budget: 20 });
+
+  expect(output).toBe(
+    "Assistant: [Summary of earlier conversation]\nThis is the summary\n\n"
+  );
 
   const entry = store.get("test-2");
   expect(entry).not.toBeNull();
   expect(entry?.data.content).toBe("This is the summary");
-  expect(entry?.data.tokenCount).toBeGreaterThan(0);
+  expect(entry?.data.tokenCount).toBe(5);
   expect(entry?.updatedAt).toBeGreaterThan(0);
 });
 
@@ -105,9 +110,12 @@ test("Summary: passes existing summary to summarizer", async () => {
     ],
   });
 
-  await render(element, { tokenizer, budget: 20 });
+  const output = await render(element, { tokenizer, budget: 20 });
 
   expect(receivedExisting).toBe("Previous summary");
+  expect(output).toBe(
+    "Assistant: [Summary of earlier conversation]\nUpdated summary\n\n"
+  );
 });
 
 test("Summary: does not trigger when under budget", async () => {
@@ -133,9 +141,10 @@ test("Summary: does not trigger when under budget", async () => {
   });
 
   // Large budget - no need to summarize
-  await render(element, { tokenizer, budget: 1000 });
+  const output = await render(element, { tokenizer, budget: 1000 });
 
   expect(summarizeCalled).toBe(false);
+  expect(output).toBe("Short");
 });
 
 test("Last: keeps only last N children", async () => {
@@ -148,11 +157,7 @@ test("Last: keeps only last N children", async () => {
 
   const result = await render(element, { tokenizer, budget: 1000 });
 
-  expect(result).not.toContain("First");
-  expect(result).not.toContain("Second");
-  expect(result).not.toContain("Third");
-  expect(result).toContain("Fourth");
-  expect(result).toContain("Fifth");
+  expect(result).toBe("FourthFifth");
 });
 
 test("Last: handles N larger than children count", async () => {
@@ -165,8 +170,7 @@ test("Last: handles N larger than children count", async () => {
 
   const result = await render(element, { tokenizer, budget: 1000 });
 
-  expect(result).toContain("One");
-  expect(result).toContain("Two");
+  expect(result).toBe("OneTwo");
 });
 
 test("Summary + Last: typical usage pattern", async () => {
@@ -202,11 +206,7 @@ test("Summary + Last: typical usage pattern", async () => {
   // Summarized: prefix (34) + summary (19) + last 2 msgs (~50) = ~103 chars = 26 tokens
   const result = await render(element, { tokenizer, budget: 30 });
 
-  // Should have summary of older messages (wrapped with prefix)
-  expect(result).toContain("[Summary of earlier conversation]");
-  expect(result).toContain("Discussed greetings");
-
-  // Should have recent messages in full
-  expect(result).toContain("Message 4: Recent message here");
-  expect(result).toContain("Message 5: Final message");
+  expect(result).toBe(
+    "Assistant: [Summary of earlier conversation]\nDiscussed greetings\n\nMessage 4: Recent message hereMessage 5: Final message"
+  );
 });

@@ -19,10 +19,9 @@ describe("DSL Summary", () => {
 
     const output = await builder.render({ tokenizer, budget: 60 });
 
-    expect(output).toContain("Summary of earlier conversation");
-    expect(output).toContain("S");
+    expect(output).toBe("Assistant: [Summary of earlier conversation]\nS\n\n");
     const entry = store.get("conv-summary");
     expect(entry?.data.content).toBe("S");
-    expect(entry?.data.tokenCount).toBeGreaterThan(0);
+    expect(entry?.data.tokenCount).toBe(1);
   });
 });
