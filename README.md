@@ -130,14 +130,14 @@ const { text } = await generateText({ model, messages });
 - [x] AI SDK helpers: Messages component, DEFAULT_PRIORITIES
 - [x] Memory: InMemoryStore, Redis, Postgres, Chroma, Qdrant
 - [x] Observability: render hooks, validation schemas, snapshots, OpenTelemetry
+- [x] Tokenizer helpers
 
 **Planned**
 
-- [ ] Message storage (conversation history management)
-- [ ] Tokenizer helpers
 - [ ] Next.js adapter
 - [ ] GenAI semantic conventions for OpenTelemetry
 - [ ] Visualization tool
+- [ ] Prompt eval / testing functionality
 
 ## Contributing
 
@@ -155,7 +155,7 @@ const { text } = await generateText({ model, messages });
 
 - **Does this replace my LLM SDK?** No - Cria builds prompt structures. You still use your SDK to call the model.
 - **How do I tune token budgets?** Pass `budget` to `render()` and set priorities on regions. Providers include tiktoken defaults; see [docs/tokenization.md](docs/tokenization.md) to bring your own.
-- **Is this production-ready?** The core features are stable; see the docs for what's in progress.
+- **Is this production-ready?** Not yet! It is a work in progress and you should test it out before you run this in production.
 
 ## License
 
