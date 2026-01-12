@@ -17,18 +17,25 @@
 
 Cria is a fluent DSL for structured prompt engineering. Compose prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or AI SDK formats. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
 
-## Example
-
 ```ts
-import { cria } from "@fastpaca/cria";
+import { cria, InMemoryStore } from "@fastpaca/cria";
+import { anthropic } from "@fastpaca/cria/anthropic";
 
-const messages = await cria
+const store = new InMemoryStore();
+
+const { system, messages } = await cria
   .prompt()
-  .system("You are a helpful assistant.")
-  .last(historyMessages, { N: 12, priority: 2 })
-  .omit(optionalExamples, { priority: 3 })
+  .system("You are a concise research assistant.")
+  .summary(historyMessages, {
+    id: "conversation",
+    store,
+    summarize: ({ content }) => summarizeWithModel(content), // any summarizer
+    priority: 1, // keep this if possible
+  })
+  .last(historyMessages, { N: 8, priority: 2 }) // keep latest turns
+  .omit(optionalExamples, { priority: 3 }) // drop when tight on budget
   .user(userQuestion)
-  .render({ tokenizer, budget: 8_000, renderer: chatCompletions });
+  .render({ tokenizer, budget: 8_000, renderer: anthropic });
 ```
 
 See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
@@ -58,7 +65,7 @@ const messages = await cria
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget, tokenizer, renderer: chatCompletions });
-const response = await client.chat.completions.create({ model: "gpt-4o", messages });
+const response = await client.chat.completions.create({ model: "gpt-4o-mini", messages });
 ```
 </details>
 
@@ -76,7 +83,7 @@ const input = await cria
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget, tokenizer, renderer: responses });
-const response = await client.responses.create({ model: "o3", input });
+const response = await client.responses.create({ model: "gpt-5-nano", input });
 ```
 </details>
 
