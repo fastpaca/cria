@@ -187,7 +187,6 @@ export class PromptBuilder {
    * .section("context", (s) => s.truncate(content, { budget: 1000 }))
    * ```
    */
-  section(fn: (builder: PromptBuilder) => PromptBuilder): PromptBuilder;
   region(fn: (builder: PromptBuilder) => PromptBuilder): PromptBuilder;
   region(
     name: string,
@@ -233,7 +232,8 @@ export class PromptBuilder {
     const fn = typeof nameOrFn === "string" ? maybeFn : nameOrFn;
 
     if (!fn) {
-      const received = typeof nameOrFn === "string" ? typeof maybeFn : typeof nameOrFn;
+      const received =
+        typeof nameOrFn === "string" ? typeof maybeFn : typeof nameOrFn;
       throw new Error(
         `section() requires a callback function (e.g. cria.prompt().section("name", (s) => ...)). Received: ${received}`
       );
@@ -359,7 +359,7 @@ export class PromptBuilder {
     }
   ): PromptBuilder {
     const element = (async (): Promise<PromptElement> => {
-      const children = await this.resolveContent(content);
+      const children = await normalizeChild(content);
       return Summary({
         id: opts.id,
         store: opts.store,
@@ -487,6 +487,8 @@ async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
 async function normalizeChildren(
   children: readonly BuilderChild[]
 ): Promise<PromptChildren> {
-  const normalized = await Promise.all(children.map((child) => normalizeChild(child)));
+  const normalized = await Promise.all(
+    children.map((child) => normalizeChild(child))
+  );
   return normalized.flat();
 }
