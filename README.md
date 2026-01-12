@@ -39,7 +39,6 @@ See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
 - **Need a summary for long conversations?** Use `.summary(...)`.
 - **Need to cap history but keep structure?** Use `.last(...)`.
 - **Need to drop optional context when the context window is full?** Use `.omit(...)`.
-- **Need granular tool calling structure?** Use `.toolCall(...)` + `.toolResult(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
 - **Prefer TSX?** Import the optional JSX surface from `@fastpaca/cria/jsx`.
 
@@ -95,7 +94,7 @@ const { system, messages } = await cria
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget, tokenizer, renderer: anthropic });
-const response = await client.messages.create({ model: "claude-sonnet-4-20250514", system, messages });
+const response = await client.messages.create({ model: "claude-haiku-4-5", system, messages });
 ```
 </details>
 
