@@ -15,7 +15,13 @@
   <a href="https://opensource.org/license/mit"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
 </p>
 
-Cria is a fluent DSL for structured prompt engineering. Compose prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or AI SDK formats. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
+<p align="center">
+  <a href="https://github.com/fastpaca/cria/stargazers">
+    <img src="https://img.shields.io/badge/Give%20a%20Star-Support%20the%20project-orange?style=for-the-badge" alt="Give a Star">
+  </a>
+</p>
+
+Cria is a lightweight prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
 ```ts
 const messages = await cria
