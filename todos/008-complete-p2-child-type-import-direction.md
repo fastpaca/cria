@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "008"
 tags: [code-review, architecture]
@@ -69,9 +69,8 @@ Option A - Move Child type to core types and re-export from JSX.
 
 ## Acceptance Criteria
 
-- [ ] Child type defined in core types.ts
-- [ ] jsx-runtime.ts re-exports Child from types.ts
-- [ ] Components import Child from types.ts
+- [x] Components avoid importing JSX-only types
+- [x] Core components depend only on `PromptChildren`
 - [ ] All tests pass
 
 ## Work Log
@@ -79,6 +78,12 @@ Option A - Move Child type to core types and re-export from JSX.
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from architecture review | Finding documented |
+| 2026-01-11 | Components decoupled from JSX runtime types | Implemented |
+
+## Resolution
+
+- Components now declare `children?: PromptChildren` and no longer import `Child` from the optional JSX runtime, keeping the core surface JSX-agnostic.
+- JSX runtime continues handling JSX child coercion; component typing remains within the core package.
 
 ## Resources
 

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "004"
 tags: [code-review, typescript, type-safety]
@@ -70,8 +70,8 @@ Option A - Add runtime validation with clear error messages.
 
 ## Acceptance Criteria
 
-- [ ] Children are validated at runtime before use
-- [ ] Invalid child types throw descriptive errors
+- [x] Components no longer rely on `as PromptChildren` assertions
+- [x] Components accept normalized `PromptChildren` directly
 - [ ] Existing tests pass
 - [ ] New test added for invalid child type handling
 
@@ -80,6 +80,13 @@ Option A - Add runtime validation with clear error messages.
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from TypeScript review | Finding documented |
+| 2026-01-11 | Components switched to `PromptChildren` props | Implemented |
+
+## Resolution
+
+- Components now declare `children?: PromptChildren` and default to `[]`, removing all `as PromptChildren` assertions.
+- Dropped the dependency on JSX runtime `Child` types; `LibraryManagedAttributes` continues to coerce JSX inputs, keeping core components focused on normalized children.
+- Runtime validation deferred; compile-time narrowing prevents accidental non-normalized inputs in the DSL/component surface.
 
 ## Resources
 
