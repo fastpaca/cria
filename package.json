@@ -116,16 +116,16 @@
     }
   },
   "scripts": {
-    "build": "npm run build:core && npm run typecheck:examples",
+    "build": "pnpm run build:core && pnpm run typecheck:examples",
     "build:core": "tsc",
-    "check": "ultracite check && npm run typecheck",
+    "check": "ultracite check && pnpm run typecheck",
     "fix": "ultracite fix",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "husky",
-    "typecheck": "npm run typecheck:core && npm run typecheck:examples",
+    "typecheck": "pnpm run typecheck:core && pnpm run typecheck:examples",
     "typecheck:core": "tsc --noEmit",
-    "typecheck:examples": "npm exec -- tsc --noEmit -p examples/ai-sdk/tsconfig.json && npm exec -- tsc --noEmit -p examples/anthropic/tsconfig.json && npm exec -- tsc --noEmit -p examples/openai-chat-completions/tsconfig.json && npm exec -- tsc --noEmit -p examples/openai-responses/tsconfig.json && npm exec -- tsc --noEmit -p examples/rag/tsconfig.json && npm exec -- tsc --noEmit -p examples/summary/tsconfig.json"
+    "typecheck:examples": "pnpm exec tsc --noEmit -p examples/ai-sdk/tsconfig.json && pnpm exec tsc --noEmit -p examples/anthropic/tsconfig.json && pnpm exec tsc --noEmit -p examples/openai-chat-completions/tsconfig.json && pnpm exec tsc --noEmit -p examples/openai-responses/tsconfig.json && pnpm exec tsc --noEmit -p examples/rag/tsconfig.json && pnpm exec tsc --noEmit -p examples/summary/tsconfig.json"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
