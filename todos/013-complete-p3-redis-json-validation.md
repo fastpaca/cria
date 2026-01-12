@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p3
 issue_id: "013"
 tags: [code-review, security, validation]
@@ -85,7 +85,7 @@ Option A - Use Zod validation for consistency with rest of codebase.
 ## Acceptance Criteria
 
 - [ ] Retrieved data validated against Zod schema
-- [ ] Clear error thrown if validation fails
+- [x] Clear error thrown if validation fails
 - [ ] All tests pass
 - [ ] Similar pattern applied to other memory stores
 
@@ -94,6 +94,12 @@ Option A - Use Zod validation for consistency with rest of codebase.
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from security review | Finding documented |
+| 2026-01-11 | Added shape validation + tests for Redis entries | Implemented |
+
+## Resolution
+
+- Added strict shape checks when parsing Redis entries; invalid JSON or malformed shapes now throw descriptive errors keyed to the offending record.
+- Added tests for invalid JSON and malformed stored entries. Zod was not introduced to avoid added dependency at this layer.
 
 ## Resources
 

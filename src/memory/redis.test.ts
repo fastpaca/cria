@@ -107,6 +107,20 @@ test("RedisStore: uses default prefix", async () => {
   expect(mockData.has("cria:kv:key")).toBe(true);
 });
 
+test("RedisStore: rejects invalid JSON payloads", async () => {
+  const store = new RedisStore<string>();
+  mockData.set("cria:kv:bad", "{this is not json");
+
+  await expect(store.get("bad")).rejects.toThrow(/invalid JSON/);
+});
+
+test("RedisStore: rejects malformed stored shapes", async () => {
+  const store = new RedisStore<string>();
+  mockData.set("cria:kv:bad-shape", JSON.stringify({ data: "x" }));
+
+  await expect(store.get("bad-shape")).rejects.toThrow(/missing createdAt/);
+});
+
 test("RedisStore: disconnect calls quit", async () => {
   const store = new RedisStore<string>();
   await store.disconnect();
