@@ -145,7 +145,7 @@ export class PromptBuilder {
     opts: { budget: number; from?: "start" | "end"; priority?: number }
   ): PromptBuilder {
     const node = (async (): Promise<PromptElement> => {
-      const children = await this.resolveContent(content);
+      const children = await normalizeChild(content);
       return Truncate({
         children,
         budget: opts.budget,
@@ -165,7 +165,7 @@ export class PromptBuilder {
     opts?: { priority?: number }
   ): PromptBuilder {
     const node = (async (): Promise<PromptElement> => {
-      const children = await this.resolveContent(content);
+      const children = await normalizeChild(content);
       return Omit({ children, priority: opts?.priority });
     })();
 
@@ -423,12 +423,6 @@ export class PromptBuilder {
   private addChild(child: BuilderChild): PromptBuilder {
     return new PromptBuilder([...this.children, child], this.context);
   }
-
-  private resolveContent(
-    content: string | PromptElement | PromptBuilder
-  ): Promise<PromptChildren> {
-    return normalizeContent(content);
-  }
 }
 
 // ─── Entry Points ─────────────────────────────────────────────
@@ -468,21 +462,6 @@ export const prompt = () => PromptBuilder.create();
  */
 export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
   cria.merge(...builders);
-
-async function normalizeContent(
-  content: string | PromptElement | PromptBuilder
-): Promise<PromptChildren> {
-  if (typeof content === "string") {
-    return [content];
-  }
-
-  if (content instanceof PromptBuilder) {
-    const built = await content.build();
-    return [built];
-  }
-
-  return [content];
-}
 
 async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
   if (typeof child === "string") {

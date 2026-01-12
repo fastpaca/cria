@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p3
 issue_id: "010"
 tags: [code-review, simplification]
@@ -88,9 +88,9 @@ Option A - Consolidate into single recursive normalizeChild function.
 
 ## Acceptance Criteria
 
-- [ ] Single normalizeChild function handles all BuilderChild types
-- [ ] normalizeChildren uses the unified function
-- [ ] resolveContent private method removed (inline the call)
+- [x] Single normalizeChild function handles all BuilderChild types
+- [x] normalizeChildren uses the unified function
+- [x] resolveContent private method removed (inline the call)
 - [ ] All DSL tests pass
 
 ## Work Log
@@ -98,6 +98,12 @@ Option A - Consolidate into single recursive normalizeChild function.
 | Date | Action | Outcome |
 |------|--------|---------|
 | 2026-01-11 | Created finding from simplicity review | Finding documented |
+| 2026-01-11 | normalize functions consolidated | Implemented |
+
+## Resolution
+
+- Removed `normalizeContent` and the `resolveContent` indirection; all content goes through the unified `normalizeChild`.
+- `normalizeChildren` now builds on the single helper, leaving only two normalization helpers.
 
 ## Resources
 
