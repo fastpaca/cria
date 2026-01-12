@@ -7,8 +7,8 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@fastpaca/cria": ["../../dist/index.d.ts"],
-      "@fastpaca/cria/*": ["../../dist/*"]
+      "@fastpaca/cria": ["../../src/index.ts"],
+      "@fastpaca/cria/*": ["../../src/*"]
     }
   },
   "include": ["*.ts"]

@@ -116,12 +116,16 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "check": "ultracite check",
+    "build": "pnpm run build:core && pnpm run typecheck:examples",
+    "build:core": "tsc",
+    "check": "ultracite check && pnpm run typecheck",
     "fix": "ultracite fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "husky"
+    "prepare": "husky",
+    "typecheck": "pnpm run typecheck:core && pnpm run typecheck:examples",
+    "typecheck:core": "tsc --noEmit",
+    "typecheck:examples": "pnpm exec tsc --noEmit -p examples/ai-sdk/tsconfig.json && pnpm exec tsc --noEmit -p examples/anthropic/tsconfig.json && pnpm exec tsc --noEmit -p examples/openai-chat-completions/tsconfig.json && pnpm exec tsc --noEmit -p examples/openai-responses/tsconfig.json && pnpm exec tsc --noEmit -p examples/rag/tsconfig.json && pnpm exec tsc --noEmit -p examples/summary/tsconfig.json"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
