@@ -1,5 +1,6 @@
 import { cria } from "@fastpaca/cria";
 import type {
+  MemoryEntry,
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
@@ -11,9 +12,49 @@ import { encoding_for_model } from "tiktoken";
 // Minimal in-memory vector store for demo purposes
 class DemoVectorStore implements VectorMemory<string> {
   private readonly docs: Array<{ key: string; text: string }>;
+  private readonly store = new Map<string, MemoryEntry<string>>();
 
   constructor(docs: Array<{ key: string; text: string }>) {
+    const now = Date.now();
     this.docs = docs;
+    for (const doc of docs) {
+      this.store.set(doc.key, {
+        data: doc.text,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  get(key: string): MemoryEntry<string> | null {
+    return this.store.get(key) ?? null;
+  }
+
+  set(key: string, data: string): void {
+    const now = Date.now();
+    const existing = this.store.get(key);
+    this.store.set(key, {
+      data,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
+    const existingDocIndex = this.docs.findIndex((doc) => doc.key === key);
+    if (existingDocIndex >= 0) {
+      this.docs[existingDocIndex] = { key, text: data };
+    } else {
+      this.docs.push({ key, text: data });
+    }
+  }
+
+  delete(key: string): boolean {
+    const removed = this.store.delete(key);
+    if (removed) {
+      const index = this.docs.findIndex((doc) => doc.key === key);
+      if (index >= 0) {
+        this.docs.splice(index, 1);
+      }
+    }
+    return removed;
   }
 
   search(
