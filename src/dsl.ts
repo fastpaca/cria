@@ -3,15 +3,13 @@
  *
  * @example
  * ```typescript
- * import { cria, render } from "@fastpaca/cria";
+ * import { cria } from "@fastpaca/cria";
  *
- * const prompt = cria
+ * const prompt = await cria
  *   .prompt()
  *   .system("You are a helpful assistant.")
  *   .user("What is the capital of France?")
- *   .build();
- *
- * const result = await render(prompt, { tokenizer, budget: 4000, renderer });
+ *   .render({tokenizer, budget: 4000, renderer});
  * ```
  *
  * @packageDocumentation
@@ -35,6 +33,7 @@ import type {
   ModelProvider,
   PromptChildren,
   PromptElement,
+  PromptRenderer,
   PromptRole,
 } from "./types";
 
@@ -50,7 +49,7 @@ type BuilderChild =
   | Promise<string>;
 
 type RenderResult<TOptions extends RenderOptions> = TOptions extends {
-  renderer: import("./types").PromptRenderer<infer TOutput>;
+  renderer: PromptRenderer<infer TOutput>;
 }
   ? TOutput
   : string;
@@ -76,8 +75,6 @@ export class PromptBuilder {
   static create(): PromptBuilder {
     return new PromptBuilder();
   }
-
-  // ─── Messages ───────────────────────────────────────────────
 
   /**
    * Add a system message.
@@ -135,8 +132,6 @@ export class PromptBuilder {
     );
   }
 
-  // ─── Strategies ─────────────────────────────────────────────
-
   /**
    * Add content that will be truncated when over budget.
    */
@@ -171,8 +166,6 @@ export class PromptBuilder {
 
     return this.addChild(node);
   }
-
-  // ─── Sections ───────────────────────────────────────────────
 
   /**
    * Create a nested section.
@@ -286,8 +279,6 @@ export class PromptBuilder {
     return new PromptBuilder(mergedChildren, nextContext);
   }
 
-  // ─── Provider/Context ───────────────────────────────────────
-
   /**
    * Create a provider scope for AI-powered operations like Summary.
    *
@@ -319,8 +310,6 @@ export class PromptBuilder {
 
     return this.addChild(element);
   }
-
-  // ─── Async Components ───────────────────────────────────────
 
   /**
    * Add vector search results (async, resolved at render time).
@@ -372,8 +361,6 @@ export class PromptBuilder {
     return this.addChild(element);
   }
 
-  // ─── Utilities ──────────────────────────────────────────────
-
   /**
    * Add a formatted list of examples.
    */
@@ -393,8 +380,6 @@ export class PromptBuilder {
   raw(element: PromptElement | Promise<PromptElement>): PromptBuilder {
     return this.addChild(element);
   }
-
-  // ─── Terminal ───────────────────────────────────────────────
 
   /**
    * Build the final PromptElement tree.
@@ -418,14 +403,10 @@ export class PromptBuilder {
     return (await renderPrompt(element, options)) as RenderResult<TOptions>;
   }
 
-  // ─── Private ────────────────────────────────────────────────
-
   private addChild(child: BuilderChild): PromptBuilder {
     return new PromptBuilder([...this.children, child], this.context);
   }
 }
-
-// ─── Entry Points ─────────────────────────────────────────────
 
 /**
  * Namespace for building prompts without JSX.
@@ -463,6 +444,7 @@ export const prompt = () => PromptBuilder.create();
 export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
   cria.merge(...builders);
 
+// Utility to recursively build and expand / resolve children
 async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
   if (typeof child === "string") {
     return [child];
@@ -470,9 +452,6 @@ async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
 
   if (child instanceof Promise) {
     const resolved = await child;
-    if (typeof resolved === "string") {
-      return [resolved];
-    }
     return [resolved];
   }
 

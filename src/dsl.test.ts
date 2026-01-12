@@ -209,7 +209,6 @@ describe("PromptBuilder", () => {
       expect(result).toContain("A");
       expect(result).toContain("B");
     });
-
   });
 
   // JSX compatibility: ensure DSL output matches JSX shape for parity. DSL is primary.

@@ -21,7 +21,8 @@ const DELETE_REGEX = new RegExp(
   "i"
 );
 
-const normalizeTableName = (identifier: string): string => identifier.replace(/"/g, "");
+const normalizeTableName = (identifier: string): string =>
+  identifier.replace(/"/g, "");
 
 // Mock pg
 vi.mock("pg", () => {

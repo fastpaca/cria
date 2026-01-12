@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { InMemoryStore } from "./memory";
 import type { StoredSummary } from "./components/summary";
 import { cria } from "./dsl";
+import { InMemoryStore } from "./memory";
 
 const tokenizer = (text: string): number => text.length;
 
