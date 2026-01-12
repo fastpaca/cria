@@ -5,10 +5,23 @@ import { PostgresStore } from "./postgres";
 const mockTables = new Map<string, Map<string, Record<string, unknown>>>();
 
 // Top-level regex patterns for the mock client
-const CREATE_TABLE_REGEX = /CREATE TABLE IF NOT EXISTS (\w+)/i;
-const SELECT_REGEX = /SELECT .+ FROM (\w+) WHERE key = \$1/i;
-const INSERT_REGEX = /INSERT INTO (\w+)/i;
-const DELETE_REGEX = /DELETE FROM (\w+) WHERE key = \$1/i;
+const IDENTIFIER_PATTERN = '"?[A-Za-z_][A-Za-z0-9_]*"?';
+const TABLE_PATTERN = `${IDENTIFIER_PATTERN}(?:\\.${IDENTIFIER_PATTERN})?`;
+const CREATE_TABLE_REGEX = new RegExp(
+  `CREATE TABLE IF NOT EXISTS (${TABLE_PATTERN})`,
+  "i"
+);
+const SELECT_REGEX = new RegExp(
+  `SELECT .+ FROM (${TABLE_PATTERN}) WHERE key = \\$1`,
+  "i"
+);
+const INSERT_REGEX = new RegExp(`INSERT INTO (${TABLE_PATTERN})`, "i");
+const DELETE_REGEX = new RegExp(
+  `DELETE FROM (${TABLE_PATTERN}) WHERE key = \\$1`,
+  "i"
+);
+
+const normalizeTableName = (identifier: string): string => identifier.replace(/"/g, "");
 
 // Mock pg
 vi.mock("pg", () => {
@@ -21,7 +34,7 @@ vi.mock("pg", () => {
         ): Promise<{ rows: unknown[]; rowCount: number | null }> => {
           const createMatch = text.match(CREATE_TABLE_REGEX);
           if (createMatch) {
-            const tableName = createMatch[1];
+            const tableName = normalizeTableName(createMatch[1]);
             if (!mockTables.has(tableName)) {
               mockTables.set(tableName, new Map());
             }
@@ -30,7 +43,7 @@ vi.mock("pg", () => {
 
           const selectMatch = text.match(SELECT_REGEX);
           if (selectMatch) {
-            const tableName = selectMatch[1];
+            const tableName = normalizeTableName(selectMatch[1]);
             const table = mockTables.get(tableName);
             const key = values?.[0] as string;
             const row = table?.get(key);
@@ -43,7 +56,7 @@ vi.mock("pg", () => {
 
           const insertMatch = text.match(INSERT_REGEX);
           if (insertMatch) {
-            const tableName = insertMatch[1];
+            const tableName = normalizeTableName(insertMatch[1]);
             let table = mockTables.get(tableName);
             if (!table) {
               table = new Map();
@@ -76,7 +89,7 @@ vi.mock("pg", () => {
 
           const deleteMatch = text.match(DELETE_REGEX);
           if (deleteMatch) {
-            const tableName = deleteMatch[1];
+            const tableName = normalizeTableName(deleteMatch[1]);
             const table = mockTables.get(tableName);
             const key = values?.[0] as string;
             const existed = table?.delete(key) ?? false;
@@ -166,6 +179,26 @@ test("PostgresStore: uses custom table name", async () => {
 
   // Verify the data is stored in the custom table
   expect(mockTables.has("my_custom_table")).toBe(true);
+  expect(mockTables.has("cria_kv_store")).toBe(false);
+});
+
+test("PostgresStore: rejects unsafe table names", () => {
+  expect(() => {
+    return new PostgresStore({
+      tableName: 'users; DROP TABLE "users"; --',
+      autoCreateTable: false,
+    });
+  }).toThrow(/Invalid table name/);
+});
+
+test("PostgresStore: supports schema-qualified table names", async () => {
+  const store = new PostgresStore<string>({
+    tableName: "public.my_table",
+  });
+
+  await store.set("key", "value");
+
+  expect(mockTables.has("public.my_table")).toBe(true);
   expect(mockTables.has("cria_kv_store")).toBe(false);
 });
 
