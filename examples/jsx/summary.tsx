@@ -1,5 +1,10 @@
 import { openai } from "@ai-sdk/openai";
-import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
+import {
+  cria,
+  InMemoryStore,
+  type Prompt,
+  type StoredSummary,
+} from "@fastpaca/cria";
 import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
@@ -44,7 +49,7 @@ const conversationHistory = [
 
 const provider = new Provider(openai("gpt-4o-mini"));
 
-const historyBuilder = conversationHistory.slice(0, -4).reduce(
+const historyBuilder: Prompt = conversationHistory.slice(0, -4).reduce(
   (acc, msg, i) =>
     acc.merge(
       cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
@@ -55,7 +60,7 @@ const historyBuilder = conversationHistory.slice(0, -4).reduce(
   cria.prompt()
 );
 
-const recentBuilder = conversationHistory.reduce(
+const recentBuilder: Prompt = conversationHistory.reduce(
   (acc, msg, i) =>
     acc.merge(
       cria.prompt().message(msg.role as "user" | "assistant", msg.content, {

@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { cria } from "@fastpaca/cria";
+import { cria, type Prompt } from "@fastpaca/cria";
 import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
@@ -34,43 +34,52 @@ const documents = [
 
 const userQuestion = "Can you summarize Berlin's key facts?";
 
-// Build the prompt using the DSL for structured output
-const documentSections = documents.reduce((acc, doc, i) => {
-  const section = cria
-    .prompt()
-    .message(
-      "assistant",
-      `Here are some reference documents:\n\n### ${doc.title}\n${doc.content}\n\n`,
-      { priority: 3, id: `doc-${i}` }
-    );
-  return cria.merge(acc, section);
-}, cria.prompt());
+const documentSections = (docs: typeof documents): Prompt =>
+  docs.reduce((acc, doc, i) => {
+    const section = cria
+      .prompt()
+      .message(
+        "assistant",
+        `Here are some reference documents:\n\n### ${doc.title}\n${doc.content}\n\n`,
+        { priority: 3, id: `doc-${i}` }
+      );
+    return cria.merge(acc, section);
+  }, cria.prompt());
 
-const historySection = conversationHistory.reduce((acc, msg, i) => {
-  const section = cria
-    .prompt()
-    .message(msg.role as "user" | "assistant", msg.content, {
-      priority: 2,
-      id: `msg-${i}`,
-    });
-  return cria.merge(acc, section);
-}, cria.prompt());
+const historySections = (history: typeof conversationHistory): Prompt =>
+  history.reduce((acc, msg, i) => {
+    const section = cria
+      .prompt()
+      .message(msg.role as "user" | "assistant", msg.content, {
+        priority: 2,
+        id: `msg-${i}`,
+      });
+    return cria.merge(acc, section);
+  }, cria.prompt());
 
-const prompt = cria
-  .prompt()
-  // System message - highest priority, never dropped
-  .system(systemPrompt, { priority: 0 })
-  // Assistant message with reference documents - can be omitted if over budget
-  .omit(documentSections, { priority: 3, id: "documents" })
-  // Conversation history - truncate from start if needed
-  .truncate(historySection, {
+const systemRules = (text: string): Prompt =>
+  cria.prompt().system(text, { priority: 0 });
+
+const withDocuments = (docs: typeof documents): Prompt =>
+  cria.prompt().omit(documentSections(docs), { priority: 3, id: "documents" });
+
+const withHistory = (history: typeof conversationHistory): Prompt =>
+  cria.prompt().truncate(historySections(history), {
     budget: 500,
     from: "start",
     priority: 2,
     id: "history",
-  })
-  // Current question - high priority
-  .user(userQuestion, { priority: 1, id: "question" });
+  });
+
+const userRequest = (question: string): Prompt =>
+  cria.prompt().user(question, { priority: 1, id: "question" });
+
+const prompt = cria.merge(
+  systemRules(systemPrompt),
+  withDocuments(documents),
+  withHistory(conversationHistory),
+  userRequest(userQuestion)
+);
 
 // Render with a token budget using the AI SDK renderer
 const budget = 1000; // tokens
