@@ -87,15 +87,15 @@ npx tsx main.ts
 Once you have a prompt working, split it into small prompt blocks and merge them:
 
 ```ts
-import { cria, type PromptBuilder } from "@fastpaca/cria";
+import { cria, type Prompt } from "@fastpaca/cria";
 
-const systemRules = (): PromptBuilder =>
+const systemRules = (): Prompt =>
   cria.prompt().system("You are a helpful assistant. Be concise.");
 
-const appContext = (context: string): PromptBuilder =>
+const appContext = (context: string): Prompt =>
   cria.prompt().section("context", (s) => s.assistant(context, { priority: 2 }));
 
-const userRequest = (question: string): PromptBuilder => cria.prompt().user(question);
+const userRequest = (question: string): Prompt => cria.prompt().user(question);
 
 const prompt = cria.merge(
   systemRules(),
