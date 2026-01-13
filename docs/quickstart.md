@@ -1,6 +1,6 @@
 # Quickstart
 
-Cria lets you build prompts with a fluent DSL. Define your structure once, render it to different providers. Token budgets are optional.
+Your prompts deserve the same structure as your code. Cria turns prompts into composable components with explicit roles and strategies, and renders the same prompt tree to different providers. Budgets and compaction are optional.
 
 ## Install
 
@@ -24,7 +24,7 @@ That's it. `.render()` returns a markdown string by default.
 
 ## Recommended layout
 
-A clear structure makes prompts easier to maintain:
+A clear structure makes prompts easier to compose and maintain:
 
 ```
 System rules
@@ -34,6 +34,33 @@ Current user request
 ```
 
 Keep the user's current request last so the model sees it right before responding.
+
+## Compose building blocks (optional)
+
+As prompts grow, treat common patterns as components you can plug in or swap out:
+
+- Retrieval: `.vectorSearch({ store, query })`
+- Long history: `.summary(...)`, `.last(...)`
+- Optional context: `.omit(...)`, `.truncate(...)`
+
+Example shape (mix and match):
+
+```ts
+import { cria } from "@fastpaca/cria";
+
+const prompt = cria
+  .prompt()
+  .system("You are a helpful assistant.")
+  .vectorSearch({ store, query: userQuestion, limit: 5, priority: 2 })
+  .provider(provider, (p) =>
+    p
+      .summary(history, { id: "history", store: summaryStore, priority: 2 })
+      .last(history, { N: 20 })
+  )
+  .user(userQuestion);
+```
+
+This snippet is illustrative; see [RAG](how-to/rag.md), [Summarize long history](how-to/summarize-history.md), and the provider how-tos for runnable setups.
 
 ## Render to any provider
 
@@ -64,9 +91,9 @@ const response = await client.chat.completions.create({
 console.log(response.choices[0]?.message?.content ?? "");
 ```
 
-## Fit & compaction (optional)
+## Budgets & compaction (optional)
 
-Cria only needs token counts when you set a `budget`. Provide a tokenizer (exact or approximate), set priorities, and let Cria shrink lower-priority content first.
+If you want prompts to stay predictable under pressure (long history, retrieval bursts, tool traces), pass a `budget` to `render()` and give shrinkable regions priorities. Cria shrinks lower-importance content first until it fits.
 
 ```ts
 import { cria, type Tokenizer } from "@fastpaca/cria";
@@ -95,9 +122,9 @@ Next: [Fit & compaction](how-to/fit-and-compaction.md)
 
 ## What Cria gives you
 
-- A structured prompt tree you can render to multiple providers.
-- Optional budgets (“fit & compaction”) so prompts stay predictable as they grow.
-- Building blocks like summarization and retrieval that plug into the same structure.
+- A prompt tree with explicit roles (system/user/assistant/messages) you can render to multiple providers.
+- Composable building blocks (retrieval, summarization, truncation) that plug into that same tree.
+- Optional budgets and strategies so the tree stays predictable as it grows.
 
 ## Optional JSX
 

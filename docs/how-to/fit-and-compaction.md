@@ -1,6 +1,6 @@
 # Fit & compaction (budgets)
 
-Use budgets when you want prompts to be predictable under pressure (long chat history, retrieval bursts, tool traces). Cria can shrink lower-priority content first until the prompt fits.
+Use budgets when you want a composed prompt to be predictable under pressure (long chat history, retrieval bursts, tool traces). Cria shrinks lower-priority content first until the prompt fits.
 
 ## The two things you need
 

@@ -1,6 +1,6 @@
 # Summarize long history
 
-Use `Summary` to progressively compress older content when you’re fitting to a budget. Summaries are cached in a store so you don’t re-summarize the same history over and over.
+Use `Summary` as a drop-in component for chat history: keep recent turns verbatim, and compress older turns into a cached summary. When you render with a budget, `Summary` helps compaction stay predictable without losing all long-term context.
 
 Runnable example: [summary](../../examples/summary)
 
