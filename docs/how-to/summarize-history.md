@@ -37,6 +37,8 @@ const prompt = cria
   .user(question);
 ```
 
+Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore` (`@fastpaca/cria/memory/redis`) or `PostgresStore` (`@fastpaca/cria/memory/postgres`).
+
 ## When to use Summary vs Last/Truncate
 
 - Use `Last` to keep the last N turns verbatim.
