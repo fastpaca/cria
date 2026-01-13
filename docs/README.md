@@ -1,30 +1,26 @@
 # Cria Docs
 
-Welcome to the Cria docs. This set is short by design and focuses on the core concepts and the parts you'll use most often.
+Cria is a prompt composition library: build a structured prompt tree once, then render it to different providers. Most people should start with the quickstart and then jump to a “how-to” based on what they’re building.
 
-## What is Cria?
-
-Cria is a fluent DSL for structured prompt engineering. Build prompts as regions with priorities and strategies, then render to OpenAI, Anthropic, or Vercel AI SDK formats with no changes.
-
-Prefer TSX? Import the optional JSX surface from `@fastpaca/cria/jsx`. The default API is DSL-first.
-
-Because prompts are structured as a tree, you get budget fitting for free: assign priorities to regions and Cria trims low-priority content when you hit your token limit.
+## Start here
 
 - [Quickstart](quickstart.md)
-- [Concepts](concepts.md)
+- [Mental model: what Cria is and isn’t](mental-model.md)
+
+## How-to
+
+- [Fit & compaction (budgets, priorities, FitError)](how-to/fit-and-compaction.md)
+- [Use with OpenAI](how-to/use-with-openai.md)
+- [Use with Anthropic](how-to/use-with-anthropic.md)
+- [Use with Vercel AI SDK](how-to/use-with-vercel-ai-sdk.md)
+- [RAG with VectorSearch](how-to/rag.md)
+- [Summarize long history](how-to/summarize-history.md)
+- [Observability (hooks, snapshots, OpenTelemetry)](how-to/observability.md)
+- [Write custom components](how-to/custom-components.md)
+
+## Reference (minimal)
+
 - [Components](components.md)
-- [Custom components](custom-components.md)
-- [Integrations](integrations.md)
-- [Memory and RAG](memory-and-rag.md)
-- [Strategies](strategies.md)
-- [Tokenization](tokenization.md)
-- [Errors](errors.md)
-- [Observability](observability.md)
-- [Recipes](recipes.md)
-
-## Using budgets?
-
-Budget fitting needs token counts. Providers include tiktoken defaults; you can bring your own tokenizer for exact accuracy. See [Tokenization](tokenization.md).
 
 ## Runnable examples
 

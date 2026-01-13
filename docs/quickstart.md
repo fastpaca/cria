@@ -1,6 +1,6 @@
 # Quickstart
 
-Cria lets you build prompts with a fluent DSL. Define your structure once, render it to any provider. JSX is optional via `@fastpaca/cria/jsx` if you prefer TSX syntax.
+Cria lets you build prompts with a fluent DSL. Define your structure once, render it to different providers. Token budgets are optional.
 
 ## Install
 
@@ -8,7 +8,7 @@ Cria lets you build prompts with a fluent DSL. Define your structure once, rende
 npm install @fastpaca/cria
 ```
 
-## Build your first prompt
+## Build your first prompt (markdown output)
 
 ```ts
 import { cria } from "@fastpaca/cria";
@@ -17,10 +17,10 @@ const markdown = await cria
   .prompt()
   .system("You are a helpful assistant.")
   .user(userQuestion)
-  .render({ tokenizer });
+  .render();
 ```
 
-That's it. `.render()` returns a markdown string by default (it uses the markdown renderer if you don't pass one).
+That's it. `.render()` returns a markdown string by default.
 
 ## Recommended layout
 
@@ -37,37 +37,41 @@ Keep the user's current request last so the model sees it right before respondin
 
 ## Render to any provider
 
-The same prompt structure works with OpenAI, Anthropic, or Vercel AI SDK. Just swap the renderer:
+The same prompt structure works with OpenAI, Anthropic, or Vercel AI SDK. Just swap the renderer.
+
+### OpenAI (Chat Completions)
+
+Install the OpenAI SDK and set `OPENAI_API_KEY`:
+
+```bash
+npm install openai
+export OPENAI_API_KEY="sk-..."
+```
 
 ```ts
 import { cria } from "@fastpaca/cria";
 import { chatCompletions } from "@fastpaca/cria/openai";
-import { anthropic } from "@fastpaca/cria/anthropic";
-import { renderer as aiSdk } from "@fastpaca/cria/ai-sdk";
+import OpenAI from "openai";
 
 const prompt = cria.prompt().system("You are helpful.").user(userQuestion);
 
-// OpenAI
-const messages = await prompt.render({ renderer: chatCompletions, tokenizer });
-
-// Anthropic
-const { system, messages: anthropicMessages } = await prompt.render({
-  renderer: anthropic,
-  tokenizer,
+const client = new OpenAI();
+const messages = await prompt.render({ renderer: chatCompletions });
+const response = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages,
 });
-
-// AI SDK
-const aiSdkMessages = await prompt.render({ renderer: aiSdk, tokenizer });
+console.log(response.choices[0]?.message?.content ?? "");
 ```
 
-No changes to your prompt structure. The renderer handles the format.
+## Fit & compaction (optional)
 
-## Budget fitting (optional)
-
-Because your prompt is a tree, you can assign priorities and let Cria trim low-priority content when you hit a token limit:
+Cria only needs token counts when you set a `budget`. Provide a tokenizer (exact or approximate), set priorities, and let Cria shrink lower-priority content first.
 
 ```ts
-import { cria } from "@fastpaca/cria";
+import { cria, type Tokenizer } from "@fastpaca/cria";
+
+const tokenizer: Tokenizer = (text) => Math.ceil(text.length / 4); // rough estimate
 
 const output = await cria
   .prompt()
@@ -75,36 +79,29 @@ const output = await cria
   .truncate(conversationHistory, { budget: 4000, priority: 2 })
   .omit(optionalExamples, { priority: 3 })
   .user(userQuestion)
-  .render({ tokenizer, budget: 8000 });
+  .render({ budget: 8000, tokenizer });
 ```
 
 Lower priority number = more important. Cria shrinks priority 3 first, then 2, and so on.
 
-Budget fitting needs token counts. Pass a tokenizer to `render()`, or use a provider—they ship with tiktoken defaults. See [Tokenization](tokenization.md).
-
-## Renderers
-
-- OpenAI: `@fastpaca/cria/openai`
-- Anthropic: `@fastpaca/cria/anthropic`
-- Vercel AI SDK: `@fastpaca/cria/ai-sdk`
+Next: [Fit & compaction](how-to/fit-and-compaction.md)
 
 ## Next steps
 
-- [Concepts](concepts.md)
-- [Components](components.md)
-- [Integrations](integrations.md)
+- [Use with OpenAI](how-to/use-with-openai.md)
+- [Use with Anthropic](how-to/use-with-anthropic.md)
+- [Use with Vercel AI SDK](how-to/use-with-vercel-ai-sdk.md)
+- [Components (reference)](components.md)
 
-## What's included
+## What Cria gives you
 
-- **Components**: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
-- **Renderers**: markdown, OpenAI Chat Completions, OpenAI Responses, Anthropic, AI SDK
-- **Providers**: OpenAIProvider, AnthropicProvider, AISDKProvider
-- **Memory**: InMemoryStore, Redis/Postgres adapters, Chroma/Qdrant vector stores
-- **Observability**: Render hooks, validation schemas, snapshots, OpenTelemetry
+- A structured prompt tree you can render to multiple providers.
+- Optional budgets (“fit & compaction”) so prompts stay predictable as they grow.
+- Building blocks like summarization and retrieval that plug into the same structure.
 
 ## Optional JSX
 
-If you prefer TSX, install the same package and point your JSX runtime at `@fastpaca/cria/jsx`:
+If you prefer TSX, point your JSX runtime at `@fastpaca/cria/jsx`:
 
 ```json
 {
