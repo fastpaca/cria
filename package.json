@@ -60,6 +60,10 @@
     "./memory/qdrant": {
       "types": "./dist/memory/qdrant/index.d.ts",
       "import": "./dist/memory/qdrant/index.js"
+    },
+    "./eval": {
+      "types": "./dist/eval/index.d.ts",
+      "import": "./dist/eval/index.js"
     }
   },
   "peerDependencies": {
