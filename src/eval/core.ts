@@ -12,6 +12,7 @@ import type {
   CompletionMessage,
   EvaluatorOutput,
   EvaluatorProvider,
+  EvaluatorRequest,
   ModelProvider,
   PromptElement,
   PromptRenderer,
@@ -19,12 +20,8 @@ import type {
 } from "../types";
 import { EvaluatorOutputSchema } from "../types";
 
-export type {
-  EvaluatorOutput,
-  EvaluatorProvider,
-  EvaluatorRequest,
-} from "../types";
-export { EvaluatorOutputSchema } from "../types";
+export type { EvaluatorOutput, EvaluatorProvider, EvaluatorRequest };
+export { EvaluatorOutputSchema };
 
 export const DEFAULT_THRESHOLD = 0.8;
 
@@ -86,17 +83,17 @@ export interface MockTargetOptions {
   response?: string;
 }
 
-export class EvalError extends Error {
+export class CriaEvalError extends Error {
   readonly code: string;
 
   constructor(message: string, code: string, options?: { cause?: unknown }) {
     super(message, options);
-    this.name = "EvalError";
+    this.name = "CriaEvalError";
     this.code = code;
   }
 }
 
-export class EvalSchemaError extends EvalError {
+export class EvalSchemaError extends CriaEvalError {
   readonly zodError: ZodError;
   readonly rawOutput: unknown;
 
@@ -111,7 +108,7 @@ export class EvalSchemaError extends EvalError {
   }
 }
 
-export class EvalTargetError extends EvalError {
+export class EvalTargetError extends CriaEvalError {
   readonly provider: string;
 
   constructor(provider: string, cause: unknown) {
@@ -125,7 +122,7 @@ export class EvalTargetError extends EvalError {
   }
 }
 
-export class EvalEvaluatorError extends EvalError {
+export class EvalEvaluatorError extends CriaEvalError {
   readonly provider: string;
 
   constructor(provider: string, cause: unknown) {
@@ -442,7 +439,7 @@ export async function evaluate(
       ...(expected && { expected }),
     });
   } catch (error) {
-    if (error instanceof EvalError) {
+    if (error instanceof CriaEvalError) {
       throw error;
     }
     throw new EvalEvaluatorError(evaluator.name, error);

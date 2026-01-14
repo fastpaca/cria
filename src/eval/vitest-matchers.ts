@@ -79,7 +79,7 @@ export const criaMatchers = {
  * TypeScript declarations for the custom matchers.
  */
 declare module "vitest" {
-  interface Assertion<T = unknown> {
+  interface Assertion<_T = unknown> {
     toPassEvaluation(options: EvalOptions): Promise<void>;
   }
   interface AsymmetricMatchersContaining {

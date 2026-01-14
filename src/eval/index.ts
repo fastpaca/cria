@@ -28,9 +28,9 @@
  * @packageDocumentation
  */
 
+// biome-ignore lint/performance/noBarrelFile: Intentional re-export for package entrypoint.
 export * from "./core";
 
 // Re-export the Vitest matchers for convenience
 // Users can import: import { criaMatchers, evaluate } from "@fastpaca/cria/eval";
-// biome-ignore lint/performance/noBarrelFile: Intentional re-export for ergonomic API
 export { criaMatchers } from "./vitest-matchers";

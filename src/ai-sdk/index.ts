@@ -582,7 +582,7 @@ export class Provider implements ModelProvider {
     this.model = model;
   }
 
-  async completion(request: CompletionRequest): Promise<CompletionResult> {
+  completion(request: CompletionRequest): Promise<CompletionResult> {
     return executeCompletion(this.model, request);
   }
 }
