@@ -8,8 +8,8 @@ import { chatCompletions, Provider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 import { encoding_for_model } from "tiktoken";
 
-const tokenizer = (text: string): number =>
-  encoding_for_model("gpt-4o-mini").encode(text).length;
+const enc = encoding_for_model("gpt-4o-mini");
+const tokenizer = (text: string): number => enc.encode(text).length;
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const provider = new Provider(client, "gpt-4o-mini");
 const store = new InMemoryStore<StoredSummary>();

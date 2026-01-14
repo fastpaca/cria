@@ -4,8 +4,8 @@ import OpenAI from "openai";
 import { encoding_for_model } from "tiktoken";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const tokenizer = (text: string): number =>
-  encoding_for_model("gpt-4o-mini").encode(text).length;
+const enc = encoding_for_model("gpt-4o-mini");
+const tokenizer = (text: string): number => enc.encode(text).length;
 
 const systemRules = (): Prompt =>
   cria.prompt().system("You are a helpful assistant.");
