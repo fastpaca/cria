@@ -106,6 +106,29 @@ describe("evaluate", () => {
     expect(capturedPrompt).not.toContain("{{question}}");
   });
 
+  test("leaves unknown placeholders intact", async () => {
+    const prompt = cria.prompt().user("Hello {{name}} {{missing}}");
+
+    let capturedPrompt = "";
+    const capturingTarget: ModelProvider = {
+      name: "capturing-target",
+      completion: (request) => {
+        capturedPrompt = request.messages
+          .map((message) => message.content)
+          .join("\n");
+        return Promise.resolve({ text: "Mock response" });
+      },
+    };
+
+    await evaluate(prompt, {
+      target: capturingTarget,
+      evaluator: mockEvaluator(),
+      input: { name: "Ada" },
+    });
+
+    expect(capturedPrompt).toContain("Hello Ada {{missing}}");
+  });
+
   test("passes criteria to evaluator", async () => {
     const prompt = cria.prompt().user("Test");
 

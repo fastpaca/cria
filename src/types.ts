@@ -77,15 +77,20 @@ export type EvaluatorOutput = z.infer<typeof EvaluatorOutputSchema>;
  * Request payload for an evaluator.
  */
 export interface EvaluatorRequest {
-  /** Rendered evaluator prompt */
+  /**
+   * Rendered evaluator prompt.
+   *
+   * This is the primary source of truth and includes the input, response,
+   * criteria, and expected output in formatted form.
+   */
   prompt: string;
-  /** Input variables for the original prompt */
+  /** Input variables for the original prompt (for reference). */
   input: Record<string, unknown>;
-  /** Model response being evaluated */
+  /** Model response being evaluated (for reference). */
   response: string;
-  /** Criteria to evaluate against (e.g. ["helpful", "accurate"]) */
+  /** Criteria to evaluate against (e.g. ["helpful", "accurate"]) (for reference). */
   criteria?: string[];
-  /** Expected output for comparison (optional) */
+  /** Expected output for comparison (optional, for reference). */
   expected?: string;
 }
 

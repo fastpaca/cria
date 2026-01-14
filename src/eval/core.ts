@@ -1,5 +1,6 @@
 import type { ZodError } from "zod";
 import { cria, type PromptBuilder } from "../dsl";
+import { render } from "../render";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -20,6 +21,8 @@ import type {
 import { EvaluatorOutputSchema } from "../types";
 
 export const DEFAULT_THRESHOLD = 0.8;
+
+const VARIABLE_PATTERN = /\{\{([^}]+)\}\}/g;
 
 /**
  * Options for evaluating a prompt.
@@ -189,14 +192,26 @@ function substituteVariables(
   text: string,
   input: Record<string, unknown>
 ): string {
-  let result = text;
-  for (const [key, value] of Object.entries(input)) {
-    const placeholder = `{{${key}}}`;
-    const stringValue =
-      typeof value === "string" ? value : JSON.stringify(value);
-    result = result.split(placeholder).join(stringValue);
+  if (Object.keys(input).length === 0) {
+    return text;
   }
-  return result;
+
+  const cache = new Map<string, string>();
+
+  return text.replace(VARIABLE_PATTERN, (match, rawKey: string) => {
+    if (!Object.hasOwn(input, rawKey)) {
+      return match;
+    }
+
+    if (cache.has(rawKey)) {
+      return cache.get(rawKey) ?? "";
+    }
+
+    const value = input[rawKey];
+    const stringValue = safeStringify(value);
+    cache.set(rawKey, stringValue);
+    return stringValue;
+  });
 }
 
 const completionMessagesRenderer: PromptRenderer<CompletionMessage[]> = {
@@ -284,8 +299,6 @@ async function renderPromptToString(
     input: Record<string, unknown>;
   }
 ): Promise<string> {
-  const { render } = await import("../render");
-
   const tokenizer = options.tokenizer ?? ((text: string) => text.length);
   const budget = options.budget ?? 100_000;
 
@@ -313,8 +326,6 @@ async function renderPromptToMessages(
     input: Record<string, unknown>;
   }
 ): Promise<CompletionMessage[]> {
-  const { render } = await import("../render");
-
   const tokenizer = options.tokenizer ?? ((text: string) => text.length);
   const budget = options.budget ?? 100_000;
 
@@ -355,6 +366,10 @@ function parseEvaluatorOutput(output: unknown): EvaluatorOutput {
  * 2. Execute the prompt against a model (using the target provider)
  * 3. Have the evaluator evaluate the response against the criteria
  * 4. Return structured results with score, pass/fail, and reasoning
+ *
+ * Security note: input values and model responses are embedded verbatim into the
+ * evaluator prompt. Treat this as a trusted test environment; untrusted inputs
+ * can influence the evaluator unless you apply additional safeguards.
  *
  * @example
  * ```typescript

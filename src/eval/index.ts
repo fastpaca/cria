@@ -25,6 +25,10 @@
  * console.log(result.reasoning); // "Response directly addresses..."
  * ```
  *
+ * Security note: evaluation prompts interpolate input values and model responses
+ * directly. Use in controlled testing environments and treat untrusted input as
+ * potentially prompt-injectable.
+ *
  * @packageDocumentation
  */
 
