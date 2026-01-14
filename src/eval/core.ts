@@ -40,14 +40,11 @@ export interface EvalOptions {
   expected?: string;
   /** Minimum score to pass (default: 0.8) */
   threshold?: number;
-  /** Tokenizer for rendering the target prompt (optional, uses target tokenizer if available) */
-  targetTokenizer?: Tokenizer;
-  /** Token budget for rendering the target prompt (optional, defaults to 100000) */
-  targetBudget?: number;
-  /** Tokenizer for rendering the evaluator prompt (optional, uses evaluator tokenizer if available) */
-  evaluatorTokenizer?: Tokenizer;
-  /** Token budget for rendering the evaluator prompt (optional, defaults to 100000) */
-  evaluatorBudget?: number;
+  /**
+   * Maximum time in milliseconds for each LLM call (target and evaluator).
+   * Note: the underlying provider call is not cancelled when this fires.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -132,6 +129,48 @@ export class EvalEvaluatorError extends CriaEvalError {
     );
     this.name = "EvalEvaluatorError";
     this.provider = provider;
+  }
+}
+
+type EvalTimeoutPhase = "target" | "evaluator";
+
+export class EvalTimeoutError extends CriaEvalError {
+  readonly phase: EvalTimeoutPhase;
+  readonly timeoutMs: number;
+
+  constructor(phase: EvalTimeoutPhase, timeoutMs: number) {
+    super(
+      `Evaluation ${phase} request timed out after ${timeoutMs}ms.`,
+      "EVAL_TIMEOUT"
+    );
+    this.name = "EvalTimeoutError";
+    this.phase = phase;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number | undefined,
+  phase: EvalTimeoutPhase
+): Promise<T> {
+  if (timeoutMs === undefined || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new EvalTimeoutError(phase, timeoutMs));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -396,17 +435,13 @@ export async function evaluate(
     criteria,
     expected,
     threshold = DEFAULT_THRESHOLD,
-    targetTokenizer,
-    targetBudget,
-    evaluatorTokenizer,
-    evaluatorBudget,
+    timeoutMs,
   } = options;
 
   // Step 1: Render the prompt to structured messages with variables substituted
-  const renderTokenizer = targetTokenizer ?? target.tokenizer;
+  const renderTokenizer = target.tokenizer;
   const renderedMessages = await renderPromptToMessages(prompt, {
     ...(renderTokenizer && { tokenizer: renderTokenizer }),
-    ...(targetBudget !== undefined && { budget: targetBudget }),
     input,
   });
   const system = extractSystemPrompt(renderedMessages);
@@ -414,11 +449,20 @@ export async function evaluate(
   // Step 2: Execute the prompt to get a response
   let promptResponse: { text: string };
   try {
-    promptResponse = await target.completion({
-      messages: renderedMessages,
-      ...(system !== undefined && { system }),
-    });
+    promptResponse = await withTimeout(
+      Promise.resolve(
+        target.completion({
+          messages: renderedMessages,
+          ...(system !== undefined && { system }),
+        })
+      ),
+      timeoutMs,
+      "target"
+    );
   } catch (error) {
+    if (error instanceof CriaEvalError) {
+      throw error;
+    }
     throw new EvalTargetError(target.name, error);
   }
 
@@ -432,23 +476,28 @@ export async function evaluate(
     ...(expected && { expected }),
   });
 
-  const evaluatorRenderTokenizer = evaluatorTokenizer ?? evaluator.tokenizer;
+  const evaluatorRenderTokenizer = evaluator.tokenizer;
   const evaluatorRendered = await renderPromptToString(evaluatorPrompt, {
     ...(evaluatorRenderTokenizer && { tokenizer: evaluatorRenderTokenizer }),
-    ...(evaluatorBudget !== undefined && { budget: evaluatorBudget }),
     input: {}, // Evaluator prompt has no variables
   });
 
   // Step 4: Execute the evaluator prompt
   let evaluatorResponse: EvaluatorOutput;
   try {
-    evaluatorResponse = await evaluator.evaluate({
-      prompt: evaluatorRendered,
-      input,
-      response,
-      ...(criteria && { criteria }),
-      ...(expected && { expected }),
-    });
+    evaluatorResponse = await withTimeout(
+      Promise.resolve(
+        evaluator.evaluate({
+          prompt: evaluatorRendered,
+          input,
+          response,
+          ...(criteria && { criteria }),
+          ...(expected && { expected }),
+        })
+      ),
+      timeoutMs,
+      "evaluator"
+    );
   } catch (error) {
     if (error instanceof CriaEvalError) {
       throw error;

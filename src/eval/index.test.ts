@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { Region } from "../components";
 import { cria } from "../dsl";
 import type { ModelProvider } from "../types";
@@ -7,6 +7,7 @@ import {
   EvalEvaluatorError,
   EvalSchemaError,
   EvalTargetError,
+  EvalTimeoutError,
   type EvaluatorProvider,
   evaluate,
   mockEvaluator,
@@ -409,5 +410,31 @@ describe("error handling", () => {
         input: {},
       })
     ).rejects.toBeInstanceOf(EvalEvaluatorError);
+  });
+
+  test("times out slow providers", async () => {
+    vi.useFakeTimers();
+    const prompt = cria.prompt().user("Test");
+
+    const slowEvaluator: EvaluatorProvider = {
+      name: "slow-evaluator",
+      evaluate: () =>
+        new Promise(() => {
+          // Intentionally unresolved to trigger timeout handling.
+        }),
+    };
+
+    const evaluation = evaluate(prompt, {
+      target: mockTarget(),
+      evaluator: slowEvaluator,
+      input: {},
+      timeoutMs: 10,
+    });
+
+    const assertion =
+      expect(evaluation).rejects.toBeInstanceOf(EvalTimeoutError);
+    await vi.advanceTimersByTimeAsync(10);
+    await assertion;
+    vi.useRealTimers();
   });
 });
