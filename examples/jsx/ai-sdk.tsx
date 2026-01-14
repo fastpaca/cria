@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { cria } from "@fastpaca/cria";
+import { cria, type Prompt } from "@fastpaca/cria";
 import { renderer } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
 import { encoding_for_model } from "tiktoken";
@@ -35,7 +35,7 @@ const documents = [
 const userQuestion = "Can you summarize Berlin's key facts?";
 
 // Build the prompt using the DSL for structured output
-const documentSections = documents.reduce(
+const documentSections: Prompt = documents.reduce(
   (acc, doc, i) =>
     acc.merge(
       cria
@@ -49,7 +49,7 @@ const documentSections = documents.reduce(
   cria.prompt()
 );
 
-const historySection = conversationHistory.reduce(
+const historySection: Prompt = conversationHistory.reduce(
   (acc, msg, i) =>
     acc.merge(
       cria.prompt().message(msg.role as "user" | "assistant", msg.content, {

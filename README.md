@@ -36,7 +36,7 @@ const messages = await cria
   .render({ budget: 200_000, renderer });
 ```
 
-See all **[-> Documentation](docs/README.md)** for more comprehensive overviews.
+Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.md)** to jump to the right how-to.
 
 ## Use Cria when you need...
 
@@ -154,7 +154,7 @@ const { text } = await generateText({ model, messages });
 ## FAQ
 
 - **Does this replace my LLM SDK?** No - Cria builds prompt structures. You still use your SDK to call the model.
-- **How do I tune token budgets?** Pass `budget` to `render()` and set priorities on regions. Providers include tiktoken defaults; see [docs/tokenization.md](docs/tokenization.md) to bring your own.
+- **How do I tune token budgets?** Pass `budget` to `render()` and set priorities on regions; see [docs/how-to/fit-and-compaction.md](docs/how-to/fit-and-compaction.md).
 - **Is this production-ready?** Not yet! It is a work in progress and you should test it out before you run this in production.
 
 ## License

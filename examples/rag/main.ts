@@ -1,4 +1,4 @@
-import { cria } from "@fastpaca/cria";
+import { cria, type Prompt } from "@fastpaca/cria";
 import type {
   MemoryEntry,
   VectorMemory,
@@ -81,8 +81,8 @@ class DemoVectorStore implements VectorMemory<string> {
 }
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const tokenizer = (text: string): number =>
-  encoding_for_model("gpt-4o-mini").encode(text).length;
+const enc = encoding_for_model("gpt-4o-mini");
+const tokenizer = (text: string): number => enc.encode(text).length;
 
 const store = new DemoVectorStore([
   {
@@ -99,17 +99,27 @@ const store = new DemoVectorStore([
   },
 ]);
 
-const prompt = cria
-  .prompt()
-  .system("You answer questions using the provided context. Be concise.")
-  .vectorSearch({
+const systemRules = (): Prompt =>
+  cria
+    .prompt()
+    .system("You answer questions using the provided context. Be concise.");
+
+const retrieval = (query: string): Prompt =>
+  cria.prompt().vectorSearch({
     store,
-    query: "Berlin history and key facts",
+    query,
     limit: 3,
     priority: 2,
     id: "vector-results",
-  })
-  .user("Tell me about Berlin.");
+  });
+
+const userRequest = (question: string): Prompt => cria.prompt().user(question);
+
+const prompt = cria.merge(
+  systemRules(),
+  retrieval("Berlin history and key facts"),
+  userRequest("Tell me about Berlin.")
+);
 
 async function main(): Promise<void> {
   const messages = await prompt.render({

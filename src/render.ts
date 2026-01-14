@@ -92,7 +92,7 @@ export async function render<TOptions extends RenderOptions>(
   const tokenizerResolution = resolveTokenizer(resolvedElement, tokenizer);
   if (!tokenizerResolution) {
     throw new Error(
-      "Token budgeting requires a tokenizer. Provide one to render(), or wrap your prompt in a provider that supplies a tokenizer (e.g. <OpenAIProvider>, <AnthropicProvider>, or <AISDKProvider>). See docs/tokenization.md for details."
+      "Token budgeting requires a tokenizer. Provide one to render(), or wrap your prompt in a provider that supplies a tokenizer (e.g. <OpenAIProvider>, <AnthropicProvider>, or <AISDKProvider>). See docs/how-to/fit-and-compaction.md for details."
     );
   }
 

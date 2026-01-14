@@ -38,6 +38,7 @@ export {
   VectorSearch,
 } from "./components";
 // DSL
+export type { Prompt } from "./dsl";
 export { cria, merge, PromptBuilder, prompt } from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {

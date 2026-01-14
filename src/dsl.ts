@@ -446,6 +446,8 @@ export class PromptBuilder {
   }
 }
 
+export type Prompt = PromptBuilder;
+
 /**
  * Namespace for building prompts without JSX.
  *

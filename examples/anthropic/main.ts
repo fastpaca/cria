@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { cria } from "@fastpaca/cria";
+import { cria, type Prompt } from "@fastpaca/cria";
 import { anthropic } from "@fastpaca/cria/anthropic";
 import { get_encoding } from "tiktoken";
 
@@ -8,10 +8,15 @@ const enc = get_encoding("cl100k_base");
 const tokenizer = (text: string): number => enc.encode(text).length;
 const MODEL = "claude-haiku-4-5";
 
-const prompt = cria
-  .prompt()
-  .system("You are a concise assistant that answers directly.")
-  .user("Summarize the history of Berlin in two sentences.");
+const systemRules = (): Prompt =>
+  cria.prompt().system("You are a concise assistant that answers directly.");
+
+const userRequest = (question: string): Prompt => cria.prompt().user(question);
+
+const prompt = cria.merge(
+  systemRules(),
+  userRequest("Summarize the history of Berlin in two sentences.")
+);
 
 async function main(): Promise<void> {
   const rendered = await prompt.render({

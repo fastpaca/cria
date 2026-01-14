@@ -1,10 +1,15 @@
-import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
+import {
+  cria,
+  InMemoryStore,
+  type Prompt,
+  type StoredSummary,
+} from "@fastpaca/cria";
 import { chatCompletions, Provider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 import { encoding_for_model } from "tiktoken";
 
-const tokenizer = (text: string): number =>
-  encoding_for_model("gpt-4o-mini").encode(text).length;
+const enc = encoding_for_model("gpt-4o-mini");
+const tokenizer = (text: string): number => enc.encode(text).length;
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const provider = new Provider(client, "gpt-4o-mini");
 const store = new InMemoryStore<StoredSummary>();
@@ -20,24 +25,39 @@ const conversation = [
 const recentTurns = conversation.slice(-2).join("\n");
 const fullHistory = conversation.join("\n");
 
-const prompt = cria
-  .prompt()
-  .system(
-    "You summarize long conversations and keep the last 2 turns verbatim."
-  )
-  .provider(provider, (p) =>
+const systemRules = (): Prompt =>
+  cria
+    .prompt()
+    .system(
+      "You summarize long conversations and keep the last 2 turns verbatim."
+    );
+
+const summaryBlock = (): Prompt =>
+  cria.prompt().provider(provider, (p) =>
     p.summary(fullHistory, {
       id: "running-summary",
       store,
       priority: 2,
     })
-  )
-  .truncate(recentTurns, {
+  );
+
+const recentHistory = (): Prompt =>
+  cria.prompt().truncate(recentTurns, {
     budget: 200,
     from: "start",
     priority: 1,
-  })
-  .user("Summarize the conversation so far and suggest a 1-day itinerary.");
+  });
+
+const userRequest = (question: string): Prompt => cria.prompt().user(question);
+
+const prompt = cria.merge(
+  systemRules(),
+  summaryBlock(),
+  recentHistory(),
+  userRequest(
+    "Summarize the conversation so far and suggest a 1-day itinerary."
+  )
+);
 
 async function main(): Promise<void> {
   const messages = await prompt.render({

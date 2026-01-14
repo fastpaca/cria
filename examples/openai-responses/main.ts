@@ -1,16 +1,23 @@
-import { cria } from "@fastpaca/cria";
+import { cria, type Prompt } from "@fastpaca/cria";
 import { responses } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 import { encoding_for_model } from "tiktoken";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const tokenizer = (text: string): number =>
-  encoding_for_model("gpt-4o-mini").encode(text).length;
+const enc = encoding_for_model("gpt-4o-mini");
+const tokenizer = (text: string): number => enc.encode(text).length;
 
-const prompt = cria
-  .prompt()
-  .system("You are a helpful assistant that returns concise bullet lists.")
-  .user("List three famous landmarks in Berlin.");
+const systemRules = (): Prompt =>
+  cria
+    .prompt()
+    .system("You are a helpful assistant that returns concise bullet lists.");
+
+const userRequest = (question: string): Prompt => cria.prompt().user(question);
+
+const prompt = cria.merge(
+  systemRules(),
+  userRequest("List three famous landmarks in Berlin.")
+);
 
 async function main(): Promise<void> {
   const inputItems = await prompt.render({
