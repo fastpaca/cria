@@ -12,16 +12,12 @@ import type {
   CompletionMessage,
   EvaluatorOutput,
   EvaluatorProvider,
-  EvaluatorRequest,
   ModelProvider,
   PromptElement,
   PromptRenderer,
   Tokenizer,
 } from "../types";
 import { EvaluatorOutputSchema } from "../types";
-
-export type { EvaluatorOutput, EvaluatorProvider, EvaluatorRequest };
-export { EvaluatorOutputSchema };
 
 export const DEFAULT_THRESHOLD = 0.8;
 

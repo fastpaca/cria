@@ -28,7 +28,13 @@
  * @packageDocumentation
  */
 
+export type {
+  EvaluatorOutput,
+  EvaluatorProvider,
+  EvaluatorRequest,
+} from "../types";
 // biome-ignore lint/performance/noBarrelFile: Intentional re-export for package entrypoint.
+export { EvaluatorOutputSchema } from "../types";
 export * from "./core";
 
 // Re-export the Vitest matchers for convenience
