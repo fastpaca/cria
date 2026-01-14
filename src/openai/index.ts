@@ -398,6 +398,9 @@ export class Provider implements ModelProvider {
       : [];
 
     for (const msg of request.messages) {
+      if (msg.role === "system" && request.system) {
+        continue;
+      }
       if (VALID_OPENAI_ROLES.has(msg.role)) {
         messages.push({ role: msg.role as OpenAIRole, content: msg.content });
       }
@@ -428,6 +431,9 @@ export function OpenAIProvider({
         : [];
 
       for (const msg of request.messages) {
+        if (msg.role === "system" && request.system) {
+          continue;
+        }
         if (VALID_OPENAI_ROLES.has(msg.role)) {
           messages.push({ role: msg.role as OpenAIRole, content: msg.content });
         }

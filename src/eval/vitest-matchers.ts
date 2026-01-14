@@ -10,7 +10,8 @@
  *
  * test("prompt is helpful", async () => {
  *   await expect(myPrompt).toPassEvaluation({
- *     judge,
+ *     target,
+ *     evaluator,
  *     input: { question: "..." },
  *     criteria: ["helpful"],
  *   });
@@ -22,7 +23,7 @@
 
 import type { PromptBuilder } from "../dsl";
 import type { PromptElement } from "../types";
-import type { EvalOptions } from "./index";
+import { DEFAULT_THRESHOLD, type EvalOptions, evaluate } from "./core";
 
 /**
  * Vitest custom matchers for Cria evaluation.
@@ -31,12 +32,13 @@ import type { EvalOptions } from "./index";
  */
 export const criaMatchers = {
   /**
-   * Assert that a prompt passes evaluation with an LLM judge.
+   * Assert that a prompt passes evaluation with an LLM evaluator.
    *
    * @example
    * ```typescript
    * await expect(myPrompt).toPassEvaluation({
-   *   judge: openaiProvider,
+   *   target: openaiProvider,
+   *   evaluator: evaluatorProvider,
    *   input: { question: "How do I reset my password?" },
    *   criteria: ["helpful", "accurate"],
    *   threshold: 0.8,
@@ -47,11 +49,9 @@ export const criaMatchers = {
     received: PromptBuilder | PromptElement,
     options: EvalOptions
   ) {
-    // Dynamic import to avoid circular dependency
-    const { evaluate } = await import("./index");
     const result = await evaluate(received, options);
 
-    const threshold = options.threshold ?? 0.8;
+    const threshold = options.threshold ?? DEFAULT_THRESHOLD;
 
     if (result.passed) {
       return {
@@ -76,21 +76,13 @@ export const criaMatchers = {
 };
 
 /**
- * TypeScript declaration for the custom matchers.
- *
- * When using these matchers, you may need to add the following to your
- * vitest setup file or test file:
- *
- * ```typescript
- * import type { EvalOptions } from "@fastpaca/cria/eval";
- *
- * declare module "vitest" {
- *   interface Assertion<T = unknown> {
- *     toPassEvaluation(options: EvalOptions): Promise<void>;
- *   }
- *   interface AsymmetricMatchersContaining {
- *     toPassEvaluation(options: EvalOptions): void;
- *   }
- * }
- * ```
+ * TypeScript declarations for the custom matchers.
  */
+declare module "vitest" {
+  interface Assertion<T = unknown> {
+    toPassEvaluation(options: EvalOptions): Promise<void>;
+  }
+  interface AsymmetricMatchersContaining {
+    toPassEvaluation(options: EvalOptions): void;
+  }
+}

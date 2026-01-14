@@ -64,6 +64,44 @@ export interface ModelProvider {
 }
 
 /**
+ * Structured output returned by an evaluator.
+ */
+export const EvaluatorOutputSchema = z.object({
+  score: z.number().min(0).max(1),
+  reasoning: z.string(),
+});
+
+export type EvaluatorOutput = z.infer<typeof EvaluatorOutputSchema>;
+
+/**
+ * Request payload for an evaluator.
+ */
+export interface EvaluatorRequest {
+  /** Rendered evaluator prompt */
+  prompt: string;
+  /** Input variables for the original prompt */
+  input: Record<string, unknown>;
+  /** Model response being evaluated */
+  response: string;
+  /** Criteria to evaluate against (e.g. ["helpful", "accurate"]) */
+  criteria?: string[];
+  /** Expected output for comparison (optional) */
+  expected?: string;
+}
+
+/**
+ * Evaluator provider that produces structured evaluation output.
+ */
+export interface EvaluatorProvider {
+  /** Provider identifier for debugging */
+  name: string;
+  /** Tokenizer for rendering evaluator prompts (optional) */
+  tokenizer?: Tokenizer;
+  /** Run the evaluation and return structured output */
+  evaluate(request: EvaluatorRequest): MaybePromise<EvaluatorOutput>;
+}
+
+/**
  * Context that can be provided through the component tree.
  *
  * Provider components (like `<AISDKProvider>`) inject context that

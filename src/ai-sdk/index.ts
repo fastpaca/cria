@@ -4,7 +4,7 @@ import type {
   ToolResultPart,
   UIMessage,
 } from "ai";
-import { generateText } from "ai";
+import { generateText, Output } from "ai";
 import {
   Message,
   Reasoning,
@@ -25,6 +25,9 @@ import { tiktokenTokenizer } from "../tokenizers";
 import type {
   CompletionRequest,
   CompletionResult,
+  EvaluatorOutput,
+  EvaluatorProvider,
+  EvaluatorRequest,
   MaybePromise,
   ModelProvider,
   PromptChild,
@@ -34,6 +37,7 @@ import type {
   Strategy,
   Tokenizer,
 } from "../types";
+import { EvaluatorOutputSchema } from "../types";
 
 /**
  * Priority configuration for message types when rendering prompts.
@@ -194,6 +198,15 @@ const TOOL_PART_PREFIX = "tool-" as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function getModelId(model: LanguageModel): string | undefined {
+  if (!isRecord(model)) {
+    return undefined;
+  }
+
+  const modelId = model.modelId;
+  return typeof modelId === "string" ? modelId : undefined;
 }
 
 function parseToolInvocationPart(part: UIMessagePart): ToolInvocation | null {
@@ -515,6 +528,32 @@ interface AISDKProviderProps {
 type AISDKRole = "user" | "assistant" | "system";
 const VALID_AI_SDK_ROLES = new Set<string>(["user", "assistant", "system"]);
 
+function toModelMessages(request: CompletionRequest): ModelMessage[] {
+  const messages: ModelMessage[] = request.system
+    ? [{ role: "system", content: request.system }]
+    : [];
+
+  for (const msg of request.messages) {
+    if (msg.role === "system" && request.system) {
+      continue;
+    }
+    if (VALID_AI_SDK_ROLES.has(msg.role)) {
+      messages.push({ role: msg.role as AISDKRole, content: msg.content });
+    }
+  }
+
+  return messages;
+}
+
+async function executeCompletion(
+  model: LanguageModel,
+  request: CompletionRequest
+): Promise<CompletionResult> {
+  const messages = toModelMessages(request);
+  const { text } = await generateText({ model, messages });
+  return { text };
+}
+
 /**
  * ModelProvider implementation that wraps an AI SDK LanguageModel.
  * Use this with the DSL's `.provider()` method.
@@ -544,22 +583,47 @@ export class Provider implements ModelProvider {
   }
 
   async completion(request: CompletionRequest): Promise<CompletionResult> {
-    const messages: ModelMessage[] = request.system
-      ? [{ role: "system", content: request.system }]
-      : [];
+    return executeCompletion(this.model, request);
+  }
+}
 
-    for (const msg of request.messages) {
-      if (VALID_AI_SDK_ROLES.has(msg.role)) {
-        messages.push({ role: msg.role as AISDKRole, content: msg.content });
-      }
-    }
+/**
+ * Evaluator provider that uses AI SDK structured outputs.
+ *
+ * @example
+ * ```typescript
+ * import { Evaluator } from "@fastpaca/cria/ai-sdk";
+ * import { openai } from "@ai-sdk/openai";
+ *
+ * const evaluator = new Evaluator(openai("gpt-4o-mini"));
+ * ```
+ */
+export class Evaluator implements EvaluatorProvider {
+  readonly name: string;
+  readonly tokenizer?: Tokenizer;
+  private readonly model: LanguageModel;
 
-    const { text } = await generateText({
+  constructor(
+    model: LanguageModel,
+    options: { name?: string; tokenizer?: Tokenizer } = {}
+  ) {
+    this.model = model;
+    this.name = options.name ?? "ai-sdk-evaluator";
+    this.tokenizer = options.tokenizer ?? tiktokenTokenizer(getModelId(model));
+  }
+
+  async evaluate(request: EvaluatorRequest): Promise<EvaluatorOutput> {
+    const result = await generateText({
       model: this.model,
-      messages,
+      prompt: request.prompt,
+      output: Output.object({
+        schema: EvaluatorOutputSchema,
+        name: "evaluation",
+        description: "Score from 0-1 with a short reasoning string.",
+      }),
     });
 
-    return { text };
+    return result.output;
   }
 }
 
@@ -570,27 +634,8 @@ export function AISDKProvider({
 }: AISDKProviderProps): MaybePromise<PromptElement> {
   const provider: ModelProvider = {
     name: "ai-sdk",
-    tokenizer:
-      tokenizer ??
-      tiktokenTokenizer((model as { modelId?: string | undefined }).modelId),
-    async completion(request: CompletionRequest): Promise<CompletionResult> {
-      const messages: ModelMessage[] = request.system
-        ? [{ role: "system", content: request.system }]
-        : [];
-
-      for (const msg of request.messages) {
-        if (VALID_AI_SDK_ROLES.has(msg.role)) {
-          messages.push({ role: msg.role as AISDKRole, content: msg.content });
-        }
-      }
-
-      const { text } = await generateText({
-        model,
-        messages,
-      });
-
-      return { text };
-    },
+    tokenizer: tokenizer ?? tiktokenTokenizer(getModelId(model)),
+    completion: (request) => executeCompletion(model, request),
   };
 
   return {

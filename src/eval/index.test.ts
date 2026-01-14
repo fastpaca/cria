@@ -2,16 +2,26 @@ import { describe, expect, test } from "vitest";
 import { Region } from "../components";
 import { cria } from "../dsl";
 import type { ModelProvider } from "../types";
-import { criaMatchers, evaluate, mockJudge } from "./index";
+import {
+  criaMatchers,
+  EvalEvaluatorError,
+  EvalSchemaError,
+  EvalTargetError,
+  type EvaluatorProvider,
+  evaluate,
+  mockEvaluator,
+  mockTarget,
+} from "./index";
 
 expect.extend(criaMatchers);
 
 describe("evaluate", () => {
-  test("returns score and reasoning from mock judge", async () => {
+  test("returns score and reasoning from mock evaluator", async () => {
     const prompt = cria.prompt().system("Answer questions").user("{{q}}");
 
     const result = await evaluate(prompt, {
-      judge: mockJudge({ score: 0.9, reasoning: "Excellent response" }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.9, reasoning: "Excellent response" }),
       input: { q: "What is 2+2?" },
       criteria: ["accurate"],
     });
@@ -25,7 +35,8 @@ describe("evaluate", () => {
     const prompt = cria.prompt().user("{{question}}");
 
     const result = await evaluate(prompt, {
-      judge: mockJudge({ score: 0.8 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.8 }),
       input: { question: "Test question" },
       threshold: 0.8,
     });
@@ -37,7 +48,8 @@ describe("evaluate", () => {
     const prompt = cria.prompt().user("{{question}}");
 
     const result = await evaluate(prompt, {
-      judge: mockJudge({ score: 0.7 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.7 }),
       input: { question: "Test question" },
       threshold: 0.8,
     });
@@ -49,13 +61,15 @@ describe("evaluate", () => {
     const prompt = cria.prompt().user("Test");
 
     const passingResult = await evaluate(prompt, {
-      judge: mockJudge({ score: 0.8 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.8 }),
       input: {},
     });
     expect(passingResult.passed).toBe(true);
 
     const failingResult = await evaluate(prompt, {
-      judge: mockJudge({ score: 0.79 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.79 }),
       input: {},
     });
     expect(failingResult.passed).toBe(false);
@@ -68,24 +82,21 @@ describe("evaluate", () => {
       .user("{{question}}");
 
     let capturedPrompt = "";
-    const capturingJudge: ModelProvider = {
-      name: "capturing-judge",
+    const capturingTarget: ModelProvider = {
+      name: "capturing-target",
       completion: (request) => {
-        if (!capturedPrompt) {
-          capturedPrompt = request.messages[0]?.content ?? "";
-        }
+        capturedPrompt = request.messages
+          .map((message) => message.content)
+          .join("\n");
         return Promise.resolve({
-          text: JSON.stringify({
-            pass: true,
-            score: 0.9,
-            reasoning: "Good",
-          }),
+          text: "Mock response",
         });
       },
     };
 
     await evaluate(prompt, {
-      judge: capturingJudge,
+      target: capturingTarget,
+      evaluator: mockEvaluator(),
       input: { topic: "math", question: "What is 2+2?" },
     });
 
@@ -95,71 +106,51 @@ describe("evaluate", () => {
     expect(capturedPrompt).not.toContain("{{question}}");
   });
 
-  test("passes criteria to judge", async () => {
+  test("passes criteria to evaluator", async () => {
     const prompt = cria.prompt().user("Test");
 
-    let capturedJudgePrompt = "";
-    let callCount = 0;
-    const capturingJudge: ModelProvider = {
-      name: "capturing-judge",
-      completion: (request) => {
-        callCount++;
-        if (callCount === 2) {
-          capturedJudgePrompt =
-            request.messages.find((m) => m.role === "user")?.content ?? "";
-        }
-        return Promise.resolve({
-          text: JSON.stringify({
-            pass: true,
-            score: 0.9,
-            reasoning: "Good",
-          }),
-        });
+    let capturedEvaluatorPrompt = "";
+    const capturingEvaluator: EvaluatorProvider = {
+      name: "capturing-evaluator",
+      evaluate: (request) => {
+        capturedEvaluatorPrompt = request.prompt;
+        return { score: 0.9, reasoning: "Good" };
       },
     };
 
     await evaluate(prompt, {
-      judge: capturingJudge,
+      target: mockTarget(),
+      evaluator: capturingEvaluator,
       input: {},
       criteria: ["helpful", "accurate", "professional"],
     });
 
-    expect(capturedJudgePrompt).toContain("helpful");
-    expect(capturedJudgePrompt).toContain("accurate");
-    expect(capturedJudgePrompt).toContain("professional");
+    expect(capturedEvaluatorPrompt).toContain("helpful");
+    expect(capturedEvaluatorPrompt).toContain("accurate");
+    expect(capturedEvaluatorPrompt).toContain("professional");
   });
 
-  test("passes expected output to judge when provided", async () => {
+  test("passes expected output to evaluator when provided", async () => {
     const prompt = cria.prompt().user("What is the capital of France?");
 
-    let capturedJudgePrompt = "";
-    let callCount = 0;
-    const capturingJudge: ModelProvider = {
-      name: "capturing-judge",
-      completion: (request) => {
-        callCount++;
-        if (callCount === 2) {
-          capturedJudgePrompt =
-            request.messages.find((m) => m.role === "user")?.content ?? "";
-        }
-        return Promise.resolve({
-          text: JSON.stringify({
-            pass: true,
-            score: 0.95,
-            reasoning: "Matches expected",
-          }),
-        });
+    let capturedEvaluatorPrompt = "";
+    const capturingEvaluator: EvaluatorProvider = {
+      name: "capturing-evaluator",
+      evaluate: (request) => {
+        capturedEvaluatorPrompt = request.prompt;
+        return { score: 0.95, reasoning: "Matches expected" };
       },
     };
 
     await evaluate(prompt, {
-      judge: capturingJudge,
+      target: mockTarget(),
+      evaluator: capturingEvaluator,
       input: {},
       expected: "Paris",
     });
 
-    expect(capturedJudgePrompt).toContain("Expected Response");
-    expect(capturedJudgePrompt).toContain("Paris");
+    expect(capturedEvaluatorPrompt).toContain("Expected Response");
+    expect(capturedEvaluatorPrompt).toContain("Paris");
   });
 
   test("works with raw PromptElement", async () => {
@@ -169,7 +160,8 @@ describe("evaluate", () => {
     });
 
     const result = await evaluate(element, {
-      judge: mockJudge({ score: 0.85 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.85 }),
       input: { name: "World" },
     });
 
@@ -182,7 +174,8 @@ describe("evaluate", () => {
     const mockResponse = "This is the mock response";
 
     const result = await evaluate(prompt, {
-      judge: mockJudge({ score: 0.9, response: mockResponse }),
+      target: mockTarget({ response: mockResponse }),
+      evaluator: mockEvaluator({ score: 0.9 }),
       input: {},
     });
 
@@ -190,13 +183,14 @@ describe("evaluate", () => {
   });
 });
 
-describe("mockJudge", () => {
+describe("mockEvaluator", () => {
   test("returns configured score", async () => {
-    const judge = mockJudge({ score: 0.75 });
+    const evaluator = mockEvaluator({ score: 0.75 });
     const prompt = cria.prompt().user("Test");
 
     const result = await evaluate(prompt, {
-      judge,
+      target: mockTarget(),
+      evaluator,
       input: {},
     });
 
@@ -204,41 +198,28 @@ describe("mockJudge", () => {
   });
 
   test("returns configured reasoning", async () => {
-    const judge = mockJudge({
+    const evaluator = mockEvaluator({
       score: 0.9,
       reasoning: "Custom reasoning message",
     });
     const prompt = cria.prompt().user("Test");
 
     const result = await evaluate(prompt, {
-      judge,
+      target: mockTarget(),
+      evaluator,
       input: {},
     });
 
     expect(result.reasoning).toBe("Custom reasoning message");
   });
 
-  test("returns configured response", async () => {
-    const judge = mockJudge({
-      score: 0.9,
-      response: "Custom mock response",
-    });
-    const prompt = cria.prompt().user("Test");
-
-    const result = await evaluate(prompt, {
-      judge,
-      input: {},
-    });
-
-    expect(result.response).toBe("Custom mock response");
-  });
-
   test("uses default values when not configured", async () => {
-    const judge = mockJudge();
+    const evaluator = mockEvaluator();
     const prompt = cria.prompt().user("Test");
 
     const result = await evaluate(prompt, {
-      judge,
+      target: mockTarget(),
+      evaluator,
       input: {},
     });
 
@@ -248,19 +229,33 @@ describe("mockJudge", () => {
       "Mock evaluation - all criteria met satisfactorily."
     );
   });
+});
 
-  test("allows explicit passed override", async () => {
-    const judge = mockJudge({ score: 0.9, passed: false });
+describe("mockTarget", () => {
+  test("returns configured response", async () => {
     const prompt = cria.prompt().user("Test");
 
     const result = await evaluate(prompt, {
-      judge,
+      target: mockTarget({ response: "Custom mock response" }),
+      evaluator: mockEvaluator({ score: 0.9 }),
       input: {},
     });
 
-    // Score is 0.9 but we explicitly set passed to false
-    // However, evaluate() determines passed from score >= threshold
-    expect(result.score).toBe(0.9);
+    expect(result.response).toBe("Custom mock response");
+  });
+
+  test("uses default response when not configured", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    const result = await evaluate(prompt, {
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.9 }),
+      input: {},
+    });
+
+    expect(result.response).toBe(
+      "Mock response from the prompt under evaluation."
+    );
   });
 });
 
@@ -269,7 +264,8 @@ describe("criaMatchers", () => {
     const prompt = cria.prompt().user("Test question");
 
     await expect(prompt).toPassEvaluation({
-      judge: mockJudge({ score: 0.9 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.9 }),
       input: {},
       criteria: ["helpful"],
     });
@@ -280,7 +276,8 @@ describe("criaMatchers", () => {
 
     await expect(
       expect(prompt).toPassEvaluation({
-        judge: mockJudge({ score: 0.5 }),
+        target: mockTarget(),
+        evaluator: mockEvaluator({ score: 0.5 }),
         input: {},
         threshold: 0.8,
       })
@@ -292,7 +289,8 @@ describe("criaMatchers", () => {
 
     // Should pass with 0.7 score and 0.6 threshold
     await expect(prompt).toPassEvaluation({
-      judge: mockJudge({ score: 0.7 }),
+      target: mockTarget(),
+      evaluator: mockEvaluator({ score: 0.7 }),
       input: {},
       threshold: 0.6,
     });
@@ -300,7 +298,8 @@ describe("criaMatchers", () => {
     // Should fail with 0.7 score and 0.8 threshold
     await expect(
       expect(prompt).toPassEvaluation({
-        judge: mockJudge({ score: 0.7 }),
+        target: mockTarget(),
+        evaluator: mockEvaluator({ score: 0.7 }),
         input: {},
         threshold: 0.8,
       })
@@ -309,61 +308,83 @@ describe("criaMatchers", () => {
 });
 
 describe("error handling", () => {
-  test("handles malformed judge JSON gracefully", async () => {
+  test("throws EvalSchemaError with raw output", async () => {
     const prompt = cria.prompt().user("Test");
 
-    const badJudge: ModelProvider = {
-      name: "bad-judge",
-      completion: () =>
-        Promise.resolve({
-          text: "This is not JSON at all",
-        }),
+    const badEvaluator: EvaluatorProvider = {
+      name: "bad-evaluator",
+      evaluate: () => ({ score: 1.5, reasoning: "Too high" }),
+    };
+
+    let caught: unknown;
+    try {
+      await evaluate(prompt, {
+        target: mockTarget(),
+        evaluator: badEvaluator,
+        input: {},
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(EvalSchemaError);
+    if (caught instanceof EvalSchemaError) {
+      expect(caught.rawOutput).toEqual({ score: 1.5, reasoning: "Too high" });
+    }
+  });
+
+  test("rejects evaluator output with NaN score", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    const badEvaluator: EvaluatorProvider = {
+      name: "nan-evaluator",
+      evaluate: () => ({ score: Number.NaN, reasoning: "NaN" }),
     };
 
     await expect(
-      evaluate(prompt, { judge: badJudge, input: {} })
-    ).rejects.toThrow("did not contain valid JSON");
+      evaluate(prompt, {
+        target: mockTarget(),
+        evaluator: badEvaluator,
+        input: {},
+      })
+    ).rejects.toBeInstanceOf(EvalSchemaError);
   });
 
-  test("handles incomplete judge response schema", async () => {
+  test("wraps target provider errors", async () => {
     const prompt = cria.prompt().user("Test");
 
-    const incompleteJudge: ModelProvider = {
-      name: "incomplete-judge",
-      completion: () =>
-        Promise.resolve({
-          text: '{"score": 0.9}', // missing pass and reasoning
-        }),
-    };
-
-    await expect(
-      evaluate(prompt, { judge: incompleteJudge, input: {} })
-    ).rejects.toThrow("did not match expected schema");
-  });
-
-  test("extracts JSON from text with surrounding content", async () => {
-    const prompt = cria.prompt().user("Test");
-
-    let callCount = 0;
-    const verboseJudge: ModelProvider = {
-      name: "verbose-judge",
+    const failingTarget: ModelProvider = {
+      name: "failing-target",
       completion: () => {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.resolve({ text: "Mock response" });
-        }
-        return Promise.resolve({
-          text: 'Here is my evaluation:\n{"pass": true, "score": 0.85, "reasoning": "Good work"}\n\nLet me know if you need anything else.',
-        });
+        throw new Error("Target failed");
       },
     };
 
-    const result = await evaluate(prompt, {
-      judge: verboseJudge,
-      input: {},
-    });
+    await expect(
+      evaluate(prompt, {
+        target: failingTarget,
+        evaluator: mockEvaluator(),
+        input: {},
+      })
+    ).rejects.toBeInstanceOf(EvalTargetError);
+  });
 
-    expect(result.score).toBe(0.85);
-    expect(result.reasoning).toBe("Good work");
+  test("wraps evaluator provider errors", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    const failingEvaluator: EvaluatorProvider = {
+      name: "failing-evaluator",
+      evaluate: () => {
+        throw new Error("Evaluator failed");
+      },
+    };
+
+    await expect(
+      evaluate(prompt, {
+        target: mockTarget(),
+        evaluator: failingEvaluator,
+        input: {},
+      })
+    ).rejects.toBeInstanceOf(EvalEvaluatorError);
   });
 });
