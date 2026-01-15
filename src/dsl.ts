@@ -96,14 +96,15 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     }
 
     const inner = fn(this.create([], this.context));
-    const element = (async (): Promise<PromptElement> => {
-      const children = await inner.buildChildren();
-      return Region({
-        priority: 0,
-        children,
-        ...(opts?.id ? { id: opts.id } : {}),
-      });
-    })();
+    const element = createPromptElement(
+      () => inner.buildChildren(),
+      (children) =>
+        Region({
+          priority: 0,
+          children,
+          ...(opts?.id ? { id: opts.id } : {}),
+        })
+    );
 
     return this.addChild(element);
   }
@@ -120,19 +121,21 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
       id?: string;
     }
   ): TBuilder {
-    const node = (async (): Promise<PromptElement> => {
-      const children = await resolveBuilderChildren(content);
-      const props: Parameters<typeof Truncate>[0] = {
-        children,
-        budget: opts.budget,
-        ...(opts.from ? { from: opts.from } : {}),
-        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-        ...(opts.id ? { id: opts.id } : {}),
-      };
-      return Truncate({
-        ...props,
-      });
-    })();
+    const node = createPromptElement(
+      () => resolveBuilderChildren(content),
+      (children) => {
+        const props: Parameters<typeof Truncate>[0] = {
+          children,
+          budget: opts.budget,
+          ...(opts.from ? { from: opts.from } : {}),
+          ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+          ...(opts.id ? { id: opts.id } : {}),
+        };
+        return Truncate({
+          ...props,
+        });
+      }
+    );
 
     return this.addChild(node);
   }
@@ -144,15 +147,17 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     content: string | PromptElement | PromptBuilder,
     opts?: { priority?: number; id?: string }
   ): TBuilder {
-    const node = (async (): Promise<PromptElement> => {
-      const children = await resolveBuilderChildren(content);
-      const props: Parameters<typeof Omit>[0] = {
-        children,
-        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      };
-      return Omit(props);
-    })();
+    const node = createPromptElement(
+      () => resolveBuilderChildren(content),
+      (children) => {
+        const props: Parameters<typeof Omit>[0] = {
+          children,
+          ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+          ...(opts?.id ? { id: opts.id } : {}),
+        };
+        return Omit(props);
+      }
+    );
 
     return this.addChild(node);
   }
@@ -211,14 +216,14 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     const context: CriaContext = { provider: modelProvider };
     const inner = fn(this.create([], context));
 
-    const element = (async (): Promise<PromptElement> => {
-      const children = await inner.buildChildren();
-      return {
+    const element = createPromptElement(
+      () => inner.buildChildren(),
+      (children) => ({
         priority: 0,
         children,
         context,
-      };
-    })();
+      })
+    );
 
     return this.addChild(element);
   }
@@ -260,17 +265,19 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
       priority?: number;
     }
   ): TBuilder {
-    const element = (async (): Promise<PromptElement> => {
-      const children = await resolveBuilderChildren(content);
-      const props: Parameters<typeof Summary>[0] = {
-        id: opts.id,
-        store: opts.store,
-        children,
-        ...(opts.summarize ? { summarize: opts.summarize } : {}),
-        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-      };
-      return Summary(props);
-    })();
+    const element = createPromptElement(
+      () => resolveBuilderChildren(content),
+      (children) => {
+        const props: Parameters<typeof Summary>[0] = {
+          id: opts.id,
+          store: opts.store,
+          children,
+          ...(opts.summarize ? { summarize: opts.summarize } : {}),
+          ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+        };
+        return Summary(props);
+      }
+    );
 
     return this.addChild(element);
   }
@@ -340,7 +347,8 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
 /**
  * Fluent builder for constructing prompt trees without JSX.
  *
- * Every method returns a new immutable builder instance.
+ * Every method returns a new immutable builder instance; large chains will copy
+ * child arrays, so keep prompts reasonably sized.
  * Call `.build()` to get the final `PromptElement`.
  */
 export class PromptBuilder extends BuilderBase<PromptBuilder> {
@@ -434,18 +442,19 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     opts?: { priority?: number; id?: string }
   ): PromptBuilder {
     const priority = opts?.priority;
-    const element = (async (): Promise<PromptElement> => {
-      const children =
+    const element = createPromptElement(
+      () =>
         typeof content === "function"
-          ? await content(new MessageBuilder([], this.context)).buildChildren()
-          : normalizeTextInput(content);
-      return Message({
-        messageRole: role,
-        children,
-        ...(priority !== undefined ? { priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      });
-    })();
+          ? content(new MessageBuilder([], this.context)).buildChildren()
+          : normalizeTextInput(content),
+      (children) =>
+        Message({
+          messageRole: role,
+          children,
+          ...(priority !== undefined ? { priority } : {}),
+          ...(opts?.id ? { id: opts.id } : {}),
+        })
+    );
 
     return this.addChild(element);
   }
@@ -514,7 +523,18 @@ export function c(
   return children;
 }
 
-// Utility to recursively build and expand / resolve children
+function createPromptElement(
+  buildChildren: () => Promise<PromptChildren> | PromptChildren,
+  buildElement: (children: PromptChildren) => PromptElement
+): Promise<PromptElement> {
+  const result = buildChildren();
+  if (result instanceof Promise) {
+    return result.then((children) => buildElement(children));
+  }
+  return Promise.resolve(buildElement(result));
+}
+
+// Normalize text-like inputs into prompt children.
 function normalizeTextInput(content?: TextInput): PromptChildren {
   if (content === null || content === undefined) {
     return [];

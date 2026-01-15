@@ -319,6 +319,10 @@ function semanticPartsToContent(parts: readonly SemanticPart[]): string {
 }
 
 const DEFAULT_RENDER_BUDGET = 100_000;
+/**
+ * Fallback tokenizer using character count.
+ * Provide a real tokenizer for accurate budget estimation.
+ */
 const fallbackTokenizer: Tokenizer = (text) => text.length;
 
 function resolvePromptElement(
@@ -404,22 +408,29 @@ export async function evaluate(
 
   // Step 1: Render the prompt to structured messages with variables substituted
   const renderTokenizer = target.tokenizer;
-  const renderedMessages = await renderPromptToMessages(prompt, {
-    ...(renderTokenizer && { tokenizer: renderTokenizer }),
-    input,
-  });
+  const renderOptions: {
+    tokenizer?: Tokenizer;
+    budget?: number;
+    input: Record<string, unknown>;
+  } = { input };
+  if (renderTokenizer) {
+    renderOptions.tokenizer = renderTokenizer;
+  }
+  const renderedMessages = await renderPromptToMessages(prompt, renderOptions);
   const system = extractSystemPrompt(renderedMessages);
 
   // Step 2: Execute the prompt to get a response
   let promptResponse: { text: string };
+  const completionPayload: {
+    messages: CompletionMessage[];
+    system?: string;
+  } = { messages: renderedMessages };
+  if (system !== undefined) {
+    completionPayload.system = system;
+  }
   try {
     promptResponse = await withTimeout(
-      Promise.resolve(
-        target.completion({
-          messages: renderedMessages,
-          ...(system !== undefined && { system }),
-        })
-      ),
+      Promise.resolve(target.completion(completionPayload)),
       timeoutMs,
       "target"
     );
@@ -433,32 +444,52 @@ export async function evaluate(
   const response = promptResponse.text;
 
   // Step 3: Build and render the evaluator prompt using Cria (dogfooding!)
-  const evaluatorPrompt = buildEvaluatorPrompt({
-    input,
-    response,
-    ...(criteria && { criteria }),
-    ...(expected && { expected }),
-  });
+  const evaluatorPromptOptions: {
+    input: Record<string, unknown>;
+    response: string;
+    criteria?: string[];
+    expected?: string;
+  } = { input, response };
+  if (criteria) {
+    evaluatorPromptOptions.criteria = criteria;
+  }
+  if (expected) {
+    evaluatorPromptOptions.expected = expected;
+  }
+  const evaluatorPrompt = buildEvaluatorPrompt(evaluatorPromptOptions);
 
   const evaluatorRenderTokenizer = evaluator.tokenizer;
-  const evaluatorMessages = await renderPromptToMessages(evaluatorPrompt, {
-    ...(evaluatorRenderTokenizer && { tokenizer: evaluatorRenderTokenizer }),
-    input: {}, // Evaluator prompt has no variables
-  });
+  const evaluatorRenderOptions: {
+    tokenizer?: Tokenizer;
+    budget?: number;
+    input: Record<string, unknown>;
+  } = { input: {} };
+  if (evaluatorRenderTokenizer) {
+    evaluatorRenderOptions.tokenizer = evaluatorRenderTokenizer;
+  }
+  const evaluatorMessages = await renderPromptToMessages(
+    evaluatorPrompt,
+    evaluatorRenderOptions
+  );
 
   // Step 4: Execute the evaluator prompt
   let evaluatorResponse: EvaluatorOutput;
+  const evaluatorRequest: {
+    messages: CompletionMessage[];
+    input: Record<string, unknown>;
+    response: string;
+    criteria?: string[];
+    expected?: string;
+  } = { messages: evaluatorMessages, input, response };
+  if (criteria) {
+    evaluatorRequest.criteria = criteria;
+  }
+  if (expected) {
+    evaluatorRequest.expected = expected;
+  }
   try {
     evaluatorResponse = await withTimeout(
-      Promise.resolve(
-        evaluator.evaluate({
-          messages: evaluatorMessages,
-          input,
-          response,
-          ...(criteria && { criteria }),
-          ...(expected && { expected }),
-        })
-      ),
+      Promise.resolve(evaluator.evaluate(evaluatorRequest)),
       timeoutMs,
       "evaluator"
     );
