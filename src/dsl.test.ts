@@ -130,7 +130,7 @@ describe("PromptBuilder", () => {
     test("named scope sets id", () => {
       const elementPromise = cria
         .prompt()
-        .scope("my-section", (s) => s.system("Content"))
+        .scope((s) => s.system("Content"), { id: "my-section" })
         .build();
 
       // Check that the element has a nested region with the correct id
@@ -145,8 +145,10 @@ describe("PromptBuilder", () => {
       const result = await renderBuilder(
         cria
           .prompt()
-          .scope("outer", (o) =>
-            o.system("Outer").scope("inner", (i) => i.user("Inner"))
+          .scope(
+            (o) =>
+              o.system("Outer").scope((i) => i.user("Inner"), { id: "inner" }),
+            { id: "outer" }
           )
       );
 

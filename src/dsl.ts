@@ -65,6 +65,12 @@ type RenderResult<TOptions extends RenderOptions> = TOptions extends {
   ? TOutput
   : string;
 
+const TEMPLATE_INDENT_RE = /^[ \t]*/;
+
+/**
+ * Shared fluent API for prompt-level and message-level builders.
+ * Keeps component helpers available inside nested scopes.
+ */
 export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
   protected readonly children: BuilderChild[];
   protected readonly context: CriaContext | undefined;
@@ -82,53 +88,20 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     context: CriaContext | undefined
   ): TBuilder;
 
-  scope(content: ScopeContent): TBuilder;
-  scope(name: string, content: ScopeContent): TBuilder;
-  scope(fn: (builder: TBuilder) => TBuilder): TBuilder;
-  scope(name: string, fn: (builder: TBuilder) => TBuilder): TBuilder;
-  scope(
-    nameOrContentOrFn:
-      | string
-      | ScopeContent
-      | ((builder: TBuilder) => TBuilder),
-    maybeContentOrFn?: ScopeContent | ((builder: TBuilder) => TBuilder)
-  ): TBuilder {
-    const name =
-      typeof nameOrContentOrFn === "string" ? nameOrContentOrFn : null;
-    const contentOrFn =
-      typeof nameOrContentOrFn === "string"
-        ? maybeContentOrFn
-        : nameOrContentOrFn;
-
-    if (contentOrFn === undefined) {
-      const received =
-        typeof nameOrContentOrFn === "string"
-          ? typeof maybeContentOrFn
-          : typeof nameOrContentOrFn;
+  scope(fn: (builder: TBuilder) => TBuilder, opts?: { id?: string }): TBuilder {
+    if (typeof fn !== "function") {
       throw new Error(
-        `scope() requires content or a callback function. Received: ${received}`
+        `scope() requires a callback function. Received: ${typeof fn}`
       );
     }
 
-    if (typeof contentOrFn === "function") {
-      const inner = contentOrFn(this.create([], this.context));
-      const element = (async (): Promise<PromptElement> => {
-        const children = await inner.buildChildren();
-        return Region({
-          priority: 0,
-          children,
-          ...(name ? { id: name } : {}),
-        });
-      })();
-      return this.addChild(element);
-    }
-
+    const inner = fn(this.create([], this.context));
     const element = (async (): Promise<PromptElement> => {
-      const children = await normalizeContent(contentOrFn);
+      const children = await inner.buildChildren();
       return Region({
         priority: 0,
         children,
-        ...(name ? { id: name } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
       });
     })();
 
@@ -148,7 +121,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     }
   ): TBuilder {
     const node = (async (): Promise<PromptElement> => {
-      const children = await normalizeChild(content);
+      const children = await resolveBuilderChildren(content);
       const props: Parameters<typeof Truncate>[0] = {
         children,
         budget: opts.budget,
@@ -172,7 +145,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     opts?: { priority?: number; id?: string }
   ): TBuilder {
     const node = (async (): Promise<PromptElement> => {
-      const children = await normalizeChild(content);
+      const children = await resolveBuilderChildren(content);
       const props: Parameters<typeof Omit>[0] = {
         children,
         ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
@@ -288,7 +261,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     }
   ): TBuilder {
     const element = (async (): Promise<PromptElement> => {
-      const children = await normalizeChild(content);
+      const children = await resolveBuilderChildren(content);
       const props: Parameters<typeof Summary>[0] = {
         id: opts.id,
         store: opts.store,
@@ -328,7 +301,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
   }
 
   async buildChildren(): Promise<PromptChildren> {
-    return normalizeChildren(this.children);
+    return await resolveBuilderChildren(this.children);
   }
 
   protected addChild(child: BuilderChild): TBuilder {
@@ -541,44 +514,7 @@ export function c(
   return children;
 }
 
-async function normalizeContent(
-  content: ScopeContent
-): Promise<PromptChildren> {
-  if (content instanceof PromptBuilder || content instanceof Promise) {
-    return normalizeChild(content);
-  }
-
-  return normalizeTextInput(content);
-}
-
 // Utility to recursively build and expand / resolve children
-async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
-  if (typeof child === "string") {
-    return [child];
-  }
-
-  if (child instanceof Promise) {
-    const resolved = await child;
-    return [resolved];
-  }
-
-  if (child instanceof PromptBuilder) {
-    const built = await child.build();
-    return [built];
-  }
-
-  return [child];
-}
-
-async function normalizeChildren(
-  children: readonly BuilderChild[]
-): Promise<PromptChildren> {
-  const normalized = await Promise.all(
-    children.map((child) => normalizeChild(child))
-  );
-  return normalized.flat();
-}
-
 function normalizeTextInput(content?: TextInput): PromptChildren {
   if (content === null || content === undefined) {
     return [];
@@ -622,7 +558,7 @@ function normalizeTemplateStrings(
   const lines = normalized.flatMap((segment) => segment.split("\n"));
   const indents = lines
     .filter((line) => line.trim().length > 0)
-    .map((line) => line.match(/^[ \t]*/)?.[0].length ?? 0);
+    .map((line) => line.match(TEMPLATE_INDENT_RE)?.[0].length ?? 0);
   const minIndent = indents.length > 0 ? Math.min(...indents) : 0;
 
   if (minIndent === 0) {
@@ -640,4 +576,28 @@ function normalizeTemplateStrings(
       })
       .join("\n")
   );
+}
+
+// Utility to recursively build and expand / resolve children
+async function resolveBuilderChildren(
+  children: BuilderChild | readonly BuilderChild[]
+): Promise<PromptChildren> {
+  const list = Array.isArray(children) ? children : [children];
+  const resolved = await Promise.all(
+    list.map(async (child) => {
+      if (typeof child === "string") {
+        return [child];
+      }
+      if (child instanceof Promise) {
+        const value = await child;
+        return [value];
+      }
+      if (child instanceof PromptBuilder) {
+        return [await child.build()];
+      }
+      return [child];
+    })
+  );
+
+  return resolved.flat();
 }
