@@ -1,5 +1,5 @@
 import type { ZodError } from "zod";
-import { cria, type PromptBuilder } from "../dsl";
+import { c, cria, type PromptBuilder } from "../dsl";
 import { render } from "../render";
 import { markdownRenderer } from "../renderers/markdown";
 import {
@@ -185,46 +185,44 @@ function buildEvaluatorPrompt(options: {
   criteria?: string[];
   expected?: string;
 }): PromptBuilder {
-  const criteriaList =
+  const criteria =
     options.criteria && options.criteria.length > 0
-      ? options.criteria.map((c) => `- ${c}`).join("\n")
-      : "- Overall quality and correctness";
+      ? options.criteria
+      : ["Overall quality and correctness"];
+  const inputJson = JSON.stringify(options.input, null, 2);
+  const criteriaList = criteria.map((item) => `- ${item}`).join("\n");
 
-  const expectedSection = options.expected
-    ? `
+  const formatSection = (title: string, body: string) =>
+    c`${title}:\n${body}\n\n\n`;
 
-## Expected Response (for comparison)
-${options.expected}`
-    : "";
+  const system = c`
+    You are an expert evaluator for LLM outputs. Assess response quality against the criteria.
+
+    Return a JSON object with:
+      - score: number from 0.0 to 1.0
+      - reasoning: short explanation
+
+    Do not include any other text.
+  `;
 
   return cria
     .prompt()
-    .system(
-      `You are an expert evaluator for LLM outputs. Assess response quality against the criteria.
-
-Return a JSON object with:
-- score: number from 0.0 to 1.0
-- reasoning: short explanation
-
-Do not include any other text.
-
-Scoring guide:
-- 1.0: Exceptional, exceeds all criteria
-- 0.8-0.9: Good, meets criteria with minor issues
-- 0.6-0.7: Acceptable, meets most criteria
-- 0.4-0.5: Below expectations, significant gaps
-- 0.0-0.3: Poor, fails to meet criteria`
+    .system(system)
+    .user((m) =>
+      m.scope((s) => s.append(formatSection("Original Input", inputJson)))
     )
-    .user(
-      `## Input
-${JSON.stringify(options.input, null, 2)}
-
-## Response to Evaluate
-${options.response}
-
-## Evaluation Criteria
-${criteriaList}${expectedSection}`
-    );
+    .assistant(options.response)
+    .user((m) => {
+      let next = m.scope((s) =>
+        s.append(formatSection("Evaluation Criteria", criteriaList))
+      );
+      if (options.expected) {
+        next = next.scope((s) =>
+          s.append(formatSection("Expected Response", options.expected))
+        );
+      }
+      return next.append(c`Please evaluate the assistant's response above.`);
+    });
 }
 
 function substituteVariables(
@@ -235,21 +233,11 @@ function substituteVariables(
     return text;
   }
 
-  const cache = new Map<string, string>();
-
   return text.replace(VARIABLE_PATTERN, (match, rawKey: string) => {
     if (!Object.hasOwn(input, rawKey)) {
       return match;
     }
-
-    if (cache.has(rawKey)) {
-      return cache.get(rawKey) ?? "";
-    }
-
-    const value = input[rawKey];
-    const stringValue = safeStringify(value);
-    cache.set(rawKey, stringValue);
-    return stringValue;
+    return safeStringify(input[rawKey]);
   });
 }
 
@@ -330,31 +318,16 @@ function semanticPartsToContent(parts: readonly SemanticPart[]): string {
   return result;
 }
 
-async function renderPromptToString(
-  prompt: PromptBuilder | PromptElement,
-  options: {
-    tokenizer?: Tokenizer;
-    budget?: number;
-    input: Record<string, unknown>;
-  }
-): Promise<string> {
-  const tokenizer = options.tokenizer ?? ((text: string) => text.length);
-  const budget = options.budget ?? 100_000;
+const DEFAULT_RENDER_BUDGET = 100_000;
+const fallbackTokenizer: Tokenizer = (text) => text.length;
 
-  let element: PromptElement;
+function resolvePromptElement(
+  prompt: PromptBuilder | PromptElement
+): Promise<PromptElement> {
   if ("build" in prompt && typeof prompt.build === "function") {
-    element = await prompt.build();
-  } else {
-    element = prompt as PromptElement;
+    return prompt.build();
   }
-
-  const rendered = await render(element, {
-    tokenizer,
-    budget,
-    renderer: markdownRenderer,
-  });
-
-  return substituteVariables(rendered, options.input);
+  return Promise.resolve(prompt);
 }
 
 async function renderPromptToMessages(
@@ -365,19 +338,10 @@ async function renderPromptToMessages(
     input: Record<string, unknown>;
   }
 ): Promise<CompletionMessage[]> {
-  const tokenizer = options.tokenizer ?? ((text: string) => text.length);
-  const budget = options.budget ?? 100_000;
-
-  let element: PromptElement;
-  if ("build" in prompt && typeof prompt.build === "function") {
-    element = await prompt.build();
-  } else {
-    element = prompt as PromptElement;
-  }
-
+  const element = await resolvePromptElement(prompt);
   const rendered = await render(element, {
-    tokenizer,
-    budget,
+    tokenizer: options.tokenizer ?? fallbackTokenizer,
+    budget: options.budget ?? DEFAULT_RENDER_BUDGET,
     renderer: completionMessagesRenderer,
   });
 
@@ -477,7 +441,7 @@ export async function evaluate(
   });
 
   const evaluatorRenderTokenizer = evaluator.tokenizer;
-  const evaluatorRendered = await renderPromptToString(evaluatorPrompt, {
+  const evaluatorMessages = await renderPromptToMessages(evaluatorPrompt, {
     ...(evaluatorRenderTokenizer && { tokenizer: evaluatorRenderTokenizer }),
     input: {}, // Evaluator prompt has no variables
   });
@@ -488,7 +452,7 @@ export async function evaluate(
     evaluatorResponse = await withTimeout(
       Promise.resolve(
         evaluator.evaluate({
-          prompt: evaluatorRendered,
+          messages: evaluatorMessages,
           input,
           response,
           ...(criteria && { criteria }),

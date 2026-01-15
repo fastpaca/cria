@@ -78,12 +78,12 @@ export type EvaluatorOutput = z.infer<typeof EvaluatorOutputSchema>;
  */
 export interface EvaluatorRequest {
   /**
-   * Rendered evaluator prompt.
+   * Rendered evaluator prompt messages.
    *
    * This is the primary source of truth and includes the input, response,
    * criteria, and expected output in formatted form.
    */
-  prompt: string;
+  messages: CompletionMessage[];
   /** Input variables for the original prompt (for reference). */
   input: Record<string, unknown>;
   /** Model response being evaluated (for reference). */

@@ -31,17 +31,28 @@ import { render as renderPrompt } from "./render";
 import type {
   CriaContext,
   ModelProvider,
+  PromptChild,
   PromptChildren,
   PromptElement,
   PromptRenderer,
   PromptRole,
 } from "./types";
 
+type TextValue = PromptChild | boolean | number | null | undefined;
+
+export type TextInput = TextValue | readonly TextInput[];
+
+export type ScopeContent =
+  | TextInput
+  | PromptBuilder
+  | Promise<PromptElement>
+  | Promise<string>;
+
 /**
  * Children can include promises (async components like VectorSearch).
  * These are resolved when `.build()` resolves the tree.
  */
-type BuilderChild =
+export type BuilderChild =
   | PromptElement
   | PromptBuilder
   | string
@@ -54,17 +65,11 @@ type RenderResult<TOptions extends RenderOptions> = TOptions extends {
   ? TOutput
   : string;
 
-/**
- * Fluent builder for constructing prompt trees without JSX.
- *
- * Every method returns a new immutable builder instance.
- * Call `.build()` to get the final `PromptElement`.
- */
-export class PromptBuilder {
-  private readonly children: BuilderChild[];
-  private readonly context: CriaContext | undefined;
+export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
+  protected readonly children: BuilderChild[];
+  protected readonly context: CriaContext | undefined;
 
-  private constructor(
+  protected constructor(
     children: BuilderChild[] = [],
     context: CriaContext | undefined = undefined
   ) {
@@ -72,81 +77,62 @@ export class PromptBuilder {
     this.context = context;
   }
 
-  /**
-   * Create a new empty prompt builder.
-   */
-  static create(): PromptBuilder {
-    return new PromptBuilder();
-  }
+  protected abstract create(
+    children: BuilderChild[],
+    context: CriaContext | undefined
+  ): TBuilder;
 
-  /**
-   * Add a system message.
-   */
-  system(
-    text: string,
-    opts?: { priority?: number; id?: string }
-  ): PromptBuilder {
-    const priority = opts?.priority;
-    return this.addChild(
-      Message({
-        messageRole: "system",
-        children: [text],
-        ...(priority !== undefined ? { priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      })
-    );
-  }
+  scope(content: ScopeContent): TBuilder;
+  scope(name: string, content: ScopeContent): TBuilder;
+  scope(fn: (builder: TBuilder) => TBuilder): TBuilder;
+  scope(name: string, fn: (builder: TBuilder) => TBuilder): TBuilder;
+  scope(
+    nameOrContentOrFn:
+      | string
+      | ScopeContent
+      | ((builder: TBuilder) => TBuilder),
+    maybeContentOrFn?: ScopeContent | ((builder: TBuilder) => TBuilder)
+  ): TBuilder {
+    const name =
+      typeof nameOrContentOrFn === "string" ? nameOrContentOrFn : null;
+    const contentOrFn =
+      typeof nameOrContentOrFn === "string"
+        ? maybeContentOrFn
+        : nameOrContentOrFn;
 
-  /**
-   * Add a user message.
-   */
-  user(text: string, opts?: { priority?: number; id?: string }): PromptBuilder {
-    const priority = opts?.priority;
-    return this.addChild(
-      Message({
-        messageRole: "user",
-        children: [text],
-        ...(priority !== undefined ? { priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      })
-    );
-  }
+    if (contentOrFn === undefined) {
+      const received =
+        typeof nameOrContentOrFn === "string"
+          ? typeof maybeContentOrFn
+          : typeof nameOrContentOrFn;
+      throw new Error(
+        `scope() requires content or a callback function. Received: ${received}`
+      );
+    }
 
-  /**
-   * Add an assistant message.
-   */
-  assistant(
-    text: string,
-    opts?: { priority?: number; id?: string }
-  ): PromptBuilder {
-    const priority = opts?.priority;
-    return this.addChild(
-      Message({
-        messageRole: "assistant",
-        children: [text],
-        ...(priority !== undefined ? { priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      })
-    );
-  }
+    if (typeof contentOrFn === "function") {
+      const inner = contentOrFn(this.create([], this.context));
+      const element = (async (): Promise<PromptElement> => {
+        const children = await inner.buildChildren();
+        return Region({
+          priority: 0,
+          children,
+          ...(name ? { id: name } : {}),
+        });
+      })();
+      return this.addChild(element);
+    }
 
-  /**
-   * Add a message with a custom role.
-   */
-  message(
-    role: PromptRole,
-    text: string,
-    opts?: { priority?: number; id?: string }
-  ): PromptBuilder {
-    const priority = opts?.priority;
-    return this.addChild(
-      Message({
-        messageRole: role,
-        children: [text],
-        ...(priority !== undefined ? { priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      })
-    );
+    const element = (async (): Promise<PromptElement> => {
+      const children = await normalizeContent(contentOrFn);
+      return Region({
+        priority: 0,
+        children,
+        ...(name ? { id: name } : {}),
+      });
+    })();
+
+    return this.addChild(element);
   }
 
   /**
@@ -160,7 +146,7 @@ export class PromptBuilder {
       priority?: number;
       id?: string;
     }
-  ): PromptBuilder {
+  ): TBuilder {
     const node = (async (): Promise<PromptElement> => {
       const children = await normalizeChild(content);
       const props: Parameters<typeof Truncate>[0] = {
@@ -184,7 +170,7 @@ export class PromptBuilder {
   omit(
     content: string | PromptElement | PromptBuilder,
     opts?: { priority?: number; id?: string }
-  ): PromptBuilder {
+  ): TBuilder {
     const node = (async (): Promise<PromptElement> => {
       const children = await normalizeChild(content);
       const props: Parameters<typeof Omit>[0] = {
@@ -199,88 +185,10 @@ export class PromptBuilder {
   }
 
   /**
-   * Create a nested section.
-   *
-   * @example Anonymous section
-   * ```typescript
-   * .section((s) => s.truncate(content, { budget: 1000 }))
-   * ```
-   *
-   * @example Named section
-   * ```typescript
-   * .section("context", (s) => s.truncate(content, { budget: 1000 }))
-   * ```
-   */
-  region(fn: (builder: PromptBuilder) => PromptBuilder): PromptBuilder;
-  region(
-    name: string,
-    fn: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder;
-  region(
-    nameOrFn: string | ((builder: PromptBuilder) => PromptBuilder),
-    maybeFn?: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder {
-    if (typeof nameOrFn === "string") {
-      if (!maybeFn) {
-        throw new Error("region() requires a callback function");
-      }
-      return this.section(nameOrFn, maybeFn);
-    }
-
-    return this.section(nameOrFn);
-  }
-
-  /**
-   * Create a nested section/region.
-   *
-   * @example Anonymous section
-   * ```typescript
-   * .section((s) => s.truncate(content, { budget: 1000 }))
-   * ```
-   *
-   * @example Named section
-   * ```typescript
-   * .section("context", (s) => s.truncate(content, { budget: 1000 }))
-   * ```
-   */
-  section(fn: (builder: PromptBuilder) => PromptBuilder): PromptBuilder;
-  section(
-    name: string,
-    fn: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder;
-  section(
-    nameOrFn: string | ((builder: PromptBuilder) => PromptBuilder),
-    maybeFn?: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder {
-    const name = typeof nameOrFn === "string" ? nameOrFn : undefined;
-    const fn = typeof nameOrFn === "string" ? maybeFn : nameOrFn;
-
-    if (!fn) {
-      const received =
-        typeof nameOrFn === "string" ? typeof maybeFn : typeof nameOrFn;
-      throw new Error(
-        `section() requires a callback function (e.g. cria.prompt().section("name", (s) => ...)). Received: ${received}`
-      );
-    }
-
-    const inner = fn(new PromptBuilder([], this.context));
-
-    const element = (async (): Promise<PromptElement> => {
-      const built = await inner.build();
-      return {
-        ...built,
-        ...(name ? { id: name } : {}),
-      };
-    })();
-
-    return this.addChild(element);
-  }
-
-  /**
    * Merge another builder's contents into this one (zod-like merge).
    * Contexts must be compatible (either identical or undefined).
    */
-  merge(...builders: PromptBuilder[]): PromptBuilder {
+  merge(...builders: TBuilder[]): TBuilder {
     const sources = [this, ...builders];
     let nextContext = this.context;
     const totalChildren = sources.reduce(
@@ -307,7 +215,7 @@ export class PromptBuilder {
 
     mergedChildren.length = writeIndex;
 
-    return new PromptBuilder(mergedChildren, nextContext);
+    return this.create(mergedChildren, nextContext);
   }
 
   /**
@@ -325,16 +233,16 @@ export class PromptBuilder {
    */
   provider(
     modelProvider: ModelProvider,
-    fn: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder {
+    fn: (builder: TBuilder) => TBuilder
+  ): TBuilder {
     const context: CriaContext = { provider: modelProvider };
-    const inner = fn(new PromptBuilder([], context));
+    const inner = fn(this.create([], context));
 
     const element = (async (): Promise<PromptElement> => {
-      const built = await inner.build();
+      const children = await inner.buildChildren();
       return {
         priority: 0,
-        children: built.children,
+        children,
         context,
       };
     })();
@@ -353,7 +261,7 @@ export class PromptBuilder {
     formatter?: ResultFormatter<T>;
     priority?: number;
     id?: string;
-  }): PromptBuilder {
+  }): TBuilder {
     const props: Parameters<typeof VectorSearch<T>>[0] = {
       store: opts.store,
       query: opts.query,
@@ -378,7 +286,7 @@ export class PromptBuilder {
       summarize?: Summarizer;
       priority?: number;
     }
-  ): PromptBuilder {
+  ): TBuilder {
     const element = (async (): Promise<PromptElement> => {
       const children = await normalizeChild(content);
       const props: Parameters<typeof Summary>[0] = {
@@ -401,7 +309,7 @@ export class PromptBuilder {
     title: string,
     items: (string | PromptElement)[],
     opts?: { priority?: number; id?: string }
-  ): PromptBuilder {
+  ): TBuilder {
     return this.addChild(
       Examples({
         title,
@@ -415,8 +323,114 @@ export class PromptBuilder {
   /**
    * Add a raw PromptElement (escape hatch for advanced usage).
    */
-  raw(element: PromptElement | Promise<PromptElement>): PromptBuilder {
+  raw(element: PromptElement | Promise<PromptElement>): TBuilder {
     return this.addChild(element);
+  }
+
+  async buildChildren(): Promise<PromptChildren> {
+    return normalizeChildren(this.children);
+  }
+
+  protected addChild(child: BuilderChild): TBuilder {
+    return this.create([...this.children, child], this.context);
+  }
+
+  protected addChildren(children: readonly BuilderChild[]): TBuilder {
+    return this.create([...this.children, ...children], this.context);
+  }
+}
+
+export class MessageBuilder extends BuilderBase<MessageBuilder> {
+  constructor(
+    children: BuilderChild[] = [],
+    context: CriaContext | undefined = undefined
+  ) {
+    super(children, context);
+  }
+
+  protected create(
+    children: BuilderChild[],
+    context: CriaContext | undefined
+  ): MessageBuilder {
+    return new MessageBuilder(children, context);
+  }
+
+  append(content: ScopeContent): MessageBuilder {
+    if (content instanceof PromptBuilder || content instanceof Promise) {
+      return this.addChild(content);
+    }
+    const normalized = normalizeTextInput(content);
+    return this.addChildren(normalized);
+  }
+}
+
+/**
+ * Fluent builder for constructing prompt trees without JSX.
+ *
+ * Every method returns a new immutable builder instance.
+ * Call `.build()` to get the final `PromptElement`.
+ */
+export class PromptBuilder extends BuilderBase<PromptBuilder> {
+  private constructor(
+    children: BuilderChild[] = [],
+    context: CriaContext | undefined = undefined
+  ) {
+    super(children, context);
+  }
+
+  /**
+   * Create a new empty prompt builder.
+   */
+  static create(): PromptBuilder {
+    return new PromptBuilder();
+  }
+
+  protected create(
+    children: BuilderChild[],
+    context: CriaContext | undefined
+  ): PromptBuilder {
+    return new PromptBuilder(children, context);
+  }
+
+  /**
+   * Add a system message.
+   */
+  system(
+    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    return this.addMessage("system", content, opts);
+  }
+
+  /**
+   * Add a user message.
+   */
+  user(
+    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    return this.addMessage("user", content, opts);
+  }
+
+  /**
+   * Add an assistant message.
+   */
+  assistant(
+    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    return this.addMessage("assistant", content, opts);
+  }
+
+  /**
+   * Add a message with a custom role.
+   */
+  message(
+    role: PromptRole,
+    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    return this.addMessage(role, content, opts);
   }
 
   /**
@@ -425,7 +439,7 @@ export class PromptBuilder {
   async build(): Promise<PromptElement> {
     return Region({
       priority: 0,
-      children: await normalizeChildren(this.children),
+      children: await this.buildChildren(),
       ...(this.context && { context: this.context }),
     });
   }
@@ -441,8 +455,26 @@ export class PromptBuilder {
     return (await renderPrompt(element, options)) as RenderResult<TOptions>;
   }
 
-  private addChild(child: BuilderChild): PromptBuilder {
-    return new PromptBuilder([...this.children, child], this.context);
+  private addMessage(
+    role: PromptRole,
+    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const priority = opts?.priority;
+    const element = (async (): Promise<PromptElement> => {
+      const children =
+        typeof content === "function"
+          ? await content(new MessageBuilder([], this.context)).buildChildren()
+          : normalizeTextInput(content);
+      return Message({
+        messageRole: role,
+        children,
+        ...(priority !== undefined ? { priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      });
+    })();
+
+    return this.addChild(element);
   }
 }
 
@@ -464,6 +496,7 @@ export type Prompt = PromptBuilder;
  */
 export const cria = {
   prompt: () => PromptBuilder.create(),
+  c,
   merge: (...builders: PromptBuilder[]) => {
     const [first, ...rest] = builders;
     if (!first) {
@@ -483,6 +516,40 @@ export const prompt = () => PromptBuilder.create();
  */
 export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
   cria.merge(...builders);
+
+export function c(
+  strings: TemplateStringsArray,
+  ...values: readonly TextInput[]
+): PromptChildren {
+  const normalizedStrings = normalizeTemplateStrings(strings);
+  const children: PromptChildren = [];
+
+  for (let index = 0; index < normalizedStrings.length; index += 1) {
+    const segment = normalizedStrings[index];
+    if (segment.length > 0) {
+      children.push(segment);
+    }
+
+    if (index < values.length) {
+      const normalized = normalizeTextInput(values[index]);
+      if (normalized.length > 0) {
+        children.push(...normalized);
+      }
+    }
+  }
+
+  return children;
+}
+
+async function normalizeContent(
+  content: ScopeContent
+): Promise<PromptChildren> {
+  if (content instanceof PromptBuilder || content instanceof Promise) {
+    return normalizeChild(content);
+  }
+
+  return normalizeTextInput(content);
+}
 
 // Utility to recursively build and expand / resolve children
 async function normalizeChild(child: BuilderChild): Promise<PromptChildren> {
@@ -510,4 +577,67 @@ async function normalizeChildren(
     children.map((child) => normalizeChild(child))
   );
   return normalized.flat();
+}
+
+function normalizeTextInput(content?: TextInput): PromptChildren {
+  if (content === null || content === undefined) {
+    return [];
+  }
+
+  if (Array.isArray(content)) {
+    const flattened: PromptChildren = [];
+    for (const item of content) {
+      flattened.push(...normalizeTextInput(item));
+    }
+    return flattened;
+  }
+
+  if (typeof content === "string") {
+    return [content];
+  }
+
+  if (typeof content === "number" || typeof content === "boolean") {
+    return [String(content)];
+  }
+
+  return [content];
+}
+
+function normalizeTemplateStrings(
+  strings: readonly string[]
+): readonly string[] {
+  if (strings.length === 0) {
+    return strings;
+  }
+
+  const normalized = [...strings];
+  if (normalized[0]?.startsWith("\n")) {
+    normalized[0] = normalized[0].slice(1);
+  }
+  const lastIndex = normalized.length - 1;
+  if (normalized[lastIndex]?.endsWith("\n")) {
+    normalized[lastIndex] = normalized[lastIndex].slice(0, -1);
+  }
+
+  const lines = normalized.flatMap((segment) => segment.split("\n"));
+  const indents = lines
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.match(/^[ \t]*/)?.[0].length ?? 0);
+  const minIndent = indents.length > 0 ? Math.min(...indents) : 0;
+
+  if (minIndent === 0) {
+    return normalized;
+  }
+
+  return normalized.map((segment) =>
+    segment
+      .split("\n")
+      .map((line) => {
+        if (line.trim().length === 0) {
+          return "";
+        }
+        return line.slice(Math.min(minIndent, line.length));
+      })
+      .join("\n")
+  );
 }

@@ -173,14 +173,16 @@ describe("Evaluator", () => {
 
     const evaluator = new Evaluator("mock-model");
     const result = await evaluator.evaluate({
-      prompt: "Judge this",
+      messages: [{ role: "user", content: "Judge this" }],
       input: {},
       response: "ok",
     });
 
     expect(result).toEqual(output);
     expect(mockedGenerateText).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "Judge this" })
+      expect.objectContaining({
+        messages: [{ role: "user", content: "Judge this" }],
+      })
     );
   });
 });

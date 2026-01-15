@@ -613,9 +613,10 @@ export class Evaluator implements EvaluatorProvider {
   }
 
   async evaluate(request: EvaluatorRequest): Promise<EvaluatorOutput> {
+    const messages = toModelMessages({ messages: request.messages });
     const result = await generateText({
       model: this.model,
-      prompt: request.prompt,
+      messages,
       output: Output.object({
         schema: EvaluatorOutputSchema,
         name: "evaluation",

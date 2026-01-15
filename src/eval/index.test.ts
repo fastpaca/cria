@@ -133,11 +133,13 @@ describe("evaluate", () => {
   test("passes criteria to evaluator", async () => {
     const prompt = cria.prompt().user("Test");
 
-    let capturedEvaluatorPrompt = "";
+    let capturedEvaluatorText = "";
     const capturingEvaluator: EvaluatorProvider = {
       name: "capturing-evaluator",
       evaluate: (request) => {
-        capturedEvaluatorPrompt = request.prompt;
+        capturedEvaluatorText = request.messages
+          .map((message) => message.content)
+          .join("\n");
         return { score: 0.9, reasoning: "Good" };
       },
     };
@@ -149,19 +151,21 @@ describe("evaluate", () => {
       criteria: ["helpful", "accurate", "professional"],
     });
 
-    expect(capturedEvaluatorPrompt).toContain("helpful");
-    expect(capturedEvaluatorPrompt).toContain("accurate");
-    expect(capturedEvaluatorPrompt).toContain("professional");
+    expect(capturedEvaluatorText).toContain("helpful");
+    expect(capturedEvaluatorText).toContain("accurate");
+    expect(capturedEvaluatorText).toContain("professional");
   });
 
   test("passes expected output to evaluator when provided", async () => {
     const prompt = cria.prompt().user("What is the capital of France?");
 
-    let capturedEvaluatorPrompt = "";
+    let capturedEvaluatorText = "";
     const capturingEvaluator: EvaluatorProvider = {
       name: "capturing-evaluator",
       evaluate: (request) => {
-        capturedEvaluatorPrompt = request.prompt;
+        capturedEvaluatorText = request.messages
+          .map((message) => message.content)
+          .join("\n");
         return { score: 0.95, reasoning: "Matches expected" };
       },
     };
@@ -173,8 +177,8 @@ describe("evaluate", () => {
       expected: "Paris",
     });
 
-    expect(capturedEvaluatorPrompt).toContain("Expected Response");
-    expect(capturedEvaluatorPrompt).toContain("Paris");
+    expect(capturedEvaluatorText).toContain("Expected Response");
+    expect(capturedEvaluatorText).toContain("Paris");
   });
 
   test("works with raw PromptElement", async () => {

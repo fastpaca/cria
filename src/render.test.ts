@@ -209,8 +209,8 @@ test("render: DSL builder basic text output", async () => {
   expect(result).toBe("Hello, world!");
 });
 
-test("render: DSL omit removes region when over budget", async () => {
-  const prompt = cria.prompt().region((r) =>
+test("render: DSL omit removes scope when over budget", async () => {
+  const prompt = cria.prompt().scope((r) =>
     r
       .raw({ priority: 0, children: ["Important "] })
       .omit("Less important content that should be removed", { priority: 1 })
@@ -228,7 +228,7 @@ test("render: DSL omit removes region when over budget", async () => {
 
 test("render: DSL truncate reduces content", async () => {
   const longContent = "A".repeat(100);
-  const prompt = cria.prompt().region((r) =>
+  const prompt = cria.prompt().scope((r) =>
     r.raw({ priority: 0, children: ["Header "] }).truncate(longContent, {
       budget: 5,
       priority: 1,
@@ -240,9 +240,9 @@ test("render: DSL truncate reduces content", async () => {
 });
 
 test("render: DSL priority ordering - lower priority removed first", async () => {
-  const prompt = cria.prompt().region((r) =>
+  const prompt = cria.prompt().scope((r) =>
     r
-      .region((child) => child.raw({ priority: 0, children: ["Critical"] }))
+      .scope((child) => child.raw({ priority: 0, children: ["Critical"] }))
       .omit("Medium importance", { priority: 1 })
       .omit("Low importance", { priority: 2 })
   );
@@ -266,7 +266,7 @@ test("render: DSL hook order via render() convenience", async () => {
   const calls: string[] = [];
   const prompt = cria
     .prompt()
-    .region((r) =>
+    .scope((r) =>
       r.raw({ priority: 0, children: ["A"] }).omit("BBBB", { priority: 1 })
     );
 

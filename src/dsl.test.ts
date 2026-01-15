@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { StoredSummary } from "./components";
 import { Message, Omit, Region, Truncate } from "./components";
-import { cria, PromptBuilder, prompt } from "./dsl";
+import { c, cria, PromptBuilder, prompt } from "./dsl";
 import { InMemoryStore } from "./memory";
 import { render } from "./render";
 import type { PromptElement } from "./types";
@@ -81,6 +81,16 @@ describe("PromptBuilder", () => {
         "System: System prompt.\n\nUser: User message.\n\nAssistant: Assistant response.\n\n"
       );
     });
+
+    test("message callbacks support nested content", async () => {
+      const result = await renderBuilder(
+        cria
+          .prompt()
+          .user((m) => m.append(c`Hello `).scope((s) => s.append("World")))
+      );
+
+      expect(result).toBe("User: Hello World\n\n");
+    });
   });
 
   describe("strategies", () => {
@@ -109,18 +119,18 @@ describe("PromptBuilder", () => {
     });
   });
 
-  describe("sections", () => {
-    test("section() creates nested region", async () => {
+  describe("scopes", () => {
+    test("scope() creates nested region", async () => {
       const result = await renderBuilder(
-        cria.prompt().section((s) => s.system("Nested content"))
+        cria.prompt().scope((s) => s.system("Nested content"))
       );
       expect(result).toBe("System: Nested content\n\n");
     });
 
-    test("named section sets id", () => {
+    test("named scope sets id", () => {
       const elementPromise = cria
         .prompt()
-        .section("my-section", (s) => s.system("Content"))
+        .scope("my-section", (s) => s.system("Content"))
         .build();
 
       // Check that the element has a nested region with the correct id
@@ -131,12 +141,12 @@ describe("PromptBuilder", () => {
       });
     });
 
-    test("nested sections work", async () => {
+    test("nested scopes work", async () => {
       const result = await renderBuilder(
         cria
           .prompt()
-          .section("outer", (o) =>
-            o.system("Outer").section("inner", (i) => i.user("Inner"))
+          .scope("outer", (o) =>
+            o.system("Outer").scope("inner", (i) => i.user("Inner"))
           )
       );
 
@@ -326,13 +336,13 @@ describe("PromptBuilder", () => {
     });
   });
 
-  test("region() alias works", async () => {
+  test("scope() works", async () => {
     const element = await cria
       .prompt()
-      .region((r) => r.user("Region content"))
+      .scope((r) => r.user("Scoped content"))
       .build();
 
     const result = await render(element, { tokenizer, budget: 100 });
-    expect(result).toBe("User: Region content\n\n");
+    expect(result).toBe("User: Scoped content\n\n");
   });
 });

@@ -25,6 +25,8 @@ import type { PromptBuilder } from "../dsl";
 import type { PromptElement } from "../types";
 import { DEFAULT_THRESHOLD, type EvalOptions, evaluate } from "./core";
 
+const MAX_RESPONSE_PREVIEW_LENGTH = 500;
+
 /**
  * Vitest custom matchers for Cria evaluation.
  *
@@ -60,7 +62,7 @@ export const criaMatchers = {
           "Expected evaluation to fail, but it passed.\n\n" +
           `Score: ${result.score} (threshold: ${threshold})\n` +
           `Reasoning: ${result.reasoning}\n` +
-          `Response: ${result.response.slice(0, 500)}${result.response.length > 500 ? "..." : ""}`,
+          `Response: ${result.response.slice(0, MAX_RESPONSE_PREVIEW_LENGTH)}${result.response.length > MAX_RESPONSE_PREVIEW_LENGTH ? "..." : ""}`,
       };
     }
 
@@ -70,7 +72,7 @@ export const criaMatchers = {
         "Expected evaluation to pass, but it failed.\n\n" +
         `Score: ${result.score} (threshold: ${threshold})\n` +
         `Reasoning: ${result.reasoning}\n` +
-        `Response: ${result.response.slice(0, 500)}${result.response.length > 500 ? "..." : ""}`,
+        `Response: ${result.response.slice(0, MAX_RESPONSE_PREVIEW_LENGTH)}${result.response.length > MAX_RESPONSE_PREVIEW_LENGTH ? "..." : ""}`,
     };
   },
 };

@@ -38,8 +38,16 @@ export {
   VectorSearch,
 } from "./components";
 // DSL
-export type { Prompt } from "./dsl";
-export { cria, merge, PromptBuilder, prompt } from "./dsl";
+export type { BuilderChild, Prompt, ScopeContent, TextInput } from "./dsl";
+export {
+  BuilderBase,
+  c,
+  cria,
+  MessageBuilder,
+  merge,
+  PromptBuilder,
+  prompt,
+} from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,
