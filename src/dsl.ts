@@ -210,7 +210,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    * ```
    */
   provider(
-    modelProvider: ModelProvider,
+    modelProvider: ModelProvider<unknown>,
     fn: (builder: TBuilder) => TBuilder
   ): TBuilder {
     const context: CriaContext = { provider: modelProvider };

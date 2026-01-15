@@ -19,7 +19,6 @@ import {
 } from "../renderers/shared";
 import { tiktokenTokenizer } from "../tokenizers";
 import type {
-  CompletionRequest,
   CompletionResult,
   ModelProvider,
   PromptChildren,
@@ -240,9 +239,6 @@ function toToolResultBlock(part: ToolResultPart): ToolResultBlockParam {
   };
 }
 
-type AnthropicRole = "user" | "assistant";
-const VALID_ANTHROPIC_ROLES = new Set<string>(["user", "assistant"]);
-
 /**
  * ModelProvider implementation that wraps an Anthropic client.
  * Use this with the DSL's `.provider()` method.
@@ -264,44 +260,37 @@ const VALID_ANTHROPIC_ROLES = new Set<string>(["user", "assistant"]);
  *   .build();
  * ```
  */
-export class Provider implements ModelProvider {
+export class Provider implements ModelProvider<AnthropicRenderResult> {
   readonly name = "anthropic";
+  readonly renderer: PromptRenderer<AnthropicRenderResult> = anthropic;
+  readonly tokenizer?: Tokenizer;
   private readonly client: Anthropic;
   private readonly model: Model;
   private readonly maxTokens: number;
 
-  constructor(client: Anthropic, model: Model, maxTokens = 1024) {
+  constructor(
+    client: Anthropic,
+    model: Model,
+    maxTokens = 1024,
+    options: { tokenizer?: Tokenizer } = {}
+  ) {
     this.client = client;
     this.model = model;
     this.maxTokens = maxTokens;
+    this.tokenizer = options.tokenizer ?? tiktokenTokenizer(model);
   }
 
-  async completion(request: CompletionRequest): Promise<CompletionResult> {
-    const messages = convertToAnthropicMessages(request);
-
+  async completion(rendered: AnthropicRenderResult): Promise<CompletionResult> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: this.maxTokens,
-      ...(request.system ? { system: request.system } : {}),
-      messages,
+      ...(rendered.system ? { system: rendered.system } : {}),
+      messages: rendered.messages,
     });
 
     const text = extractTextFromResponse(response.content);
     return { text };
   }
-}
-
-function convertToAnthropicMessages(
-  request: CompletionRequest
-): MessageParam[] {
-  const messages: MessageParam[] = [];
-  for (const msg of request.messages) {
-    // System messages are handled separately in Anthropic's API
-    if (VALID_ANTHROPIC_ROLES.has(msg.role)) {
-      messages.push({ role: msg.role as AnthropicRole, content: msg.content });
-    }
-  }
-  return messages;
 }
 
 function extractTextFromResponse(
@@ -360,17 +349,18 @@ export function AnthropicProvider({
   tokenizer,
   children = [],
 }: AnthropicProviderProps): PromptElement {
-  const provider: ModelProvider = {
+  const provider: ModelProvider<AnthropicRenderResult> = {
     name: "anthropic",
+    renderer: anthropic,
     tokenizer: tokenizer ?? tiktokenTokenizer(model),
-    async completion(request: CompletionRequest): Promise<CompletionResult> {
-      const messages = convertToAnthropicMessages(request);
-
+    async completion(
+      rendered: AnthropicRenderResult
+    ): Promise<CompletionResult> {
       const response = await client.messages.create({
         model,
         max_tokens: maxTokens,
-        ...(request.system ? { system: request.system } : {}),
-        messages,
+        ...(rendered.system ? { system: rendered.system } : {}),
+        messages: rendered.messages,
       });
 
       const text = extractTextFromResponse(response.content);

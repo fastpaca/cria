@@ -9,6 +9,7 @@ import {
   type SemanticPart,
   safeStringify,
 } from "../renderers/shared";
+import { approximateTokenizer } from "../tokenizers";
 import type {
   CompletionMessage,
   EvaluatorOutput,
@@ -27,9 +28,9 @@ const VARIABLE_PATTERN = /\{\{([^}]+)\}\}/g;
 /**
  * Options for evaluating a prompt.
  */
-export interface EvalOptions {
+export interface EvalOptions<TRendered = unknown> {
   /** Model provider to generate the prompt response under test */
-  target: ModelProvider;
+  target: ModelProvider<TRendered>;
   /** Evaluator provider that returns structured output (recommend: gpt-4o-mini for cost/quality balance) */
   evaluator: EvaluatorProvider;
   /** Input variables to substitute into the prompt template */
@@ -45,6 +46,21 @@ export interface EvalOptions {
    * Note: the underlying provider call is not cancelled when this fires.
    */
   timeoutMs?: number;
+  /**
+   * Render options for the target prompt (budget/tokenizer). Defaults to no budget.
+   */
+  targetRender?: EvalRenderOptions;
+  /**
+   * Render options for the evaluator prompt (budget/tokenizer). Defaults to no budget.
+   */
+  evaluatorRender?: EvalRenderOptions;
+}
+
+export interface EvalRenderOptions {
+  /** Token budget for rendering (omit for unlimited). */
+  budget?: number;
+  /** Tokenizer override for budgeting. */
+  tokenizer?: Tokenizer;
 }
 
 /**
@@ -225,10 +241,9 @@ function buildEvaluatorPrompt(options: {
     });
 }
 
-function substituteVariables(
-  text: string,
-  input: Record<string, unknown>
-): string {
+const EXACT_VARIABLE_PATTERN = /^\{\{([^}]+)\}\}$/;
+
+function substituteText(text: string, input: Record<string, unknown>): string {
   if (Object.keys(input).length === 0) {
     return text;
   }
@@ -239,6 +254,80 @@ function substituteVariables(
     }
     return safeStringify(input[rawKey]);
   });
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function substituteValue(
+  value: unknown,
+  input: Record<string, unknown>
+): unknown {
+  if (typeof value === "string") {
+    const exactMatch = value.match(EXACT_VARIABLE_PATTERN);
+    if (exactMatch && Object.hasOwn(input, exactMatch[1])) {
+      return input[exactMatch[1]];
+    }
+    return substituteText(value, input);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => substituteValue(entry, input));
+  }
+
+  if (isPlainObject(value)) {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      result[key] = substituteValue(entry, input);
+    }
+    return result;
+  }
+
+  return value;
+}
+
+function substitutePromptVariables(
+  element: PromptElement,
+  input: Record<string, unknown>
+): PromptElement {
+  if (Object.keys(input).length === 0) {
+    return element;
+  }
+
+  const children = element.children.map((child) =>
+    typeof child === "string"
+      ? substituteText(child, input)
+      : substitutePromptVariables(child, input)
+  );
+
+  switch (element.kind) {
+    case "reasoning":
+      return {
+        ...element,
+        text: substituteText(element.text, input),
+        children,
+      };
+    case "tool-call":
+      return {
+        ...element,
+        input: substituteValue(element.input, input),
+        children,
+      };
+    case "tool-result":
+      return {
+        ...element,
+        output: substituteValue(element.output, input),
+        children,
+      };
+    default:
+      return { ...element, children };
+  }
 }
 
 const completionMessagesRenderer: PromptRenderer<CompletionMessage[]> = {
@@ -275,24 +364,6 @@ function renderToCompletionMessages(
   return messages;
 }
 
-function extractSystemPrompt(
-  messages: CompletionMessage[]
-): string | undefined {
-  const systemParts: string[] = [];
-
-  for (const message of messages) {
-    if (message.role === "system") {
-      systemParts.push(message.content);
-    }
-  }
-
-  if (systemParts.length === 0) {
-    return undefined;
-  }
-
-  return systemParts.join("\n");
-}
-
 function semanticPartsToContent(parts: readonly SemanticPart[]): string {
   let result = "";
 
@@ -318,13 +389,6 @@ function semanticPartsToContent(parts: readonly SemanticPart[]): string {
   return result;
 }
 
-const DEFAULT_RENDER_BUDGET = 100_000;
-/**
- * Fallback tokenizer using character count.
- * Provide a real tokenizer for accurate budget estimation.
- */
-const fallbackTokenizer: Tokenizer = (text) => text.length;
-
 function resolvePromptElement(
   prompt: PromptBuilder | PromptElement
 ): Promise<PromptElement> {
@@ -339,20 +403,14 @@ async function renderPromptToMessages(
   options: {
     tokenizer?: Tokenizer;
     budget?: number;
-    input: Record<string, unknown>;
   }
 ): Promise<CompletionMessage[]> {
   const element = await resolvePromptElement(prompt);
-  const rendered = await render(element, {
-    tokenizer: options.tokenizer ?? fallbackTokenizer,
-    budget: options.budget ?? DEFAULT_RENDER_BUDGET,
+  return await render(element, {
+    tokenizer: options.tokenizer,
+    budget: options.budget,
     renderer: completionMessagesRenderer,
   });
-
-  return rendered.map((message) => ({
-    ...message,
-    content: substituteVariables(message.content, options.input),
-  }));
 }
 
 function parseEvaluatorOutput(output: unknown): EvaluatorOutput {
@@ -392,9 +450,9 @@ function parseEvaluatorOutput(output: unknown): EvaluatorOutput {
  * expect(result.score).toBeGreaterThan(0.8);
  * ```
  */
-export async function evaluate(
+export async function evaluate<TRendered>(
   prompt: PromptBuilder | PromptElement,
-  options: EvalOptions
+  options: EvalOptions<TRendered>
 ): Promise<EvalResult> {
   const {
     target,
@@ -404,33 +462,24 @@ export async function evaluate(
     expected,
     threshold = DEFAULT_THRESHOLD,
     timeoutMs,
+    targetRender,
+    evaluatorRender,
   } = options;
 
-  // Step 1: Render the prompt to structured messages with variables substituted
-  const renderTokenizer = target.tokenizer;
-  const renderOptions: {
-    tokenizer?: Tokenizer;
-    budget?: number;
-    input: Record<string, unknown>;
-  } = { input };
-  if (renderTokenizer) {
-    renderOptions.tokenizer = renderTokenizer;
-  }
-  const renderedMessages = await renderPromptToMessages(prompt, renderOptions);
-  const system = extractSystemPrompt(renderedMessages);
+  // Step 1: Render the prompt with variables substituted
+  const resolvedPrompt = await resolvePromptElement(prompt);
+  const substitutedPrompt = substitutePromptVariables(resolvedPrompt, input);
+  const renderedTarget = await render(substitutedPrompt, {
+    renderer: target.renderer,
+    budget: targetRender?.budget,
+    tokenizer: targetRender?.tokenizer ?? target.tokenizer,
+  });
 
   // Step 2: Execute the prompt to get a response
   let promptResponse: { text: string };
-  const completionPayload: {
-    messages: CompletionMessage[];
-    system?: string;
-  } = { messages: renderedMessages };
-  if (system !== undefined) {
-    completionPayload.system = system;
-  }
   try {
     promptResponse = await withTimeout(
-      Promise.resolve(target.completion(completionPayload)),
+      Promise.resolve(target.completion(renderedTarget)),
       timeoutMs,
       "target"
     );
@@ -458,19 +507,10 @@ export async function evaluate(
   }
   const evaluatorPrompt = buildEvaluatorPrompt(evaluatorPromptOptions);
 
-  const evaluatorRenderTokenizer = evaluator.tokenizer;
-  const evaluatorRenderOptions: {
-    tokenizer?: Tokenizer;
-    budget?: number;
-    input: Record<string, unknown>;
-  } = { input: {} };
-  if (evaluatorRenderTokenizer) {
-    evaluatorRenderOptions.tokenizer = evaluatorRenderTokenizer;
-  }
-  const evaluatorMessages = await renderPromptToMessages(
-    evaluatorPrompt,
-    evaluatorRenderOptions
-  );
+  const evaluatorMessages = await renderPromptToMessages(evaluatorPrompt, {
+    budget: evaluatorRender?.budget,
+    tokenizer: evaluatorRender?.tokenizer ?? evaluator.tokenizer,
+  });
 
   // Step 4: Execute the evaluator prompt
   let evaluatorResponse: EvaluatorOutput;
@@ -546,12 +586,16 @@ export function mockEvaluator(
 /**
  * Create a mock target model for testing prompt execution.
  */
-export function mockTarget(options: MockTargetOptions = {}): ModelProvider {
+export function mockTarget(
+  options: MockTargetOptions = {}
+): ModelProvider<CompletionMessage[]> {
   const { response = "Mock response from the prompt under evaluation." } =
     options;
 
   return {
     name: "mock-target",
+    renderer: completionMessagesRenderer,
+    tokenizer: approximateTokenizer,
     completion: () => Promise.resolve({ text: response }),
   };
 }

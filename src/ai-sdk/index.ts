@@ -23,7 +23,7 @@ import {
 } from "../renderers/shared";
 import { tiktokenTokenizer } from "../tokenizers";
 import type {
-  CompletionRequest,
+  CompletionMessage,
   CompletionResult,
   EvaluatorOutput,
   EvaluatorProvider,
@@ -528,28 +528,22 @@ interface AISDKProviderProps {
 type AISDKRole = "user" | "assistant" | "system";
 const VALID_AI_SDK_ROLES = new Set<string>(["user", "assistant", "system"]);
 
-function toModelMessages(request: CompletionRequest): ModelMessage[] {
-  const messages: ModelMessage[] = request.system
-    ? [{ role: "system", content: request.system }]
-    : [];
+function toModelMessages(messages: CompletionMessage[]): ModelMessage[] {
+  const result: ModelMessage[] = [];
 
-  for (const msg of request.messages) {
-    if (msg.role === "system" && request.system) {
-      continue;
-    }
+  for (const msg of messages) {
     if (VALID_AI_SDK_ROLES.has(msg.role)) {
-      messages.push({ role: msg.role as AISDKRole, content: msg.content });
+      result.push({ role: msg.role as AISDKRole, content: msg.content });
     }
   }
 
-  return messages;
+  return result;
 }
 
 async function executeCompletion(
   model: LanguageModel,
-  request: CompletionRequest
+  messages: ModelMessage[]
 ): Promise<CompletionResult> {
-  const messages = toModelMessages(request);
   const { text } = await generateText({ model, messages });
   return { text };
 }
@@ -574,16 +568,20 @@ async function executeCompletion(
  *   .build();
  * ```
  */
-export class Provider implements ModelProvider {
+export class Provider implements ModelProvider<ModelMessage[]> {
   readonly name = "ai-sdk";
+  readonly renderer: PromptRenderer<ModelMessage[]> = renderer;
+  readonly tokenizer?: Tokenizer;
   private readonly model: LanguageModel;
 
-  constructor(model: LanguageModel) {
+  constructor(model: LanguageModel, options: { tokenizer?: Tokenizer } = {}) {
     this.model = model;
+    this.tokenizer =
+      options.tokenizer ?? tiktokenTokenizer(getModelId(this.model));
   }
 
-  completion(request: CompletionRequest): Promise<CompletionResult> {
-    return executeCompletion(this.model, request);
+  completion(messages: ModelMessage[]): Promise<CompletionResult> {
+    return executeCompletion(this.model, messages);
   }
 }
 
@@ -613,7 +611,7 @@ export class Evaluator implements EvaluatorProvider {
   }
 
   async evaluate(request: EvaluatorRequest): Promise<EvaluatorOutput> {
-    const messages = toModelMessages({ messages: request.messages });
+    const messages = toModelMessages(request.messages);
     const result = await generateText({
       model: this.model,
       messages,
@@ -633,10 +631,11 @@ export function AISDKProvider({
   tokenizer,
   children = [],
 }: AISDKProviderProps): MaybePromise<PromptElement> {
-  const provider: ModelProvider = {
+  const provider: ModelProvider<ModelMessage[]> = {
     name: "ai-sdk",
+    renderer,
     tokenizer: tokenizer ?? tiktokenTokenizer(getModelId(model)),
-    completion: (request) => executeCompletion(model, request),
+    completion: (messages) => executeCompletion(model, messages),
   };
 
   return {

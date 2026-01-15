@@ -22,14 +22,9 @@ export interface CompletionMessage {
 }
 
 /**
- * Request parameters for a completion.
+ * Rendered prompt messages for a completion.
  */
-export interface CompletionRequest {
-  /** Messages to send to the model */
-  messages: CompletionMessage[];
-  /** Optional system prompt (some providers handle this separately) */
-  system?: string;
-}
+export type CompletionRequest = CompletionMessage[];
 
 /**
  * Result from a completion request.
@@ -45,7 +40,7 @@ export interface CompletionResult {
  * This abstraction allows Cria components to call AI models without
  * being coupled to a specific SDK.
  */
-export interface ModelProvider {
+export interface ModelProvider<TRendered = CompletionRequest> {
   /** Provider identifier for debugging */
   name: string;
   /**
@@ -57,10 +52,10 @@ export interface ModelProvider {
    */
   tokenizer?: Tokenizer;
 
-  /**
-   * Generate a completion from the model.
-   */
-  completion(request: CompletionRequest): MaybePromise<CompletionResult>;
+  /** Renderer that produces provider-specific prompt input. */
+  renderer: PromptRenderer<TRendered>;
+  /** Generate a completion from rendered prompt input. */
+  completion(rendered: TRendered): MaybePromise<CompletionResult>;
 }
 
 /**
@@ -114,7 +109,7 @@ export interface EvaluatorProvider {
  */
 export interface CriaContext {
   /** Model provider for AI-powered operations */
-  provider?: ModelProvider | undefined;
+  provider?: ModelProvider<unknown> | undefined;
 }
 
 // Convenience type for functions that can return a promise or a value.

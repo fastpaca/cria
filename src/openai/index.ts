@@ -24,7 +24,6 @@ import {
 } from "../renderers/shared";
 import { tiktokenTokenizer } from "../tokenizers";
 import type {
-  CompletionRequest,
   CompletionResult,
   ModelProvider,
   PromptChildren,
@@ -357,10 +356,6 @@ interface OpenAIProviderProps {
  *
  * const result = await render(prompt, { tokenizer, budget: 4000 });
  * ```
- */
-type OpenAIRole = "user" | "assistant" | "system";
-const VALID_OPENAI_ROLES = new Set<string>(["user", "assistant", "system"]);
-
 /**
  * ModelProvider implementation that wraps an OpenAI client.
  * Use this with the DSL's `.provider()` method.
@@ -382,30 +377,27 @@ const VALID_OPENAI_ROLES = new Set<string>(["user", "assistant", "system"]);
  *   .build();
  * ```
  */
-export class Provider implements ModelProvider {
+export class Provider implements ModelProvider<ChatCompletionMessageParam[]> {
   readonly name = "openai";
+  readonly renderer: PromptRenderer<ChatCompletionMessageParam[]> =
+    chatCompletions;
+  readonly tokenizer?: Tokenizer;
   private readonly client: OpenAI;
   private readonly model: string;
 
-  constructor(client: OpenAI, model: string) {
+  constructor(
+    client: OpenAI,
+    model: string,
+    options: { tokenizer?: Tokenizer } = {}
+  ) {
     this.client = client;
     this.model = model;
+    this.tokenizer = options.tokenizer ?? tiktokenTokenizer(model);
   }
 
-  async completion(request: CompletionRequest): Promise<CompletionResult> {
-    const messages: ChatCompletionMessageParam[] = request.system
-      ? [{ role: "system", content: request.system }]
-      : [];
-
-    for (const msg of request.messages) {
-      if (msg.role === "system" && request.system) {
-        continue;
-      }
-      if (VALID_OPENAI_ROLES.has(msg.role)) {
-        messages.push({ role: msg.role as OpenAIRole, content: msg.content });
-      }
-    }
-
+  async completion(
+    messages: ChatCompletionMessageParam[]
+  ): Promise<CompletionResult> {
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages,
@@ -422,23 +414,13 @@ export function OpenAIProvider({
   tokenizer,
   children = [],
 }: OpenAIProviderProps): PromptElement {
-  const provider: ModelProvider = {
+  const provider: ModelProvider<ChatCompletionMessageParam[]> = {
     name: "openai",
+    renderer: chatCompletions,
     tokenizer: tokenizer ?? tiktokenTokenizer(model),
-    async completion(request: CompletionRequest): Promise<CompletionResult> {
-      const messages: ChatCompletionMessageParam[] = request.system
-        ? [{ role: "system", content: request.system }]
-        : [];
-
-      for (const msg of request.messages) {
-        if (msg.role === "system" && request.system) {
-          continue;
-        }
-        if (VALID_OPENAI_ROLES.has(msg.role)) {
-          messages.push({ role: msg.role as OpenAIRole, content: msg.content });
-        }
-      }
-
+    async completion(
+      messages: ChatCompletionMessageParam[]
+    ): Promise<CompletionResult> {
       const response = await client.chat.completions.create({
         model,
         messages,

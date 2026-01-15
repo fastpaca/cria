@@ -1,4 +1,5 @@
 import type { KVMemory } from "../memory";
+import { render } from "../render";
 import type {
   MaybePromise,
   ModelProvider,
@@ -39,7 +40,7 @@ export type Summarizer = (ctx: SummarizerContext) => MaybePromise<string>;
  */
 async function defaultSummarizer(
   ctx: SummarizerContext,
-  provider: ModelProvider
+  provider: ModelProvider<unknown>
 ): Promise<string> {
   const systemPrompt =
     "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
@@ -61,10 +62,29 @@ Please provide an updated summary that incorporates both the existing summary an
 ${ctx.content}`;
   }
 
-  const result = await provider.completion({
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
+  const prompt: PromptElement = {
+    priority: 0,
+    children: [
+      {
+        kind: "message",
+        role: "system",
+        priority: 0,
+        children: [systemPrompt],
+      },
+      {
+        kind: "message",
+        role: "user",
+        priority: 0,
+        children: [userPrompt],
+      },
+    ],
+  };
+
+  const rendered = await render(prompt, {
+    renderer: provider.renderer,
+    tokenizer: provider.tokenizer,
   });
+  const result = await provider.completion(rendered);
 
   return result.text;
 }

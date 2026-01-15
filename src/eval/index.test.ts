@@ -1,6 +1,9 @@
+import type { ModelMessage } from "ai";
 import { describe, expect, test, vi } from "vitest";
-import { Region } from "../components";
+import { renderer as aiSdkRenderer } from "../ai-sdk";
+import { Region, ToolCall, ToolResult } from "../components";
 import { cria } from "../dsl";
+import { markdownRenderer } from "../renderers/markdown";
 import type { ModelProvider } from "../types";
 import {
   criaMatchers,
@@ -15,6 +18,26 @@ import {
 } from "./index";
 
 expect.extend(criaMatchers);
+
+function createCapturingTarget(response = "Mock response"): {
+  target: ModelProvider<string>;
+  getCapturedPrompt: () => string;
+} {
+  let capturedPrompt = "";
+  const target: ModelProvider<string> = {
+    name: "capturing-target",
+    renderer: markdownRenderer,
+    completion: (rendered) => {
+      capturedPrompt = rendered;
+      return Promise.resolve({ text: response });
+    },
+  };
+
+  return {
+    target,
+    getCapturedPrompt: () => capturedPrompt,
+  };
+}
 
 describe("evaluate", () => {
   test("returns score and reasoning from mock evaluator", async () => {
@@ -82,25 +105,15 @@ describe("evaluate", () => {
       .system("You help with {{topic}}")
       .user("{{question}}");
 
-    let capturedPrompt = "";
-    const capturingTarget: ModelProvider = {
-      name: "capturing-target",
-      completion: (request) => {
-        capturedPrompt = request.messages
-          .map((message) => message.content)
-          .join("\n");
-        return Promise.resolve({
-          text: "Mock response",
-        });
-      },
-    };
+    const { target, getCapturedPrompt } = createCapturingTarget();
 
     await evaluate(prompt, {
-      target: capturingTarget,
+      target,
       evaluator: mockEvaluator(),
       input: { topic: "math", question: "What is 2+2?" },
     });
 
+    const capturedPrompt = getCapturedPrompt();
     expect(capturedPrompt).toContain("math");
     expect(capturedPrompt).toContain("What is 2+2?");
     expect(capturedPrompt).not.toContain("{{topic}}");
@@ -110,36 +123,58 @@ describe("evaluate", () => {
   test("leaves unknown placeholders intact", async () => {
     const prompt = cria.prompt().user("Hello {{name}} {{missing}}");
 
-    let capturedPrompt = "";
-    const capturingTarget: ModelProvider = {
-      name: "capturing-target",
-      completion: (request) => {
-        capturedPrompt = request.messages
-          .map((message) => message.content)
-          .join("\n");
-        return Promise.resolve({ text: "Mock response" });
-      },
-    };
+    const { target, getCapturedPrompt } = createCapturingTarget();
 
     await evaluate(prompt, {
-      target: capturingTarget,
+      target,
       evaluator: mockEvaluator(),
       input: { name: "Ada" },
     });
 
+    const capturedPrompt = getCapturedPrompt();
     expect(capturedPrompt).toContain("Hello Ada {{missing}}");
   });
 
   test("preserves placeholder-like text in input values", async () => {
     const prompt = cria.prompt().user("Question: {{q}}");
 
-    let capturedPrompt = "";
-    const capturingTarget: ModelProvider = {
+    const { target, getCapturedPrompt } = createCapturingTarget();
+
+    await evaluate(prompt, {
+      target,
+      evaluator: mockEvaluator(),
+      input: { q: "Use {{not-a-var}} literally" },
+    });
+
+    const capturedPrompt = getCapturedPrompt();
+    expect(capturedPrompt).toContain("Question: Use {{not-a-var}} literally");
+  });
+
+  test("preserves tool call structure and substitutes structured inputs", async () => {
+    const prompt = cria.prompt().assistant((m) =>
+      m
+        .append(
+          ToolCall({
+            toolCallId: "call-1",
+            toolName: "search",
+            input: { query: "{{q}}", limit: "{{limit}}" },
+          })
+        )
+        .append(
+          ToolResult({
+            toolCallId: "call-1",
+            toolName: "search",
+            output: { status: "ok", result: "{{answer}}" },
+          })
+        )
+    );
+
+    let renderedMessages: ModelMessage[] = [];
+    const capturingTarget: ModelProvider<ModelMessage[]> = {
       name: "capturing-target",
-      completion: (request) => {
-        capturedPrompt = request.messages
-          .map((message) => message.content)
-          .join("\n");
+      renderer: aiSdkRenderer,
+      completion: (messages) => {
+        renderedMessages = messages;
         return Promise.resolve({ text: "Mock response" });
       },
     };
@@ -147,10 +182,40 @@ describe("evaluate", () => {
     await evaluate(prompt, {
       target: capturingTarget,
       evaluator: mockEvaluator(),
-      input: { q: "Use {{not-a-var}} literally" },
+      input: { q: "cats", limit: 3, answer: "done" },
     });
 
-    expect(capturedPrompt).toContain("Question: Use {{not-a-var}} literally");
+    const assistantMessage = renderedMessages.find(
+      (message) => message.role === "assistant"
+    );
+    if (!(assistantMessage && Array.isArray(assistantMessage.content))) {
+      throw new Error("Expected structured assistant message content");
+    }
+
+    const toolCallPart = assistantMessage.content.find(
+      (part) => part.type === "tool-call"
+    ) as { toolName: string; input: unknown } | undefined;
+
+    expect(toolCallPart).toMatchObject({
+      toolName: "search",
+      input: { query: "cats", limit: 3 },
+    });
+
+    const toolMessage = renderedMessages.find(
+      (message) => message.role === "tool"
+    );
+    if (!(toolMessage && Array.isArray(toolMessage.content))) {
+      throw new Error("Expected tool message content");
+    }
+
+    expect(toolMessage.content[0]).toMatchObject({
+      type: "tool-result",
+      toolName: "search",
+      output: {
+        type: "json",
+        value: { status: "ok", result: "done" },
+      },
+    });
   });
 
   test("passes criteria to evaluator", async () => {
@@ -524,8 +589,9 @@ describe("error handling", () => {
   test("wraps target provider errors", async () => {
     const prompt = cria.prompt().user("Test");
 
-    const failingTarget: ModelProvider = {
+    const failingTarget: ModelProvider<string> = {
       name: "failing-target",
+      renderer: markdownRenderer,
       completion: () => {
         throw new Error("Target failed");
       },

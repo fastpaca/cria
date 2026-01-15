@@ -47,9 +47,9 @@ export const criaMatchers = {
    * });
    * ```
    */
-  async toPassEvaluation(
+  async toPassEvaluation<TRendered>(
     received: PromptBuilder | PromptElement,
-    options: EvalOptions
+    options: EvalOptions<TRendered>
   ) {
     const result = await evaluate(received, options);
 
@@ -82,9 +82,9 @@ export const criaMatchers = {
  */
 declare module "vitest" {
   interface Assertion<_T = unknown> {
-    toPassEvaluation(options: EvalOptions): Promise<void>;
+    toPassEvaluation<TRendered>(options: EvalOptions<TRendered>): Promise<void>;
   }
   interface AsymmetricMatchersContaining {
-    toPassEvaluation(options: EvalOptions): void;
+    toPassEvaluation<TRendered>(options: EvalOptions<TRendered>): void;
   }
 }
