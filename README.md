@@ -23,13 +23,17 @@
 Cria is a lightweight prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
 ```ts
+import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
+import { openai } from "@ai-sdk/openai";
+
+const provider = new Provider(openai("gpt-5-nano"));
+
 const messages = await cria
   .prompt()
   .system("You are a research assistant.")
   .vectorSearch({ store, query: question, limit: 10 })
-  .provider(openai("gpt-5-nano"), p => p
-    .summary(conversation, { store: memory })
-    .last(conversation, { N: 20 })
+  .provider(provider, (p) =>
+    p.summary(conversation, { store: memory }).last(conversation, { N: 20 })
   )
   .user(question)
   .render({ budget: 200_000, renderer });
