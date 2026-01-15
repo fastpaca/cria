@@ -119,6 +119,28 @@ const { text } = await generateText({ model, messages });
 ```
 </details>
 
+## Evaluation (LLM-as-a-judge)
+
+Use the `@fastpaca/cria/eval` entrypoint for evaluation utilities and Vitest matchers.
+
+```ts
+import { evaluate } from "@fastpaca/cria/eval";
+
+const result = await evaluate(prompt, {
+  target,
+  evaluator,
+  input,
+  criteria: ["helpful", "accurate"],
+});
+```
+
+```ts
+import { expect } from "vitest";
+import { criaMatchers } from "@fastpaca/cria/eval";
+
+expect.extend(criaMatchers);
+```
+
 ## Roadmap
 
 **Done**
