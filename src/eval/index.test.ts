@@ -130,6 +130,29 @@ describe("evaluate", () => {
     expect(capturedPrompt).toContain("Hello Ada {{missing}}");
   });
 
+  test("preserves placeholder-like text in input values", async () => {
+    const prompt = cria.prompt().user("Question: {{q}}");
+
+    let capturedPrompt = "";
+    const capturingTarget: ModelProvider = {
+      name: "capturing-target",
+      completion: (request) => {
+        capturedPrompt = request.messages
+          .map((message) => message.content)
+          .join("\n");
+        return Promise.resolve({ text: "Mock response" });
+      },
+    };
+
+    await evaluate(prompt, {
+      target: capturingTarget,
+      evaluator: mockEvaluator(),
+      input: { q: "Use {{not-a-var}} literally" },
+    });
+
+    expect(capturedPrompt).toContain("Question: Use {{not-a-var}} literally");
+  });
+
   test("passes criteria to evaluator", async () => {
     const prompt = cria.prompt().user("Test");
 
@@ -156,6 +179,30 @@ describe("evaluate", () => {
     expect(capturedEvaluatorText).toContain("professional");
   });
 
+  test("uses default criteria when criteria array is empty", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    let capturedEvaluatorText = "";
+    const capturingEvaluator: EvaluatorProvider = {
+      name: "capturing-evaluator",
+      evaluate: (request) => {
+        capturedEvaluatorText = request.messages
+          .map((message) => message.content)
+          .join("\n");
+        return { score: 0.9, reasoning: "Good" };
+      },
+    };
+
+    await evaluate(prompt, {
+      target: mockTarget(),
+      evaluator: capturingEvaluator,
+      input: {},
+      criteria: [],
+    });
+
+    expect(capturedEvaluatorText).toContain("Overall quality and correctness");
+  });
+
   test("passes expected output to evaluator when provided", async () => {
     const prompt = cria.prompt().user("What is the capital of France?");
 
@@ -179,6 +226,55 @@ describe("evaluate", () => {
 
     expect(capturedEvaluatorText).toContain("Expected Response");
     expect(capturedEvaluatorText).toContain("Paris");
+  });
+
+  test("omits expected section when expected is empty", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    let capturedEvaluatorText = "";
+    const capturingEvaluator: EvaluatorProvider = {
+      name: "capturing-evaluator",
+      evaluate: (request) => {
+        capturedEvaluatorText = request.messages
+          .map((message) => message.content)
+          .join("\n");
+        return { score: 0.9, reasoning: "Good" };
+      },
+    };
+
+    await evaluate(prompt, {
+      target: mockTarget(),
+      evaluator: capturingEvaluator,
+      input: {},
+      expected: "",
+    });
+
+    expect(capturedEvaluatorText).not.toContain("Expected Response");
+  });
+
+  test("passes very long expected output through to evaluator", async () => {
+    const prompt = cria.prompt().user("Test");
+    const expected = "Expected output ".repeat(400);
+
+    let capturedEvaluatorText = "";
+    const capturingEvaluator: EvaluatorProvider = {
+      name: "capturing-evaluator",
+      evaluate: (request) => {
+        capturedEvaluatorText = request.messages
+          .map((message) => message.content)
+          .join("\n");
+        return { score: 0.9, reasoning: "Good" };
+      },
+    };
+
+    await evaluate(prompt, {
+      target: mockTarget(),
+      evaluator: capturingEvaluator,
+      input: {},
+      expected,
+    });
+
+    expect(capturedEvaluatorText).toContain(expected.slice(0, 120));
   });
 
   test("works with raw PromptElement", async () => {
@@ -208,6 +304,18 @@ describe("evaluate", () => {
     });
 
     expect(result.response).toBe(mockResponse);
+  });
+
+  test("handles empty response from target", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    const result = await evaluate(prompt, {
+      target: mockTarget({ response: "" }),
+      evaluator: mockEvaluator({ score: 0.9 }),
+      input: {},
+    });
+
+    expect(result.response).toBe("");
   });
 });
 
@@ -367,6 +475,41 @@ describe("error handling", () => {
     const badEvaluator: EvaluatorProvider = {
       name: "nan-evaluator",
       evaluate: () => ({ score: Number.NaN, reasoning: "NaN" }),
+    };
+
+    await expect(
+      evaluate(prompt, {
+        target: mockTarget(),
+        evaluator: badEvaluator,
+        input: {},
+      })
+    ).rejects.toBeInstanceOf(EvalSchemaError);
+  });
+
+  test("rejects evaluator output with negative score", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    const badEvaluator: EvaluatorProvider = {
+      name: "negative-score",
+      evaluate: () => ({ score: -0.1, reasoning: "Negative" }),
+    };
+
+    await expect(
+      evaluate(prompt, {
+        target: mockTarget(),
+        evaluator: badEvaluator,
+        input: {},
+      })
+    ).rejects.toBeInstanceOf(EvalSchemaError);
+  });
+
+  test("rejects evaluator output missing reasoning", async () => {
+    const prompt = cria.prompt().user("Test");
+
+    const badEvaluator: EvaluatorProvider = {
+      name: "missing-reasoning",
+      // @ts-expect-error - intentional invalid output for schema validation
+      evaluate: () => ({ score: 0.9 }),
     };
 
     await expect(
