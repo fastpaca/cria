@@ -14,11 +14,33 @@ export const PromptRoleSchema = z
 export type PromptRole = z.infer<typeof PromptRoleSchema>;
 
 /**
+ * A structured content part in a completion message.
+ */
+export type CompletionContentPart =
+  | { type: "text"; text: string }
+  | {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
+  | {
+      type: "tool-result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+    }
+  | { type: "reasoning"; text: string };
+
+/**
  * A message in a completion request.
+ *
+ * Content can be either a plain string (for simple text messages) or
+ * an array of structured parts (for messages with tool calls, results, or reasoning).
  */
 export interface CompletionMessage {
   role: PromptRole;
-  content: string;
+  content: string | CompletionContentPart[];
 }
 
 /**

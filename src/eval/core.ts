@@ -11,6 +11,7 @@ import {
 } from "../renderers/shared";
 import { approximateTokenizer } from "../tokenizers";
 import type {
+  CompletionContentPart,
   CompletionMessage,
   EvaluatorOutput,
   EvaluatorProvider,
@@ -354,7 +355,7 @@ function renderToCompletionMessages(
   for (const messageNode of messageNodes) {
     const parts = coalesceTextParts(collectSemanticParts(messageNode.children));
     const content = semanticPartsToContent(parts);
-    if (content.length === 0) {
+    if (isEmptyContent(content)) {
       continue;
     }
 
@@ -364,22 +365,60 @@ function renderToCompletionMessages(
   return messages;
 }
 
-function semanticPartsToContent(parts: readonly SemanticPart[]): string {
-  let result = "";
+function isEmptyContent(content: string | CompletionContentPart[]): boolean {
+  if (typeof content === "string") {
+    return content.length === 0;
+  }
+  return content.length === 0;
+}
+
+/**
+ * Convert semantic parts to completion message content.
+ *
+ * Returns a plain string for text-only messages (most common case),
+ * or structured parts when the message contains tool calls, results, or reasoning.
+ */
+function semanticPartsToContent(
+  parts: readonly SemanticPart[]
+): string | CompletionContentPart[] {
+  // Fast path: if all parts are text, return a plain string
+  const hasStructuredParts = parts.some(
+    (part) =>
+      part.type === "tool-call" ||
+      part.type === "tool-result" ||
+      part.type === "reasoning"
+  );
+
+  if (!hasStructuredParts) {
+    return parts.map((part) => (part as { text: string }).text).join("");
+  }
+
+  // Structured path: return typed content parts
+  const result: CompletionContentPart[] = [];
 
   for (const part of parts) {
     switch (part.type) {
       case "text":
-        result += part.text;
+        result.push({ type: "text", text: part.text });
         break;
       case "reasoning":
-        result += `<thinking>\n${part.text}\n</thinking>\n`;
+        result.push({ type: "reasoning", text: part.text });
         break;
       case "tool-call":
-        result += `<tool_call name="${part.toolName}">\n${safeStringify(part.input, true)}\n</tool_call>\n`;
+        result.push({
+          type: "tool-call",
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          input: part.input,
+        });
         break;
       case "tool-result":
-        result += `<tool_result name="${part.toolName}">\n${safeStringify(part.output, true)}\n</tool_result>\n`;
+        result.push({
+          type: "tool-result",
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          output: part.output,
+        });
         break;
       default:
         break;
