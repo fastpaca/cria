@@ -1,3 +1,9 @@
+---
+description: TypeScript Style Guide - AI-Ready Code Standards
+globs: "**/*.{ts,tsx,js,jsx}"
+alwaysApply: true
+---
+
 # TypeScript Style Guide
 
 This guide defines how we write TypeScript. It optimizes for **correctness**, **clarity**, and **maintainability**. The linter (Ultracite/Biome) enforces most rules automatically—run `npm exec -- ultracite fix` before committing.
@@ -49,7 +55,6 @@ function handle(result: Result<User, string>) {
     case false:
       throw new Error(result.error);
     default:
-      // Compile error if a case is missing
       const _exhaustive: never = result;
       throw new Error('Unhandled case');
   }
@@ -109,14 +114,10 @@ type Config = typeof config;
 
 // From functions
 type ParseResult = ReturnType<typeof parse>;
-
-// From parameters
 type Options = Parameters<typeof createClient>[0];
 ```
 
 ### Branded Types for Semantic Primitives
-
-Distinguish structurally identical but semantically different values.
 
 ```typescript
 type UserId = string & { readonly __brand: 'UserId' };
@@ -125,11 +126,6 @@ type PostId = string & { readonly __brand: 'PostId' };
 function createUserId(id: string): UserId {
   return id as UserId;
 }
-
-function getUser(id: UserId) { ... }
-
-// Compile error — can't pass PostId to UserId parameter
-getUser(postId);
 ```
 
 ### No Type Assertions or Non-Null Assertions
@@ -168,11 +164,6 @@ const Status = {
 type Status = (typeof Status)[keyof typeof Status];
 ```
 
-This gives you:
-- Autocomplete: `Status.Pending`
-- Type safety: `Status` union type
-- No runtime overhead beyond the object
-
 ---
 
 ## Immutability
@@ -180,15 +171,12 @@ This gives you:
 ### Default to `const` and `readonly`
 
 ```typescript
-// Variables
 const count = 0;
 let mutable = 0; // Only when reassignment is required
 
-// Arrays and objects
 const items: readonly string[] = ['a', 'b'];
 const config: Readonly<Config> = { ... };
 
-// Class properties (enforced by linter)
 class Service {
   readonly client: Client;
 }
@@ -199,7 +187,7 @@ class Service {
 ```typescript
 // Bad
 function process(items: Item[]) {
-  items.push(newItem); // Mutates input
+  items.push(newItem);
 }
 
 // Good
@@ -210,20 +198,12 @@ function process(items: readonly Item[]): Item[] {
 
 ### Avoid Spread in Loops
 
-Spreads in accumulators cause O(n²) performance.
-
 ```typescript
-// Bad
+// Bad — O(n²)
 const result = items.reduce((acc, item) => [...acc, transform(item)], []);
 
 // Good
 const result = items.map(transform);
-
-// Or preallocate
-const result: Item[] = [];
-for (const item of items) {
-  result.push(transform(item));
-}
 ```
 
 ---
@@ -238,8 +218,6 @@ for (const item of items) {
 - Delete unused code; don't comment it out
 
 ### Early Returns
-
-Reduce nesting with guard clauses.
 
 ```typescript
 // Bad
@@ -262,10 +240,6 @@ function process(user: User | null) {
 
 ### Keep Functions Focused
 
-- One purpose per function
-- Limit cognitive complexity (the linter enforces this)
-- Extract complex conditions into named booleans
-
 ```typescript
 // Bad
 if (user.role === 'admin' && user.isActive && !user.isSuspended) { ... }
@@ -284,16 +258,12 @@ if (canPerformAction) { ... }
 ```typescript
 // Bad
 throw 'Something went wrong';
-throw { message: 'error' };
 
 // Good
 throw new Error('Something went wrong');
-throw new ValidationError('Invalid input', { field: 'email' });
 ```
 
 ### Validate at Boundaries
-
-Use Zod or similar for external data.
 
 ```typescript
 import { z } from 'zod';
@@ -308,124 +278,49 @@ type User = z.infer<typeof UserSchema>;
 async function fetchUser(id: string): Promise<User> {
   const response = await fetch(`/api/users/${id}`);
   const data = await response.json();
-  return UserSchema.parse(data); // Throws if invalid
+  return UserSchema.parse(data);
 }
 ```
 
 ### Consider Result Types
 
-For error-prone operations, make failure explicit in the return type.
-
 ```typescript
 type Result<T, E = Error> =
   | { ok: true; value: T }
   | { ok: false; error: E };
-
-function parseConfig(raw: string): Result<Config> {
-  try {
-    return { ok: true, value: JSON.parse(raw) };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e : new Error(String(e)) };
-  }
-}
 ```
 
 ---
 
 ## Imports and Exports
 
-### Named Exports Only
-
-```typescript
-// Bad
-export default function process() { ... }
-
-// Good
-export function process() { ... }
-```
-
-### Type-Only Imports
-
-Use `import type` for types that don't need runtime presence.
+- **Named exports only** — No default exports
+- **Type-only imports** — Use `import type` for types
+- **No barrel files** — Import from the source
+- **No namespace imports** — No `import * as foo`
 
 ```typescript
 import type { User } from './types';
 import { validateUser } from './validation';
 ```
 
-### No Barrel Files
-
-Don't create index files that re-export everything. Import from the source.
-
-```typescript
-// Bad — barrel file
-export * from './user';
-export * from './post';
-
-// Good — import directly
-import { User } from './user';
-import { Post } from './post';
-```
-
-### No Namespace Imports
-
-```typescript
-// Bad
-import * as utils from './utils';
-
-// Good
-import { formatDate, parseDate } from './utils';
-```
-
 ---
 
 ## Functions
 
-### Arrow Functions for Callbacks
+- **Arrow functions** for callbacks
+- **No `Function` type** — Define specific signatures
+- **Rest parameters** over `arguments`
+- **Default parameters last**
 
 ```typescript
-// Bad
-items.map(function (item) {
-  return transform(item);
-});
-
 // Good
 items.map((item) => transform(item));
-```
 
-### No `Function` Type
-
-Define specific signatures.
-
-```typescript
-// Bad
-function execute(callback: Function) { ... }
-
-// Good
 function execute(callback: (result: Result) => void) { ... }
-```
 
-### Rest Parameters over `arguments`
+function log(...args: unknown[]) { ... }
 
-```typescript
-// Bad
-function log() {
-  console.log(Array.from(arguments));
-}
-
-// Good
-function log(...args: unknown[]) {
-  console.log(args);
-}
-```
-
-### Default Parameters Last
-
-```typescript
-// Bad
-function create(options = {}, name: string) { ... }
-
-// Good
 function create(name: string, options = {}) { ... }
 ```
 
@@ -433,46 +328,16 @@ function create(name: string, options = {}) { ... }
 
 ## Classes
 
-### Prefer Object Literals for Singletons
+- **Object literals for singletons** — Don't wrap in classes
+- **Readonly properties by default** — Enforced by linter
+- **No parameter properties** — No `constructor(private x)`
 
 ```typescript
-// Bad — unnecessary class
-class Validator {
-  validateEmail(email: string) { ... }
-}
-const validator = new Validator();
-
 // Good
 const validator = {
   validateEmail(email: string) { ... },
 };
-```
 
-### Readonly Properties by Default
-
-The linter enforces this. Mark properties `readonly` unless mutation is required.
-
-```typescript
-class Service {
-  readonly client: Client;
-
-  constructor(client: Client) {
-    this.client = client;
-  }
-}
-```
-
-### No Parameter Properties
-
-The linter bans `constructor(private x)`. Declare properties explicitly.
-
-```typescript
-// Bad
-class Service {
-  constructor(private readonly client: Client) {}
-}
-
-// Good
 class Service {
   readonly client: Client;
 
@@ -493,15 +358,6 @@ class Service {
 | Constants | CONSTANT_CASE | `MAX_RETRIES` |
 | Types, interfaces, classes | PascalCase | `UserService` |
 | Type parameters | Single uppercase or PascalCase | `T`, `TResult` |
-| Private fields | camelCase (no underscore prefix) | `client` |
-
-### Naming Guidelines
-
-- Use descriptive names over abbreviations
-- Boolean variables: use `is`, `has`, `should` prefixes
-- Functions: use verbs (`get`, `create`, `validate`)
-- Avoid Hungarian notation (`strName`, `arrItems`)
-- Treat acronyms as words: `userId` not `userID`
 
 ---
 
@@ -510,14 +366,13 @@ class Service {
 - Write assertions inside `it()` or `test()` blocks
 - Use `async`/`await`, not done callbacks
 - Never commit `.only` or `.skip`
-- Keep suites flat — avoid deep `describe` nesting
-- Name tests descriptively: `'returns null when user not found'`
+- Keep suites flat
 
 ---
 
 ## Linter Reference
 
-This guide aligns with Ultracite (Biome). Key enforced rules:
+Key enforced rules (Ultracite/Biome):
 
 | Rule | Enforcement |
 |------|-------------|
@@ -527,13 +382,13 @@ This guide aligns with Ultracite (Biome). Key enforced rules:
 | `noEnum` | No enums |
 | `noVar` | No `var` |
 | `useConst` | Prefer `const` |
-| `useArrowFunction` | Arrow functions for expressions |
+| `useArrowFunction` | Arrow functions |
 | `useImportType` | Type-only imports |
 | `noBarrelFile` | No re-export index files |
 | `noNamespaceImport` | No `import *` |
-| `useReadonlyClassProperties` | Class props must be `readonly` |
+| `useReadonlyClassProperties` | Readonly class props |
 | `noParameterProperties` | No `constructor(private x)` |
-| `noAccumulatingSpread` | No spread in loop accumulators |
+| `noAccumulatingSpread` | No spread in loops |
 | `useFilenamingConvention` | kebab-case files |
 
 Run `npm exec -- ultracite fix` to auto-fix most issues.
