@@ -4,7 +4,7 @@ import type {
   ToolResultPart,
   UIMessage,
 } from "ai";
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import {
   Message,
   Reasoning,
@@ -23,11 +23,7 @@ import {
 } from "../renderers/shared";
 import { tiktokenTokenizer } from "../tokenizers";
 import type {
-  CompletionMessage,
   CompletionResult,
-  EvaluatorOutput,
-  EvaluatorProvider,
-  EvaluatorRequest,
   MaybePromise,
   ModelProvider,
   PromptChild,
@@ -37,7 +33,6 @@ import type {
   Strategy,
   Tokenizer,
 } from "../types";
-import { EvaluatorOutputSchema } from "../types";
 
 /**
  * Priority configuration for message types when rendering prompts.
@@ -525,120 +520,6 @@ interface AISDKProviderProps {
  * const result = await render(prompt, { tokenizer, budget: 4000 });
  * ```
  */
-type AISDKRole = "user" | "assistant" | "system";
-const VALID_AI_SDK_ROLES = new Set<string>(["user", "assistant", "system"]);
-
-function toModelMessages(messages: CompletionMessage[]): ModelMessage[] {
-  const result: ModelMessage[] = [];
-
-  for (const msg of messages) {
-    if (!VALID_AI_SDK_ROLES.has(msg.role)) {
-      continue;
-    }
-
-    const role = msg.role as AISDKRole;
-
-    // String content: simple case
-    if (typeof msg.content === "string") {
-      result.push({ role, content: msg.content });
-      continue;
-    }
-
-    // Structured content: convert to AI SDK format
-    if (role === "system" || role === "user") {
-      // System and user messages only support string content
-      const textContent = msg.content
-        .filter(
-          (part): part is { type: "text"; text: string } => part.type === "text"
-        )
-        .map((part) => part.text)
-        .join("");
-      result.push({ role, content: textContent });
-      continue;
-    }
-
-    // Assistant messages support structured content
-    result.push(...completionPartsToAssistantMessages(msg.content));
-  }
-
-  return result;
-}
-
-type CompletionContentPart = import("../types").CompletionContentPart;
-type ToolResultContentPart = Extract<
-  CompletionContentPart,
-  { type: "tool-result" }
->;
-type AssistantContentPart = Exclude<
-  CompletionContentPart,
-  { type: "tool-result" }
->;
-
-function completionPartsToAssistantMessages(
-  parts: CompletionContentPart[]
-): ModelMessage[] {
-  const assistantParts = parts.filter(
-    (p): p is AssistantContentPart => p.type !== "tool-result"
-  );
-  const toolResults = parts.filter(
-    (p): p is ToolResultContentPart => p.type === "tool-result"
-  );
-
-  const messages: ModelMessage[] = [];
-
-  if (assistantParts.length > 0) {
-    messages.push(buildAssistantMessage(assistantParts));
-  }
-
-  if (toolResults.length > 0) {
-    messages.push(buildToolMessage(toolResults));
-  }
-
-  return messages;
-}
-
-type AssistantModelMessage = Extract<ModelMessage, { role: "assistant" }>;
-type AssistantModelContent = AssistantModelMessage["content"];
-type AssistantModelPart =
-  Exclude<AssistantModelContent, string> extends readonly (infer P)[]
-    ? P
-    : never;
-
-function buildAssistantMessage(parts: AssistantContentPart[]): ModelMessage {
-  const content: AssistantModelPart[] = parts.map(toAssistantModelPart);
-  return { role: "assistant", content };
-}
-
-function toAssistantModelPart(part: AssistantContentPart): AssistantModelPart {
-  switch (part.type) {
-    case "text":
-      return { type: "text", text: part.text };
-    case "reasoning":
-      return { type: "reasoning", text: part.text };
-    case "tool-call":
-      return {
-        type: "tool-call",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        input: part.input,
-      };
-    default: {
-      const _exhaustive: never = part;
-      return _exhaustive;
-    }
-  }
-}
-
-function buildToolMessage(parts: ToolResultContentPart[]): ModelMessage {
-  const content: ToolResultPart[] = parts.map((part) => ({
-    type: "tool-result",
-    toolCallId: part.toolCallId,
-    toolName: part.toolName,
-    output: coerceToolResultOutput(part.output),
-  }));
-  return { role: "tool", content };
-}
-
 async function executeCompletion(
   model: LanguageModel,
   messages: ModelMessage[]
@@ -681,47 +562,6 @@ export class Provider implements ModelProvider<ModelMessage[]> {
 
   completion(messages: ModelMessage[]): Promise<CompletionResult> {
     return executeCompletion(this.model, messages);
-  }
-}
-
-/**
- * Evaluator provider that uses AI SDK structured outputs.
- *
- * @example
- * ```typescript
- * import { Evaluator } from "@fastpaca/cria/ai-sdk";
- * import { openai } from "@ai-sdk/openai";
- *
- * const evaluator = new Evaluator(openai("gpt-4o-mini"));
- * ```
- */
-export class Evaluator implements EvaluatorProvider {
-  readonly name: string;
-  readonly tokenizer?: Tokenizer;
-  private readonly model: LanguageModel;
-
-  constructor(
-    model: LanguageModel,
-    options: { name?: string; tokenizer?: Tokenizer } = {}
-  ) {
-    this.model = model;
-    this.name = options.name ?? "ai-sdk-evaluator";
-    this.tokenizer = options.tokenizer ?? tiktokenTokenizer(getModelId(model));
-  }
-
-  async evaluate(request: EvaluatorRequest): Promise<EvaluatorOutput> {
-    const messages = toModelMessages(request.messages);
-    const result = await generateText({
-      model: this.model,
-      messages,
-      output: Output.object({
-        schema: EvaluatorOutputSchema,
-        name: "evaluation",
-        description: "Score from 0-1 with a short reasoning string.",
-      }),
-    });
-
-    return result.output;
   }
 }
 

@@ -1,46 +1,48 @@
 /**
- * Prompt evaluation module for testing Cria prompts with LLM-as-an-evaluator.
+ * Prompt evaluation utilities for testing Cria prompts with LLM-as-a-judge.
  *
  * @example
  * ```typescript
  * import { cria } from "@fastpaca/cria";
- * import { evaluate } from "@fastpaca/cria/eval";
- * import { Evaluator, Provider } from "@fastpaca/cria/ai-sdk";
+ * import { Provider } from "@fastpaca/cria/ai-sdk";
+ * import { judge } from "@fastpaca/cria/eval";
  * import { openai } from "@ai-sdk/openai";
  *
- * const prompt = cria
+ * // Define evaluation criteria as Cria prompts
+ * const Helpful = () => cria
  *   .prompt()
- *   .system("You are a helpful customer support agent.")
- *   .user("{{question}}");
+ *   .system("Evaluate helpfulness. Return JSON: { score: 0-1, reasoning: string }.");
  *
- * const result = await evaluate(prompt, {
+ * // Create a configured judge
+ * const check = judge({
  *   target: new Provider(openai("gpt-4o")),
- *   evaluator: new Evaluator(openai("gpt-4o-mini")),
- *   input: { question: "How do I update my payment method?" },
- *   criteria: ["helpful", "accurate", "professional"],
+ *   evaluator: new Provider(openai("gpt-4o-mini")),
  * });
  *
- * console.log(result.score);     // 0.92
- * console.log(result.passed);    // true
- * console.log(result.reasoning); // "Response directly addresses..."
- * ```
+ * // Build prompts with composition, not templates
+ * const support = (question: string) => cria
+ *   .prompt()
+ *   .system("You are a helpful customer support agent.")
+ *   .user(question);
  *
- * Security note: evaluation prompts interpolate input values and model responses
- * directly. Use in controlled testing environments and treat untrusted input as
- * potentially prompt-injectable.
+ * // Assert in tests
+ * await check(support("How do I update my payment method?")).toPass(Helpful());
+ * ```
  *
  * @packageDocumentation
  */
 
-export type {
-  EvaluatorOutput,
-  EvaluatorProvider,
-  EvaluatorRequest,
-} from "../types";
-// biome-ignore lint/performance/noBarrelFile: Intentional re-export for package entrypoint.
-export { EvaluatorOutputSchema } from "../types";
-export * from "./core";
+import { cria as baseCria } from "../dsl";
+import { judge } from "./judge";
 
-// Re-export the Vitest matchers for convenience
-// Users can import: import { criaMatchers, evaluate } from "@fastpaca/cria/eval";
-export { criaMatchers } from "./vitest-matchers";
+export type {
+  EvalResult,
+  JudgeConfig,
+  Judgment,
+  PromptInput,
+  WeightedCriterion,
+} from "./judge";
+// biome-ignore lint/performance/noBarrelFile: Intentional package entrypoint
+export { DEFAULT_THRESHOLD, judge } from "./judge";
+
+export const cria = { ...baseCria, judge } as const;

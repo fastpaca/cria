@@ -125,24 +125,23 @@ const { text } = await generateText({ model, messages });
 
 ## Evaluation (LLM-as-a-judge)
 
-Use the `@fastpaca/cria/eval` entrypoint for evaluation utilities and Vitest matchers.
+Use the `@fastpaca/cria/eval` entrypoint for judge-style evaluation helpers.
 
 ```ts
-import { evaluate } from "@fastpaca/cria/eval";
+import { cria } from "@fastpaca/cria";
+import { Provider } from "@fastpaca/cria/ai-sdk";
+import { judge } from "@fastpaca/cria/eval";
+import { openai } from "@ai-sdk/openai";
 
-const result = await evaluate(prompt, {
-  target,
-  evaluator,
-  input,
-  criteria: ["helpful", "accurate"],
+const Helpful = () =>
+  cria.prompt().system("Evaluate helpfulness. Return JSON: { score, reasoning }.");
+
+const run = judge({
+  target: new Provider(openai("gpt-4o")),
+  evaluator: new Provider(openai("gpt-4o-mini")),
 });
-```
 
-```ts
-import { expect } from "vitest";
-import { criaMatchers } from "@fastpaca/cria/eval";
-
-expect.extend(criaMatchers);
+await run(prompt).toPass(Helpful());
 ```
 
 ## Roadmap

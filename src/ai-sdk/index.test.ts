@@ -1,23 +1,9 @@
 import type { UIMessage } from "ai";
-import { generateText } from "ai";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { render } from "../render";
-import { Evaluator, Messages, renderer } from "./index";
-
-vi.mock("ai", async () => {
-  const actual = await vi.importActual<typeof import("ai")>("ai");
-  return {
-    ...actual,
-    generateText: vi.fn(),
-  };
-});
+import { Messages, renderer } from "./index";
 
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
-const mockedGenerateText = vi.mocked(generateText);
-
-afterEach(() => {
-  mockedGenerateText.mockReset();
-});
 
 test("Messages: renders text + dynamic-tool output as tool-call/tool-result", async () => {
   const messages: readonly UIMessage[] = [
@@ -146,43 +132,4 @@ test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result s
       ],
     },
   ]);
-});
-
-describe("Evaluator", () => {
-  test("uses default name and tokenizer fallback", () => {
-    const evaluator = new Evaluator("mock-model");
-
-    expect(evaluator.name).toBe("ai-sdk-evaluator");
-    expect(typeof evaluator.tokenizer).toBe("function");
-  });
-
-  test("uses custom name and tokenizer", () => {
-    const customTokenizer = (text: string): number => text.length;
-    const evaluator = new Evaluator("mock-model", {
-      name: "custom",
-      tokenizer: customTokenizer,
-    });
-
-    expect(evaluator.name).toBe("custom");
-    expect(evaluator.tokenizer).toBe(customTokenizer);
-  });
-
-  test("evaluate returns structured output", async () => {
-    const output = { score: 0.72, reasoning: "Solid" };
-    mockedGenerateText.mockResolvedValue({ output });
-
-    const evaluator = new Evaluator("mock-model");
-    const result = await evaluator.evaluate({
-      messages: [{ role: "user", content: "Judge this" }],
-      input: {},
-      response: "ok",
-    });
-
-    expect(result).toEqual(output);
-    expect(mockedGenerateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messages: [{ role: "user", content: "Judge this" }],
-      })
-    );
-  });
 });
