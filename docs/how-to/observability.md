@@ -1,6 +1,6 @@
 # Observability (debugging compaction)
 
-When you’re fitting prompts to budgets, you want to see what changed and why. Cria provides render hooks, validation schemas, snapshots, and OpenTelemetry helpers.
+When you're fitting prompts to budgets, you want to see what changed and why. Cria provides render hooks and OpenTelemetry helpers.
 
 ## Render hooks
 
@@ -16,18 +16,6 @@ const hooks: RenderHooks = {
 };
 
 await cria.prompt().user(userQuestion).render({ budget: 8000, tokenizer, hooks });
-```
-
-## Snapshots
-
-Snapshots let you diff fitted prompts (useful for regression tests and debugging).
-
-```ts
-import { createSnapshot, diffSnapshots } from "@fastpaca/cria";
-
-const before = createSnapshot(beforeElement, { tokenizer });
-const after = createSnapshot(afterElement, { tokenizer });
-const diff = diffSnapshots(before, after);
 ```
 
 ## OpenTelemetry

@@ -69,15 +69,6 @@ export type {
 } from "./render";
 export { render } from "./render";
 export { markdownRenderer } from "./renderers/markdown";
-export {
-  createSnapshot,
-  createSnapshotHooks,
-  diffSnapshots,
-  type Snapshot,
-  type SnapshotChild,
-  type SnapshotDiff,
-  type SnapshotElement,
-} from "./snapshot";
 export type {
   CriaContext,
   JsonValue,
