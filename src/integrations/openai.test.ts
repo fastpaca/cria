@@ -7,9 +7,33 @@ import {
   ToolResult,
 } from "../components";
 import { render } from "../render";
-import { chatCompletions, responses } from "./openai";
+import { ModelProvider, type PromptRenderer } from "../types";
+import { OpenAIChatRenderer, OpenAIResponsesRenderer } from "./openai";
 
-const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+class RenderOnlyProvider<T> extends ModelProvider<T> {
+  readonly renderer: PromptRenderer<T>;
+
+  constructor(renderer: PromptRenderer<T>) {
+    super();
+    this.renderer = renderer;
+  }
+
+  countTokens(): number {
+    return 0;
+  }
+
+  completion(): string {
+    return "";
+  }
+
+  object(): never {
+    throw new Error("Not implemented");
+  }
+}
+
+const chatProvider = new RenderOnlyProvider(new OpenAIChatRenderer());
+
+const responsesProvider = new RenderOnlyProvider(new OpenAIResponsesRenderer());
 
 test("chatCompletions: renders system message", async () => {
   const prompt = Region({
@@ -23,9 +47,7 @@ test("chatCompletions: renders system message", async () => {
   });
 
   const messages = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: chatCompletions,
+    provider: chatProvider,
   });
 
   expect(messages).toHaveLength(1);
@@ -48,9 +70,7 @@ test("chatCompletions: renders user and assistant messages", async () => {
   });
 
   const messages = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: chatCompletions,
+    provider: chatProvider,
   });
 
   expect(messages).toHaveLength(2);
@@ -81,9 +101,7 @@ test("chatCompletions: renders tool calls on assistant message", async () => {
   });
 
   const messages = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: chatCompletions,
+    provider: chatProvider,
   });
 
   expect(messages).toHaveLength(1);
@@ -128,9 +146,7 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
   });
 
   const messages = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: chatCompletions,
+    provider: chatProvider,
   });
 
   expect(messages).toHaveLength(2);
@@ -191,9 +207,7 @@ test("chatCompletions: full conversation flow", async () => {
   });
 
   const messages = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: chatCompletions,
+    provider: chatProvider,
   });
 
   expect(messages).toEqual([
@@ -243,9 +257,7 @@ test("responses: renders messages as EasyInputMessage", async () => {
   });
 
   const input = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: responses,
+    provider: responsesProvider,
   });
 
   expect(input).toEqual([
@@ -273,9 +285,7 @@ test("responses: renders tool calls as function_call items", async () => {
   });
 
   const input = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: responses,
+    provider: responsesProvider,
   });
 
   expect(input).toEqual([
@@ -292,19 +302,22 @@ test("responses: renders tool results as function_call_output items", async () =
   const prompt = Region({
     priority: 0,
     children: [
-      ToolResult({
-        output: { temperature: 20 },
-        priority: 1,
-        toolCallId: "call_123",
-        toolName: "getWeather",
+      Message({
+        messageRole: "assistant",
+        children: [
+          ToolResult({
+            output: { temperature: 20 },
+            priority: 1,
+            toolCallId: "call_123",
+            toolName: "getWeather",
+          }),
+        ],
       }),
     ],
   });
 
   const input = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: responses,
+    provider: responsesProvider,
   });
 
   expect(input).toEqual([
@@ -320,23 +333,26 @@ test("responses: renders reasoning as native reasoning item", async () => {
   const prompt = Region({
     priority: 0,
     children: [
-      Reasoning({
-        id: "r1",
-        priority: 1,
-        text: "Let me think about this...",
+      Message({
+        messageRole: "assistant",
+        children: [
+          Reasoning({
+            id: "r1",
+            priority: 1,
+            text: "Let me think about this...",
+          }),
+        ],
       }),
     ],
   });
 
   const input = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: responses,
+    provider: responsesProvider,
   });
 
   expect(input).toEqual([
     {
-      id: "r1",
+      id: "reasoning_0",
       type: "reasoning",
       summary: [{ type: "summary_text", text: "Let me think about this..." }],
     },
@@ -366,15 +382,13 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
   });
 
   const input = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: responses,
+    provider: responsesProvider,
   });
 
   expect(input).toEqual([
     { role: "assistant", content: "Before" },
     {
-      id: "assistant-1-reasoning-0",
+      id: "reasoning_0",
       type: "reasoning",
       summary: [{ type: "summary_text", text: "thinking..." }],
     },
@@ -397,26 +411,29 @@ test("responses: full conversation with reasoning", async () => {
         children: ["You are a helpful assistant."],
       }),
       Message({ messageRole: "user", children: ["What is 2+2?"] }),
-      Reasoning({
-        id: "r-global",
-        priority: 1,
-        text: "This is basic arithmetic.",
+      Message({
+        messageRole: "assistant",
+        children: [
+          Reasoning({
+            id: "r-global",
+            priority: 1,
+            text: "This is basic arithmetic.",
+          }),
+        ],
       }),
       Message({ messageRole: "assistant", children: ["The answer is 4."] }),
     ],
   });
 
   const input = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer: responses,
+    provider: responsesProvider,
   });
 
   expect(input).toEqual([
     { role: "system", content: "You are a helpful assistant." },
     { role: "user", content: "What is 2+2?" },
     {
-      id: "r-global",
+      id: "reasoning_0",
       type: "reasoning",
       summary: [{ type: "summary_text", text: "This is basic arithmetic." }],
     },

@@ -20,7 +20,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 
 ## Semantic nodes (provider mapping)
 
-These exist so renderers can emit provider-native formats and so you can compact “traces” intentionally.
+These exist so providers can emit provider-native formats and so you can compact “traces” intentionally.
 
 - `ToolCall`: represents a tool call message.
 - `ToolResult`: represents tool output.
@@ -36,4 +36,3 @@ These exist so renderers can emit provider-native formats and so you can compact
 
 - [Quickstart](quickstart.md)
 - [Fit & compaction](how-to/fit-and-compaction.md)
-

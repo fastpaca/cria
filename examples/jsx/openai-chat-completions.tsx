@@ -6,11 +6,11 @@
  */
 
 import { cria, Message, ToolCall, ToolResult } from "@fastpaca/cria";
-import { chatCompletions } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
-// Your tokenizer (use tiktoken in production for accurate counts)
-const tokenizer = (text: string) => Math.ceil(text.length / 4);
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const provider = createProvider(client, "gpt-5");
 
 // Build your prompt with the DSL; use a raw assistant message to include tool calls/results
 const assistantWithTools = Message({
@@ -41,17 +41,18 @@ const prompt = cria
 async function main() {
   // Render to OpenAI Chat Completions format
   const messages = await prompt.render({
-    tokenizer,
+    provider,
     budget: 128_000,
-    renderer: chatCompletions,
   });
 
   console.log("=== Rendered Messages ===");
   console.log(JSON.stringify(messages, null, 2));
+  console.log(
+    `=== Token count: ${provider.countTokens(messages)} / 128000 ===`
+  );
 
   // Use with OpenAI SDK
-  const openai = new OpenAI();
-  const response = await openai.chat.completions.create({
+  const response = await client.chat.completions.create({
     model: "gpt-5",
     messages,
   });

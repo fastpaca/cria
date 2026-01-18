@@ -29,7 +29,7 @@ export const systemMessage = (text: string): PromptElement => ({
 });
 ```
 
-## Notes for chat renderers
+## Notes for chat providers
 
-- Chat renderers only output `Message` nodes. If you want content to appear in OpenAI/Anthropic chat payloads, keep it inside a message.
+- Chat providers only output `Message` nodes. If you want content to appear in OpenAI/Anthropic chat payloads, keep it inside a message.
 - Avoid nesting `Message` inside `Message` (keep messages as leaf nodes).

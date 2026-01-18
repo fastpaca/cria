@@ -1,11 +1,9 @@
 import { cria, type Prompt } from "@fastpaca/cria";
-import { responses } from "@fastpaca/cria/openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
-import { encoding_for_model } from "tiktoken";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const enc = encoding_for_model("gpt-4o-mini");
-const tokenizer = (text: string): number => enc.encode(text).length;
+const provider = createResponsesProvider(client, "gpt-4o-mini");
 
 const systemRules = (): Prompt =>
   cria
@@ -21,13 +19,15 @@ const prompt = cria.merge(
 
 async function main(): Promise<void> {
   const inputItems = await prompt.render({
-    tokenizer,
+    provider,
     budget: 2000,
-    renderer: responses,
   });
 
   console.log("=== Response Input Items ===");
   console.log(JSON.stringify(inputItems, null, 2));
+  console.log(
+    `=== Token count: ${provider.countTokens(inputItems)} / 2000 ===`
+  );
 
   const response = await client.responses.create({
     model: "gpt-4o-mini",

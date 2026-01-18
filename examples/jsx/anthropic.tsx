@@ -8,10 +8,10 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { cria, Message, ToolCall, ToolResult } from "@fastpaca/cria";
-import { anthropic } from "@fastpaca/cria/anthropic";
+import { createProvider } from "@fastpaca/cria/anthropic";
 
-// Your tokenizer (use a proper tokenizer in production)
-const tokenizer = (text: string) => Math.ceil(text.length / 4);
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const provider = createProvider(client, "claude-sonnet-4-20250514");
 
 // Build your prompt with the DSL
 const assistantToolCall = Message({
@@ -52,9 +52,8 @@ async function main() {
   // Render to Anthropic format
   // Note: system message is extracted separately
   const { system, messages } = await prompt.render({
-    tokenizer,
+    provider,
     budget: 200_000,
-    renderer: anthropic,
   });
 
   console.log("=== System ===");
@@ -62,9 +61,11 @@ async function main() {
 
   console.log("\n=== Messages ===");
   console.log(JSON.stringify(messages, null, 2));
+  console.log(
+    `=== Token count: ${provider.countTokens({ system, messages })} / 200000 ===`
+  );
 
   // Use with Anthropic SDK
-  const client = new Anthropic();
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 1024,

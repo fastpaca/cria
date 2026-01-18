@@ -14,16 +14,12 @@
 
 import { cria } from "@fastpaca/cria";
 import { ChromaStore } from "@fastpaca/cria/memory/chroma";
-import { chatCompletions } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import { ChromaClient } from "chromadb";
 import OpenAI from "openai";
-import { get_encoding } from "tiktoken";
 
-const openai = new OpenAI();
-
-// Initialize tiktoken with cl100k_base encoding (used by GPT-4 class models)
-const encoding = get_encoding("cl100k_base");
-const tokenizer = (text: string) => encoding.encode(text).length;
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const provider = createProvider(openai, "gpt-4o-mini");
 
 // ============================================================================
 // Step 1: Connect to ChromaDB and create a collection
@@ -124,13 +120,17 @@ const prompt = cria
     ].join(" "),
     { priority: 0 }
   )
-  .vectorSearch({
-    limit: 3,
-    store: knowledgeBase,
-    query: userQuestion,
-    priority: 0,
-  })
-  .user(userQuestion, { priority: 0 });
+  .user((m) =>
+    m
+      .vectorSearch({
+        limit: 3,
+        store: knowledgeBase,
+        query: userQuestion,
+        priority: 0,
+      })
+      .append("\n\n")
+      .append(userQuestion)
+  );
 
 // ============================================================================
 // Step 5: Render and use with OpenAI
@@ -140,13 +140,13 @@ console.log("🔍 User Question:", userQuestion);
 console.log("\n⏳ Searching knowledge base and rendering prompt...\n");
 
 const messages = await prompt.render({
-  tokenizer,
+  provider,
   budget: 128_000,
-  renderer: chatCompletions,
 });
 
 console.log("=== Rendered Messages ===");
 console.log(JSON.stringify(messages, null, 2));
+console.log(`=== Token count: ${provider.countTokens(messages)} / 128000 ===`);
 
 // Make the actual API call
 console.log("\n🤖 Calling OpenAI...\n");

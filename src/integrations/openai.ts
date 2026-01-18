@@ -1,3 +1,4 @@
+import { getEncoding } from "js-tiktoken";
 import type OpenAI from "openai";
 import type {
   ChatCompletionAssistantMessageParam,
@@ -7,82 +8,74 @@ import type {
   ChatCompletionToolMessageParam,
   ChatCompletionUserMessageParam,
 } from "openai/resources/chat/completions";
-import type {
-  ResponseFunctionToolCall,
-  ResponseInputItem,
-  ResponseReasoningItem,
-} from "openai/resources/responses/responses";
+import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { z } from "zod";
-import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
-  collectMessageNodes,
-  collectSemanticParts,
   partsToText,
-  type SemanticPart,
   safeStringify,
-  type ToolResultPart,
 } from "../renderers/shared";
-import type {
-  ModelProvider,
-  PromptElement,
-  PromptRenderer,
-  Tokenizer,
-} from "../types";
+import type { PromptLayout, PromptPart, ToolResultPart } from "../types";
+import { ModelProvider, PromptRenderer } from "../types";
 
-/**
- * Renderer that outputs ChatCompletionMessageParam[] for the OpenAI Chat Completions API.
- * Pass this to render() to get messages compatible with client.chat.completions.create().
- *
- * @example
- * ```ts
- * import { render } from "@fastpaca/cria";
- * import { chatCompletions } from "@fastpaca/cria/openai";
- *
- * const messages = await render(prompt, { tokenizer, budget, renderer: chatCompletions });
- * const response = await openai.chat.completions.create({ model: "gpt-4", messages });
- * ```
- */
-export const chatCompletions: PromptRenderer<ChatCompletionMessageParam[]> = {
-  name: "openai-chat-completions",
-  tokenString: markdownRenderer.tokenString,
-  render: (element) => renderToChatCompletions(element),
-  empty: () => [],
-};
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
 
-function renderToChatCompletions(
-  root: PromptElement
-): ChatCompletionMessageParam[] {
-  const messageNodes = collectMessageNodes(root);
-  const result: ChatCompletionMessageParam[] = [];
+export class OpenAIChatRenderer extends PromptRenderer<
+  ChatCompletionMessageParam[]
+> {
+  render(layout: PromptLayout): ChatCompletionMessageParam[] {
+    const messages: ChatCompletionMessageParam[] = [];
 
-  for (const messageNode of messageNodes) {
-    result.push(...messageNodeToParams(messageNode));
+    for (const message of layout.messages) {
+      const nextMessages = partsToChatMessages(message.role, message.parts);
+      messages.push(...nextMessages);
+    }
+
+    return messages;
   }
-
-  return result;
 }
 
-function messageNodeToParams(
-  messageNode: Extract<PromptElement, { kind: "message" }>
+export class OpenAIResponsesRenderer extends PromptRenderer<
+  ResponseInputItem[]
+> {
+  render(layout: PromptLayout): ResponseInputItem[] {
+    const items: ResponseInputItem[] = [];
+    let reasoningIndex = 0;
+
+    for (const message of layout.messages) {
+      const nextItems = partsToResponseItems(
+        mapRoleForResponses(message.role),
+        message.parts,
+        () => reasoningIndex++
+      );
+      items.push(...nextItems);
+    }
+
+    return items;
+  }
+}
+
+function partsToChatMessages(
+  role: string,
+  parts: readonly PromptPart[]
 ): ChatCompletionMessageParam[] {
-  const parts = coalesceTextParts(collectSemanticParts(messageNode.children));
+  const coalesced = coalesceTextParts(parts);
 
-  if (messageNode.role === "system") {
-    return [toSystemMessage(parts)];
+  if (role === "system") {
+    return [toSystemMessage(coalesced)];
   }
 
-  if (messageNode.role === "user") {
-    return [toUserMessage(parts)];
+  if (role === "user") {
+    return [toUserMessage(coalesced)];
   }
 
-  // Assistant message: may contain tool calls, and tool results become separate messages
-  // Preserve original part ordering - only separate out tool results
-  const assistantParts = parts.filter(
-    (p): p is Exclude<SemanticPart, { type: "tool-result" }> =>
+  // OpenAI tool results must be separate role="tool" messages, not assistant parts.
+  const assistantParts = coalesced.filter(
+    (p): p is Exclude<PromptPart, { type: "tool-result" }> =>
       p.type !== "tool-result"
   );
-  const toolResultParts = parts.filter(
+  const toolResultParts = coalesced.filter(
     (p): p is ToolResultPart => p.type === "tool-result"
   );
   const result: ChatCompletionMessageParam[] = [];
@@ -99,7 +92,7 @@ function messageNodeToParams(
 }
 
 function toSystemMessage(
-  parts: readonly SemanticPart[]
+  parts: readonly PromptPart[]
 ): ChatCompletionSystemMessageParam {
   return {
     role: "system",
@@ -108,7 +101,7 @@ function toSystemMessage(
 }
 
 function toUserMessage(
-  parts: readonly SemanticPart[]
+  parts: readonly PromptPart[]
 ): ChatCompletionUserMessageParam {
   return {
     role: "user",
@@ -117,7 +110,7 @@ function toUserMessage(
 }
 
 function toAssistantMessage(
-  parts: readonly Exclude<SemanticPart, { type: "tool-result" }>[]
+  parts: readonly Exclude<PromptPart, { type: "tool-result" }>[]
 ): ChatCompletionAssistantMessageParam {
   const textContent = partsToText(parts, { wrapReasoning: true });
   const toolCalls: ChatCompletionMessageToolCall[] = parts
@@ -157,152 +150,6 @@ function toToolMessage(part: ToolResultPart): ChatCompletionToolMessageParam {
   };
 }
 
-/**
- * Renderer that outputs ResponseInputItem[] for the OpenAI Responses API.
- * Use this with reasoning models that support native reasoning.
- *
- * @example
- * ```ts
- * import { render } from "@fastpaca/cria";
- * import { responses } from "@fastpaca/cria/openai";
- *
- * const input = await render(prompt, { tokenizer, budget, renderer: responses });
- * const response = await openai.responses.create({ model: "o3", input });
- * ```
- */
-export const responses: PromptRenderer<ResponseInputItem[]> = {
-  name: "openai-responses",
-  tokenString: markdownRenderer.tokenString,
-  render: (element) => renderToResponses(element),
-  empty: () => [],
-};
-
-function renderToResponses(root: PromptElement): ResponseInputItem[] {
-  const result: ResponseInputItem[] = [];
-  collectResponseItems(root, result);
-  return result;
-}
-
-type MessageElement = Extract<PromptElement, { kind: "message" }>;
-
-/**
- * Convert a message element's parts into ResponseInputItems.
- * Handles text, reasoning, tool calls, and tool results.
- */
-function collectMessageResponseItems(
-  element: MessageElement,
-  acc: ResponseInputItem[]
-): void {
-  const parts = coalesceTextParts(collectSemanticParts(element.children));
-  const role = mapRoleForResponses(element.role);
-  let textBuffer = "";
-  let reasoningIndex = 0;
-
-  const flushTextBuffer = () => {
-    if (textBuffer.length > 0) {
-      acc.push({ role, content: textBuffer });
-      textBuffer = "";
-    }
-  };
-
-  for (const part of parts) {
-    switch (part.type) {
-      case "text":
-        textBuffer += part.text;
-        break;
-      case "reasoning": {
-        flushTextBuffer();
-        acc.push({
-          id: element.id
-            ? `${element.id}-reasoning-${reasoningIndex}`
-            : `reasoning_${reasoningIndex}`,
-          type: "reasoning",
-          summary: [{ type: "summary_text", text: part.text }],
-        });
-        reasoningIndex += 1;
-        break;
-      }
-      case "tool-call":
-        flushTextBuffer();
-        acc.push({
-          type: "function_call",
-          call_id: part.toolCallId,
-          name: part.toolName,
-          arguments: safeStringify(part.input),
-        });
-        break;
-      case "tool-result":
-        flushTextBuffer();
-        acc.push({
-          type: "function_call_output",
-          call_id: part.toolCallId,
-          output: safeStringify(part.output),
-        });
-        break;
-      default:
-        // Exhaustive check - all SemanticPart types handled above
-        break;
-    }
-  }
-
-  flushTextBuffer();
-}
-
-function collectResponseItems(
-  element: PromptElement,
-  acc: ResponseInputItem[]
-): void {
-  switch (element.kind) {
-    case "message": {
-      collectMessageResponseItems(element, acc);
-      break;
-    }
-
-    case "reasoning": {
-      // Native reasoning support in Responses API
-      if (element.text.length > 0) {
-        const reasoningItem: ResponseReasoningItem = {
-          id: element.id ?? `rs_${Date.now()}`,
-          type: "reasoning",
-          summary: [{ type: "summary_text", text: element.text }],
-        };
-        acc.push(reasoningItem);
-      }
-      break;
-    }
-
-    case "tool-call": {
-      const toolCall: ResponseFunctionToolCall = {
-        type: "function_call",
-        call_id: element.toolCallId,
-        name: element.toolName,
-        arguments: safeStringify(element.input),
-      };
-      acc.push(toolCall);
-      break;
-    }
-
-    case "tool-result": {
-      const toolResult: ResponseInputItem.FunctionCallOutput = {
-        type: "function_call_output",
-        call_id: element.toolCallId,
-        output: safeStringify(element.output),
-      };
-      acc.push(toolResult);
-      break;
-    }
-
-    default: {
-      // Recurse into children for regions without semantic kind
-      for (const child of element.children) {
-        if (typeof child !== "string") {
-          collectResponseItems(child, acc);
-        }
-      }
-    }
-  }
-}
-
 type ResponseRole = "user" | "assistant" | "system" | "developer";
 
 const RESPONSE_ROLE_MAP: Record<string, ResponseRole> = {
@@ -313,6 +160,180 @@ const RESPONSE_ROLE_MAP: Record<string, ResponseRole> = {
 
 function mapRoleForResponses(role: string): ResponseRole {
   return RESPONSE_ROLE_MAP[role] ?? "assistant";
+}
+
+function partsToResponseItems(
+  role: ResponseRole,
+  parts: readonly PromptPart[],
+  nextReasoningIndex: () => number
+): ResponseInputItem[] {
+  const items: ResponseInputItem[] = [];
+  const coalesced = coalesceTextParts(parts);
+  let textBuffer = "";
+
+  const flushTextBuffer = () => {
+    if (textBuffer.length > 0) {
+      items.push({ role, content: textBuffer });
+      textBuffer = "";
+    }
+  };
+
+  for (const part of coalesced) {
+    switch (part.type) {
+      case "text":
+        textBuffer += part.text;
+        break;
+      case "reasoning":
+        flushTextBuffer();
+        items.push({
+          id: `reasoning_${nextReasoningIndex()}`,
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: part.text }],
+        });
+        break;
+      case "tool-call":
+        flushTextBuffer();
+        items.push({
+          type: "function_call",
+          call_id: part.toolCallId,
+          name: part.toolName,
+          arguments: safeStringify(part.input),
+        });
+        break;
+      case "tool-result":
+        flushTextBuffer();
+        items.push({
+          type: "function_call_output",
+          call_id: part.toolCallId,
+          output: safeStringify(part.output),
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  flushTextBuffer();
+  return items;
+}
+
+function countChatMessageTokens(message: ChatCompletionMessageParam): number {
+  let tokens = 0;
+
+  if ("content" in message && typeof message.content === "string") {
+    tokens += countText(message.content);
+  }
+
+  if ("tool_calls" in message && message.tool_calls) {
+    for (const call of message.tool_calls) {
+      tokens += countText(call.function.name + call.function.arguments);
+    }
+  }
+
+  return tokens;
+}
+
+function countResponseItemTokens(item: ResponseInputItem): number {
+  if ("role" in item && typeof item.content === "string") {
+    return countText(item.content);
+  }
+
+  if (item.type === "reasoning") {
+    return item.summary.reduce((sum, entry) => sum + countText(entry.text), 0);
+  }
+
+  if (item.type === "function_call") {
+    return countText(item.name + item.arguments);
+  }
+
+  if (item.type === "function_call_output") {
+    return countText(item.output);
+  }
+
+  return 0;
+}
+
+export class OpenAIChatProvider extends ModelProvider<
+  ChatCompletionMessageParam[]
+> {
+  readonly renderer = new OpenAIChatRenderer();
+  private readonly client: OpenAI;
+  private readonly model: string;
+
+  constructor(client: OpenAI, model: string) {
+    super();
+    this.client = client;
+    this.model = model;
+  }
+
+  countTokens(messages: ChatCompletionMessageParam[]): number {
+    let tokens = 0;
+    for (const message of messages) {
+      tokens += countChatMessageTokens(message);
+    }
+    return tokens;
+  }
+
+  async completion(messages: ChatCompletionMessageParam[]): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages,
+    });
+    return response.choices[0]?.message?.content ?? "";
+  }
+
+  async object<T>(
+    messages: ChatCompletionMessageParam[],
+    schema: z.ZodType<T>
+  ): Promise<T> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages,
+      response_format: {
+        type: "json_object",
+      },
+    });
+    const text = response.choices[0]?.message?.content ?? "";
+    return schema.parse(JSON.parse(text));
+  }
+}
+
+export class OpenAIResponsesProvider extends ModelProvider<
+  ResponseInputItem[]
+> {
+  readonly renderer = new OpenAIResponsesRenderer();
+  private readonly client: OpenAI;
+  private readonly model: string;
+
+  constructor(client: OpenAI, model: string) {
+    super();
+    this.client = client;
+    this.model = model;
+  }
+
+  countTokens(items: ResponseInputItem[]): number {
+    let tokens = 0;
+    for (const item of items) {
+      tokens += countResponseItemTokens(item);
+    }
+    return tokens;
+  }
+
+  async completion(items: ResponseInputItem[]): Promise<string> {
+    const response = await this.client.responses.create({
+      model: this.model,
+      input: items,
+    });
+    return response.output_text ?? "";
+  }
+
+  async object<T>(
+    items: ResponseInputItem[],
+    schema: z.ZodType<T>
+  ): Promise<T> {
+    const text = await this.completion(items);
+    return schema.parse(JSON.parse(text));
+  }
 }
 
 /**
@@ -329,35 +350,17 @@ function mapRoleForResponses(role: string): ResponseRole {
  */
 export function createProvider(
   client: OpenAI,
-  model: string,
-  options: { tokenizer?: Tokenizer } = {}
-): ModelProvider<ChatCompletionMessageParam[]> {
-  return {
-    name: "openai",
-    ...(options.tokenizer ? { tokenizer: options.tokenizer } : {}),
-    renderer: chatCompletions,
+  model: string
+): OpenAIChatProvider {
+  return new OpenAIChatProvider(client, model);
+}
 
-    async completion(messages) {
-      const response = await client.chat.completions.create({
-        model,
-        messages,
-      });
-      return response.choices[0]?.message?.content ?? "";
-    },
-
-    async object<T>(
-      messages: ChatCompletionMessageParam[],
-      schema: z.ZodType<T>
-    ) {
-      const response = await client.chat.completions.create({
-        model,
-        messages,
-        response_format: {
-          type: "json_object",
-        },
-      });
-      const text = response.choices[0]?.message?.content ?? "";
-      return schema.parse(JSON.parse(text));
-    },
-  };
+/**
+ * Create a ModelProvider for the OpenAI Responses API.
+ */
+export function createResponsesProvider(
+  client: OpenAI,
+  model: string
+): OpenAIResponsesProvider {
+  return new OpenAIResponsesProvider(client, model);
 }

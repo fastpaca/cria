@@ -39,12 +39,6 @@ const prompt = cria
   .user(userQuestion);
 ```
 
-While iterating, you can always render to markdown:
-
-```ts
-const markdown = await prompt.render();
-```
-
 ## Run it in your current system (AI SDK example)
 
 This is a complete runnable setup using the Vercel AI SDK + OpenAI. It renders your Cria prompt into `ModelMessage[]`, then calls the model.
@@ -61,17 +55,19 @@ Create `main.ts`:
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { cria } from "@fastpaca/cria";
-import { renderer } from "@fastpaca/cria/ai-sdk";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
 
 const userQuestion = "Give me 3 crisp bullet points on compounding learning.";
+const model = openai("gpt-4o-mini");
+const provider = createProvider(model);
 
 const prompt = cria
   .prompt()
   .system("You are a helpful assistant.")
   .user(userQuestion);
 
-const messages = await prompt.render({ renderer });
-const { text } = await generateText({ model: openai("gpt-4o-mini"), messages });
+const messages = await prompt.render({ provider, budget: 8000 });
+const { text } = await generateText({ model, messages });
 
 console.log(text);
 ```

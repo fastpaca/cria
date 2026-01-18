@@ -5,9 +5,8 @@ import type {
   VectorSearchOptions,
   VectorSearchResult,
 } from "@fastpaca/cria/memory";
-import { chatCompletions } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
-import { encoding_for_model } from "tiktoken";
 
 // Minimal in-memory vector store for demo purposes
 class DemoVectorStore implements VectorMemory<string> {
@@ -81,8 +80,7 @@ class DemoVectorStore implements VectorMemory<string> {
 }
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const enc = encoding_for_model("gpt-4o-mini");
-const tokenizer = (text: string): number => enc.encode(text).length;
+const provider = createProvider(client, "gpt-4o-mini");
 
 const store = new DemoVectorStore([
   {
@@ -105,13 +103,15 @@ const systemRules = (): Prompt =>
     .system("You answer questions using the provided context. Be concise.");
 
 const retrieval = (query: string): Prompt =>
-  cria.prompt().vectorSearch({
-    store,
-    query,
-    limit: 3,
-    priority: 2,
-    id: "vector-results",
-  });
+  cria.prompt().user((m) =>
+    m.vectorSearch({
+      store,
+      query,
+      limit: 3,
+      priority: 2,
+      id: "vector-results",
+    })
+  );
 
 const userRequest = (question: string): Prompt => cria.prompt().user(question);
 
@@ -123,13 +123,13 @@ const prompt = cria.merge(
 
 async function main(): Promise<void> {
   const messages = await prompt.render({
-    tokenizer,
+    provider,
     budget: 2000,
-    renderer: chatCompletions,
   });
 
   console.log("=== Messages ===");
   console.log(JSON.stringify(messages, null, 2));
+  console.log(`=== Token count: ${provider.countTokens(messages)} / 2000 ===`);
 
   const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",

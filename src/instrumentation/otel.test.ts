@@ -1,6 +1,7 @@
 import type { Attributes, Span, Tracer } from "@opentelemetry/api";
 import { describe, expect, test } from "vitest";
-import { Omit, Region, render } from "../index";
+import { Message, Omit, render } from "../index";
+import { createTestProvider } from "../testing/plaintext";
 import { createOtelRenderHooks } from "./otel";
 
 class StubSpan implements Span {
@@ -73,19 +74,20 @@ class StubTracer implements Tracer {
   }
 }
 
-const tokenizer = (text: string): number => text.length;
+const provider = createTestProvider();
+const tokensFor = (text: string): number => provider.countTokens(text);
 const FIT_ERROR = /Cannot fit prompt/;
 
 describe("createOtelRenderHooks", () => {
   test("emits spans for fit lifecycle", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Region({
-      priority: 0,
+    const element = Message({
+      messageRole: "user",
       children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
     });
 
-    await render(element, { tokenizer, budget: 1, hooks });
+    await render(element, { provider, budget: tokensFor("A"), hooks });
 
     const names = tracer.spans.map((span) => span.name);
     expect(names).toEqual([
@@ -103,12 +105,12 @@ describe("createOtelRenderHooks", () => {
   test("records errors on fit failure", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Region({ priority: 0, children: ["Too long"] });
+    const element = Message({ messageRole: "user", children: ["Too long"] });
 
     await expect(
       render(element, {
-        tokenizer,
-        budget: 1,
+        provider,
+        budget: Math.max(0, tokensFor("Too long") - 1),
         hooks,
       })
     ).rejects.toThrow(FIT_ERROR);
@@ -126,12 +128,12 @@ describe("createOtelRenderHooks", () => {
     } as unknown as Tracer;
 
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Region({ priority: 0, children: ["Hello"] });
+    const element = Message({ messageRole: "user", children: ["Hello"] });
 
     await expect(
       render(element, {
-        tokenizer,
-        budget: 1,
+        provider,
+        budget: Math.max(0, tokensFor("Hello") - 1),
         hooks,
       })
     ).rejects.toThrow("boom");

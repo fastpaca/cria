@@ -10,7 +10,7 @@
  *   .system("You are a helpful assistant.")
  *   .truncate(conversationHistory, { budget: 20000, from: "start", priority: 2 })
  *   .omit(optionalContext, { priority: 3 })
- *   .render({ tokenizer, budget: 128000 });
+ *   .render({ budget: 128000, provider });
  * ```
  *
  * @packageDocumentation
@@ -68,30 +68,31 @@ export type {
   StrategyAppliedEvent,
 } from "./render";
 export { render } from "./render";
-export { markdownRenderer } from "./renderers/markdown";
 export type {
   CriaContext,
-  JsonValue,
   MaybePromise,
-  ModelProvider,
   PromptChild,
   PromptChildren,
   PromptElement,
   PromptKind,
+  PromptLayout,
+  PromptMessage,
   PromptNodeKind,
-  PromptRenderer,
+  PromptPart,
   PromptRole,
   Strategy,
   StrategyInput,
   StrategyResult,
-  Tokenizer,
+  ToolCallPart,
+  ToolResultPart,
 } from "./types";
 export {
   FitError,
-  JsonValueSchema,
+  ModelProvider,
   PromptChildrenSchema,
   PromptChildSchema,
   PromptElementSchema,
   PromptKindSchema,
+  PromptRenderer,
   PromptRoleSchema,
 } from "./types";

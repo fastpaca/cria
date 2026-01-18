@@ -2,28 +2,30 @@ import { expect, test } from "vitest";
 import {
   InMemoryStore,
   Last,
-  Region,
+  Message,
   render,
   type StoredSummary,
+  type SummarizerContext,
   Summary,
 } from "../index";
+import { createTestProvider } from "../testing/plaintext";
 
-// Simple tokenizer: 1 token per 4 characters
-const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+const provider = createTestProvider();
+const tokensFor = (text: string): number => provider.countTokens(text);
 
 test("Summary: triggers summarization when over budget", async () => {
   const store = new InMemoryStore<StoredSummary>();
   let summarizeCalled = false;
 
-  const summarize = ({ content }: { content: string }) => {
+  const summarize = () => {
     summarizeCalled = true;
-    return `Summary of: ${content.slice(0, 20)}...`;
+    return "Summary result";
   };
 
   const longContent = "A".repeat(200);
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "assistant",
     children: [
       Summary({
         id: "test-1",
@@ -35,14 +37,13 @@ test("Summary: triggers summarization when over budget", async () => {
     ],
   });
 
-  // Render with small budget to trigger summarization
-  // Budget needs to fit the summary output + "[Summary of earlier conversation]\n" prefix
-  const result = await render(element, { tokenizer, budget: 30 });
+  const result = await render(element, {
+    provider,
+    budget: tokensFor("[Summary of earlier conversation]\nSummary result"),
+  });
 
   expect(summarizeCalled).toBe(true);
-  expect(result).toBe(
-    "Assistant: [Summary of earlier conversation]\nSummary of: AAAAAAAAAAAAAAAAAAAA...\n\n"
-  );
+  expect(result).toBe("[Summary of earlier conversation]\nSummary result");
 });
 
 test("Summary: stores summary in store", async () => {
@@ -50,8 +51,8 @@ test("Summary: stores summary in store", async () => {
 
   const summarize = () => "This is the summary";
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "assistant",
     children: [
       Summary({
         id: "test-2",
@@ -63,42 +64,35 @@ test("Summary: stores summary in store", async () => {
     ],
   });
 
-  const output = await render(element, { tokenizer, budget: 20 });
+  const output = await render(element, {
+    provider,
+    budget: tokensFor("[Summary of earlier conversation]\nThis is the summary"),
+  });
 
-  expect(output).toBe(
-    "Assistant: [Summary of earlier conversation]\nThis is the summary\n\n"
-  );
+  expect(output).toBe("[Summary of earlier conversation]\nThis is the summary");
 
   const entry = store.get("test-2");
   expect(entry).not.toBeNull();
   expect(entry?.data.content).toBe("This is the summary");
-  expect(entry?.data.tokenCount).toBe(5);
   expect(entry?.updatedAt).toBeGreaterThan(0);
 });
 
 test("Summary: passes existing summary to summarizer", async () => {
   const store = new InMemoryStore<StoredSummary>();
 
-  // Pre-populate store
   store.set("test-3", {
     content: "Previous summary",
-    tokenCount: 10,
   });
 
   let receivedExisting: string | null = null;
 
-  const summarize = ({
-    existingSummary,
-  }: {
-    content: string;
-    existingSummary: string | null;
-  }) => {
+  const summarize = ({ existingSummary }: SummarizerContext) => {
     receivedExisting = existingSummary;
     return "Updated summary";
   };
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "assistant",
     children: [
       Summary({
         id: "test-3",
@@ -110,12 +104,13 @@ test("Summary: passes existing summary to summarizer", async () => {
     ],
   });
 
-  const output = await render(element, { tokenizer, budget: 20 });
+  const output = await render(element, {
+    provider,
+    budget: tokensFor("[Summary of earlier conversation]\nUpdated summary"),
+  });
 
   expect(receivedExisting).toBe("Previous summary");
-  expect(output).toBe(
-    "Assistant: [Summary of earlier conversation]\nUpdated summary\n\n"
-  );
+  expect(output).toBe("[Summary of earlier conversation]\nUpdated summary");
 });
 
 test("Summary: does not trigger when under budget", async () => {
@@ -127,8 +122,8 @@ test("Summary: does not trigger when under budget", async () => {
     return "Summary";
   };
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "assistant",
     children: [
       Summary({
         id: "test-4",
@@ -140,8 +135,10 @@ test("Summary: does not trigger when under budget", async () => {
     ],
   });
 
-  // Large budget - no need to summarize
-  const output = await render(element, { tokenizer, budget: 1000 });
+  const output = await render(element, {
+    provider,
+    budget: tokensFor("Short"),
+  });
 
   expect(summarizeCalled).toBe(false);
   expect(output).toBe("Short");
@@ -150,12 +147,15 @@ test("Summary: does not trigger when under budget", async () => {
 test("Last: keeps only last N children", async () => {
   const messages = ["First", "Second", "Third", "Fourth", "Fifth"];
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "user",
     children: [Last({ N: 2, children: messages })],
   });
 
-  const result = await render(element, { tokenizer, budget: 1000 });
+  const result = await render(element, {
+    provider,
+    budget: tokensFor("FourthFifth"),
+  });
 
   expect(result).toBe("FourthFifth");
 });
@@ -163,12 +163,15 @@ test("Last: keeps only last N children", async () => {
 test("Last: handles N larger than children count", async () => {
   const messages = ["One", "Two"];
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "user",
     children: [Last({ N: 10, children: messages })],
   });
 
-  const result = await render(element, { tokenizer, budget: 1000 });
+  const result = await render(element, {
+    provider,
+    budget: tokensFor("OneTwo"),
+  });
 
   expect(result).toBe("OneTwo");
 });
@@ -176,10 +179,8 @@ test("Last: handles N larger than children count", async () => {
 test("Summary + Last: typical usage pattern", async () => {
   const store = new InMemoryStore<StoredSummary>();
 
-  // Summarizer produces a short fixed-length output
   const summarize = () => "Discussed greetings";
 
-  // Use longer messages so the summary provides real compression
   const messages = [
     "Message 1: Hello there, how are you doing today?",
     "Message 2: I am doing great, thanks for asking!",
@@ -188,8 +189,8 @@ test("Summary + Last: typical usage pattern", async () => {
     "Message 5: Final message",
   ];
 
-  const element = Region({
-    priority: 0,
+  const element = Message({
+    messageRole: "assistant",
     children: [
       Summary({
         id: "conv",
@@ -202,11 +203,14 @@ test("Summary + Last: typical usage pattern", async () => {
     ],
   });
 
-  // Full content: ~180 chars = 45 tokens
-  // Summarized: prefix (34) + summary (19) + last 2 msgs (~50) = ~103 chars = 26 tokens
-  const result = await render(element, { tokenizer, budget: 30 });
+  const result = await render(element, {
+    provider,
+    budget: tokensFor(
+      "[Summary of earlier conversation]\nDiscussed greetingsMessage 4: Recent message hereMessage 5: Final message"
+    ),
+  });
 
   expect(result).toBe(
-    "Assistant: [Summary of earlier conversation]\nDiscussed greetings\n\nMessage 4: Recent message hereMessage 5: Final message"
+    "[Summary of earlier conversation]\nDiscussed greetingsMessage 4: Recent message hereMessage 5: Final message"
   );
 });

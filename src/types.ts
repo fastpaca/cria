@@ -21,24 +21,15 @@ export type PromptRole = z.infer<typeof PromptRoleSchema>;
  * rendered message type (e.g., AI SDK's ModelMessage[], OpenAI's
  * ChatCompletionMessageParam[]).
  */
-export interface ModelProvider<TRendered> {
-  /** Provider identifier for debugging */
-  name: string;
-
-  /**
-   * Tokenizer for this provider's model.
-   *
-   * Used for budget fitting when the caller doesn't pass a tokenizer directly.
-   * Providers should supply an estimate that matches the chosen model; callers
-   * can still override via render options.
-   */
-  tokenizer?: Tokenizer;
-
+export abstract class ModelProvider<TRendered> {
   /** Renderer that produces provider-specific prompt input. */
-  renderer: PromptRenderer<TRendered>;
+  abstract readonly renderer: PromptRenderer<TRendered>;
+
+  /** Count tokens for rendered output (tiktoken-backed). */
+  abstract countTokens(rendered: TRendered): number;
 
   /** Generate a text completion from rendered prompt input. */
-  completion(rendered: TRendered): MaybePromise<string>;
+  abstract completion(rendered: TRendered): MaybePromise<string>;
 
   /**
    * Generate a structured object validated against the schema.
@@ -47,7 +38,10 @@ export interface ModelProvider<TRendered> {
    * (e.g., AI SDK's generateObject, OpenAI's json_schema response_format),
    * falling back to completion + JSON.parse + schema.parse internally.
    */
-  object<T>(rendered: TRendered, schema: z.ZodType<T>): MaybePromise<T>;
+  abstract object<T>(
+    rendered: TRendered,
+    schema: z.ZodType<T>
+  ): MaybePromise<T>;
 }
 
 /**
@@ -63,20 +57,6 @@ export interface CriaContext {
 
 // Convenience type for functions that can return a promise or a value.
 export type MaybePromise<T> = T | Promise<T>;
-
-/**
- * A function that counts tokens in a string.
- * Cria doesn't bundle a tokenizer. You provide one.
- *
- * @example
- * ```typescript
- * import { encoding_for_model } from "tiktoken";
- *
- * const enc = encoding_for_model("gpt-4");
- * const tokenizer: Tokenizer = (text) => enc.encode(text).length;
- * ```
- */
-export type Tokenizer = (text: string) => number;
 
 /**
  * Semantic variants for a region node.
@@ -223,70 +203,40 @@ export const PromptChildrenSchema: z.ZodType<PromptChildren> = z.array(
 ) as z.ZodType<PromptChildren>;
 
 /**
- * A renderer that converts a fitted prompt tree into an output format.
- *
- * Renderers are used for two things:
- * - **Token accounting / fitting** via `tokenString` (a stable string projection)
- * - **Final output** via `render` (can be async, and can produce any type)
- *
- * @template TOutput - The produced output type (e.g. `string`, `ModelMessage[]`, etc.).
+ * Design: PromptTree (parts + children) -> PromptLayout (parts only, message-bounded)
+ * -> RenderOut. Layout does not introduce new semantic IR; it reuses PromptPart
+ * and only reshapes hierarchy so renderers stay pure and predictable.
  */
-export interface PromptRenderer<TOutput> {
-  /** A short identifier for debugging/observability. */
-  name: string;
+export type PromptPart =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+  | {
+      type: "tool-result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+    };
 
-  /**
-   * A deterministic string projection of the prompt tree used for token counting.
-   *
-   * Important properties:
-   * - **Pure / deterministic**: same tree => same string
-   * - **Cheap**: called frequently during fitting
-   * - **Representative**: should correlate with what `render()` produces (especially for string targets)
-   *
-   * For structured targets (e.g. AI SDK messages), this can be a markdown-ish projection
-   * that approximates the effective prompt content for token budgeting.
-   */
-  tokenString: (element: PromptElement) => string;
+export type ToolCallPart = Extract<PromptPart, { type: "tool-call" }>;
+export type ToolResultPart = Extract<PromptPart, { type: "tool-result" }>;
 
-  /**
-   * Render the fitted prompt tree to the target output.
-   *
-   * May be async (e.g. when a renderer needs to fetch/resolve attachments, or when
-   * strategies summarized content during fitting).
-   */
-  render: (element: PromptElement) => MaybePromise<TOutput>;
+export interface PromptMessage {
+  role: PromptRole;
+  parts: PromptPart[];
+}
 
-  /**
-   * The “empty” value for this renderer.
-   *
-   * Used when the budget is <= 0, or when strategies remove the entire tree.
-   */
-  empty: () => TOutput;
+export interface PromptLayout {
+  messages: PromptMessage[];
 }
 
 /**
- * Canonical normalized child node type stored in the IR.
- *
- * This is the only type you’ll find inside `PromptElement.children` after child normalization.
+ * A renderer that converts a flat prompt layout into provider-specific output.
  */
-export type JsonValue =
-  | null
-  | string
-  | number
-  | boolean
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.null(),
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.array(JsonValueSchema),
-    z.record(JsonValueSchema),
-  ])
-);
+export abstract class PromptRenderer<TOutput> {
+  /** Render a layout into provider-specific output. */
+  abstract render(layout: PromptLayout): TOutput;
+}
 
 export type StrategyResult = PromptElement | null;
 
@@ -294,18 +244,12 @@ export type StrategyResult = PromptElement | null;
  * Context passed to strategy functions during the fit loop.
  *
  * @property target - The specific region to reduce
- * @property budget - The total token budget we're trying to fit within
- * @property tokenizer - Function to count tokens in a string
- * @property tokenString - Renderer-provided projection used for token counting
  * @property totalTokens - Current total token count for the prompt
  * @property iteration - Which iteration of the fit loop (for debugging)
  * @property context - Inherited context from ancestor provider components
  */
 export interface StrategyInput {
   target: PromptElement;
-  budget: number;
-  tokenizer: Tokenizer;
-  tokenString: (element: PromptElement) => string;
   totalTokens: number;
   iteration: number;
   /** Context inherited from ancestor provider components */

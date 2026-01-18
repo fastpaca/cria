@@ -1,17 +1,9 @@
 import { openai } from "@ai-sdk/openai";
-import {
-  cria,
-  InMemoryStore,
-  type Prompt,
-  type StoredSummary,
-} from "@fastpaca/cria";
-import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
+import { cria, InMemoryStore, Last, type StoredSummary } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
-import { encoding_for_model } from "tiktoken";
 
-// Create a tokenizer using tiktoken (GPT-4 encoding)
-const enc = encoding_for_model("gpt-4");
-const tokenizer = (text: string): number => enc.encode(text).length;
+const provider = createProvider(openai("gpt-4o-mini"));
 
 // Create a persistent store for summaries
 const store = new InMemoryStore<StoredSummary>();
@@ -47,28 +39,8 @@ const conversationHistory = [
   { role: "user", content: "Now tell me about Berlin." },
 ];
 
-const provider = new Provider(openai("gpt-4o-mini"));
-
-const historyBuilder: Prompt = conversationHistory.slice(0, -4).reduce(
-  (acc, msg, i) =>
-    acc.merge(
-      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
-        priority: 2,
-        id: `history-${i}`,
-      })
-    ),
-  cria.prompt()
-);
-
-const recentBuilder: Prompt = conversationHistory.reduce(
-  (acc, msg, i) =>
-    acc.merge(
-      cria.prompt().message(msg.role as "user" | "assistant", msg.content, {
-        priority: 1,
-        id: `recent-${i}`,
-      })
-    ),
-  cria.prompt()
+const historyLines = conversationHistory.map(
+  (msg) => `${msg.role.toUpperCase()}: ${msg.content}\n`
 );
 
 // Build the prompt with Summary for older messages and Last for recent ones
@@ -78,22 +50,22 @@ const prompt = cria.prompt().provider(provider, (p) =>
       "You are a helpful AI assistant. You have access to a summary of earlier conversation and the recent messages.",
       { priority: 0 }
     )
-    // Older messages get summarized when over budget - no summarize prop needed!
-    .summary(historyBuilder, {
-      id: "conversation-summary",
-      store,
-      priority: 2,
-    })
-    // Recent messages kept in full
-    .last(recentBuilder, { N: 4, priority: 1 })
+    .user((m) =>
+      m
+        .summary(historyLines.slice(0, -4), {
+          id: "conversation-summary",
+          store,
+          priority: 2,
+        })
+        .raw(Last({ N: 4, children: historyLines }))
+    )
 );
 
 // Render with a tight budget to trigger summarization
-const budget = 240; // Budget that triggers summarization (full content ~243 tokens)
+const budget = 240;
 const messages = await prompt.render({
-  tokenizer,
+  provider,
   budget,
-  renderer,
 });
 
 console.log("=== Rendered Messages ===");
@@ -104,7 +76,6 @@ const storedEntry = store.get("conversation-summary");
 if (storedEntry) {
   console.log("\n=== Stored Summary ===");
   console.log(storedEntry.data.content);
-  console.log(`Token count: ${storedEntry.data.tokenCount}`);
 }
 
 async function main() {

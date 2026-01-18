@@ -1,56 +1,43 @@
 import type { LanguageModel, ModelMessage, ToolResultPart } from "ai";
 import { generateObject, generateText } from "ai";
+import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
-  collectMessageNodes,
-  collectSemanticParts,
-  type MessageElement,
   partsToText,
-  type SemanticPart,
+  safeStringify,
 } from "../renderers/shared";
-import type {
-  ModelProvider,
-  PromptElement,
-  PromptRenderer,
-  Tokenizer,
-} from "../types";
+import type { PromptLayout, PromptPart } from "../types";
+import { ModelProvider, PromptRenderer } from "../types";
 
-/**
- * Renderer that outputs ModelMessage[] for use with the Vercel AI SDK.
- * Pass this to render() to get messages compatible with generateText/streamText.
- */
-export const renderer: PromptRenderer<ModelMessage[]> = {
-  name: "ai-sdk",
-  tokenString: markdownRenderer.tokenString,
-  render: (element) => renderToModelMessages(element),
-  empty: () => [],
-};
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
 
-function renderToModelMessages(root: PromptElement): ModelMessage[] {
-  const messageNodes = collectMessageNodes(root);
-  const result: ModelMessage[] = [];
+export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
+  render(layout: PromptLayout): ModelMessage[] {
+    const messages: ModelMessage[] = [];
 
-  for (const messageNode of messageNodes) {
-    result.push(...messageNodeToModelMessages(messageNode));
+    for (const message of layout.messages) {
+      const nextMessages = partsToModelMessages(message.role, message.parts);
+      messages.push(...nextMessages);
+    }
+
+    return messages;
   }
-
-  return result;
 }
 
-type ToolResultSemanticPart = Extract<SemanticPart, { type: "tool-result" }>;
-type NonToolSemanticPart = Exclude<SemanticPart, { type: "tool-result" }>;
+type ToolResultPromptPart = Extract<PromptPart, { type: "tool-result" }>;
+type NonToolPromptPart = Exclude<PromptPart, { type: "tool-result" }>;
 
-type SemanticPartGroup =
-  | { kind: "non-tool"; parts: NonToolSemanticPart[] }
-  | { kind: "tool-result"; parts: ToolResultSemanticPart[] };
+type PartGroup =
+  | { kind: "non-tool"; parts: NonToolPromptPart[] }
+  | { kind: "tool-result"; parts: ToolResultPromptPart[] };
 
-function messageNodeToModelMessages(
-  messageNode: MessageElement
+function partsToModelMessages(
+  role: string,
+  parts: readonly PromptPart[]
 ): ModelMessage[] {
-  const parts = coalesceTextParts(collectSemanticParts(messageNode.children));
-  const groups = groupSemanticParts(parts);
+  const groups = groupParts(coalesceTextParts(parts));
 
   const result: ModelMessage[] = [];
   for (const group of groups) {
@@ -58,20 +45,19 @@ function messageNodeToModelMessages(
       result.push(toToolModelMessage(group.parts));
       continue;
     }
-    result.push(toModelMessage(messageNode.role, group.parts));
+    result.push(toModelMessage(role, group.parts));
   }
 
   return result;
 }
 
-function groupSemanticParts(
-  parts: readonly SemanticPart[]
-): SemanticPartGroup[] {
-  const groups: SemanticPartGroup[] = [];
+function groupParts(parts: readonly PromptPart[]): PartGroup[] {
+  const groups: PartGroup[] = [];
 
   for (const part of parts) {
     const lastGroup = groups.at(-1);
 
+    // AI SDK tool results must be emitted as separate role="tool" messages.
     if (part.type === "tool-result") {
       if (lastGroup?.kind === "tool-result") {
         lastGroup.parts.push(part);
@@ -93,7 +79,7 @@ function groupSemanticParts(
 
 function toModelMessage(
   role: string,
-  parts: readonly NonToolSemanticPart[]
+  parts: readonly NonToolPromptPart[]
 ): ModelMessage {
   if (role === "system") {
     return { role: "system", content: partsToText(parts) };
@@ -130,7 +116,7 @@ function toModelMessage(
 }
 
 function toToolModelMessage(
-  parts: readonly ToolResultSemanticPart[]
+  parts: readonly ToolResultPromptPart[]
 ): ModelMessage {
   const content: ToolResultPart[] = [];
   for (const part of parts) {
@@ -144,6 +130,27 @@ function toToolModelMessage(
   return { role: "tool", content };
 }
 
+function countModelMessageTokens(message: ModelMessage): number {
+  if (typeof message.content === "string") {
+    return countText(message.content);
+  }
+
+  let tokens = 0;
+  for (const part of message.content) {
+    if (part.type === "text") {
+      tokens += countText(part.text);
+    } else if (part.type === "reasoning") {
+      tokens += countText(part.text);
+    } else if (part.type === "tool-call") {
+      tokens += countText(part.toolName + safeStringify(part.input));
+    } else if (part.type === "tool-result") {
+      tokens += countText(safeStringify(part.output));
+    }
+  }
+
+  return tokens;
+}
+
 function coerceToolResultOutput(output: unknown): ToolResultPart["output"] {
   if (typeof output === "string") {
     return { type: "text", value: output };
@@ -153,7 +160,7 @@ function coerceToolResultOutput(output: unknown): ToolResultPart["output"] {
     return output;
   }
 
-  return { type: "json", value: safeJsonValue(output) };
+  return { type: "text", value: safeStringify(output) };
 }
 
 interface ToolResultOutputLike {
@@ -189,67 +196,41 @@ function isToolResultOutput(value: unknown): value is ToolResultPart["output"] {
   }
 }
 
-type JsonValue =
-  | null
-  | string
-  | number
-  | boolean
-  | { [key: string]: JsonValue }
-  | JsonValue[];
+export class AiSdkProvider extends ModelProvider<ModelMessage[]> {
+  readonly renderer = new AiSdkRenderer();
+  private readonly model: LanguageModel;
 
-function safeJsonValue(value: unknown): JsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
+  constructor(model: LanguageModel) {
+    super();
+    this.model = model;
   }
 
-  if (Array.isArray(value)) {
-    return value.map(safeJsonValue);
-  }
-
-  if (typeof value === "object") {
-    const result: Record<string, JsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      result[key] = safeJsonValue(entry);
+  countTokens(messages: ModelMessage[]): number {
+    let tokens = 0;
+    for (const message of messages) {
+      tokens += countModelMessageTokens(message);
     }
-    return result;
+    return tokens;
   }
 
-  return String(value);
+  async completion(messages: ModelMessage[]): Promise<string> {
+    const result = await generateText({
+      model: this.model,
+      messages,
+    });
+    return result.text;
+  }
+
+  async object<T>(messages: ModelMessage[], schema: z.ZodType<T>): Promise<T> {
+    const result = await generateObject({
+      model: this.model,
+      schema,
+      messages,
+    });
+    return result.object;
+  }
 }
 
-/**
- * Create a ModelProvider for the Vercel AI SDK.
- *
- * @example
- * ```typescript
- * import { createProvider } from "@fastpaca/cria/ai-sdk";
- * import { openai } from "@ai-sdk/openai";
- *
- * const provider = createProvider(openai("gpt-4o"));
- * ```
- */
-export function createProvider(
-  model: LanguageModel,
-  options: { tokenizer?: Tokenizer } = {}
-): ModelProvider<ModelMessage[]> {
-  return {
-    name: "ai-sdk",
-    ...(options.tokenizer ? { tokenizer: options.tokenizer } : {}),
-    renderer,
-
-    async completion(messages) {
-      const { text } = await generateText({ model, messages });
-      return text;
-    },
-
-    async object<T>(messages: ModelMessage[], schema: z.ZodType<T>) {
-      const { object } = await generateObject({ model, messages, schema });
-      return object;
-    },
-  };
+export function createProvider(model: LanguageModel): AiSdkProvider {
+  return new AiSdkProvider(model);
 }

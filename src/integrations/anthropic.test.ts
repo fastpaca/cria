@@ -7,9 +7,31 @@ import {
   ToolResult,
 } from "../components";
 import { render } from "../render";
-import { renderer } from "./anthropic";
+import { ModelProvider, type PromptRenderer } from "../types";
+import { AnthropicRenderer } from "./anthropic";
 
-const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+class RenderOnlyProvider<T> extends ModelProvider<T> {
+  readonly renderer: PromptRenderer<T>;
+
+  constructor(renderer: PromptRenderer<T>) {
+    super();
+    this.renderer = renderer;
+  }
+
+  countTokens(): number {
+    return 0;
+  }
+
+  completion(): string {
+    return "";
+  }
+
+  object(): never {
+    throw new Error("Not implemented");
+  }
+}
+
+const provider = new RenderOnlyProvider(new AnthropicRenderer());
 
 test("anthropic: extracts system message separately", async () => {
   const prompt = Region({
@@ -23,11 +45,7 @@ test("anthropic: extracts system message separately", async () => {
     ],
   });
 
-  const result = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const result = await render(prompt, { provider });
 
   expect(result).toEqual({
     system: "You are a helpful assistant.",
@@ -44,11 +62,7 @@ test("anthropic: renders user and assistant messages", async () => {
     ],
   });
 
-  const result = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const result = await render(prompt, { provider });
 
   expect(result).toEqual({
     messages: [
@@ -76,11 +90,7 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
     ],
   });
 
-  const result = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const result = await render(prompt, { provider });
 
   expect(result).toEqual({
     messages: [
@@ -123,11 +133,7 @@ test("anthropic: renders tool results in user messages", async () => {
     ],
   });
 
-  const result = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const result = await render(prompt, { provider });
 
   expect(result).toEqual({
     messages: [
@@ -198,11 +204,7 @@ test("anthropic: full conversation with tool use", async () => {
     ],
   });
 
-  const result = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const result = await render(prompt, { provider });
 
   expect(result).toEqual({
     system: "You are a weather assistant.",
@@ -260,11 +262,7 @@ test("anthropic: includes reasoning as text with thinking tags", async () => {
     ],
   });
 
-  const result = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const result = await render(prompt, { provider });
 
   expect(result).toEqual({
     messages: [

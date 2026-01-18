@@ -1,10 +1,11 @@
-import { cria } from "../dsl";
 import type { KVMemory } from "../memory";
+import { render } from "../render";
 import type {
   MaybePromise,
   ModelProvider,
   PromptChildren,
   PromptElement,
+  PromptRole,
   Strategy,
   StrategyInput,
 } from "../types";
@@ -15,18 +16,18 @@ import type {
 export interface StoredSummary {
   /** The summary text content */
   content: string;
-  /** Token count of the summary */
-  tokenCount: number;
 }
 
 /**
  * Context passed to the summarizer function.
  */
 export interface SummarizerContext {
-  /** The content to summarize (as rendered string) */
-  content: string;
+  /** The subtree being summarized */
+  target: PromptElement;
   /** Previous summary to build upon (null if first summary) */
   existingSummary: string | null;
+  /** Provider in scope, if any */
+  provider?: ModelProvider<unknown>;
 }
 
 /**
@@ -42,31 +43,8 @@ async function defaultSummarizer(
   ctx: SummarizerContext,
   provider: ModelProvider<unknown>
 ): Promise<string> {
-  const systemPrompt =
-    "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
-
-  const userPrompt = ctx.existingSummary
-    ? `Here is the existing summary of the conversation so far:
-
-${ctx.existingSummary}
-
-Here is new conversation content to incorporate into the summary:
-
-${ctx.content}
-
-Please provide an updated summary that incorporates both the existing summary and the new content.`
-    : `Please summarize the following conversation:
-
-${ctx.content}`;
-
-  const rendered = await cria
-    .prompt()
-    .system(systemPrompt)
-    .user(userPrompt)
-    .render({
-      renderer: provider.renderer,
-      ...(provider.tokenizer ? { tokenizer: provider.tokenizer } : {}),
-    });
+  const summaryPrompt = buildSummaryPrompt(ctx.target, ctx.existingSummary);
+  const rendered = await render(summaryPrompt, { provider });
 
   return provider.completion(rendered);
 }
@@ -83,14 +61,14 @@ function createSummaryStrategy({
   summarize,
 }: SummaryStrategyOptions): Strategy {
   return async (input: StrategyInput) => {
-    const { target, tokenizer, tokenString, context } = input;
+    const { target, context } = input;
 
-    const content = tokenString(target);
     const existingEntry = await store.get(id);
 
     const summarizerContext: SummarizerContext = {
-      content,
+      target,
       existingSummary: existingEntry?.data.content ?? null,
+      ...(context.provider ? { provider: context.provider } : {}),
     };
 
     let newSummary: string;
@@ -100,21 +78,16 @@ function createSummaryStrategy({
       newSummary = await defaultSummarizer(summarizerContext, context.provider);
     } else {
       throw new Error(
-        `Summary "${id}" requires either a 'summarize' function or a provider scope. Use cria.provider(modelProvider, (p) => p.summary(...)) to supply one.`
+        `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to render() or wrap the summary in cria.provider(modelProvider, (p) => p.summary(...)).`
       );
     }
 
-    const newTokenCount = tokenizer(newSummary);
-
     await store.set(id, {
       content: newSummary,
-      tokenCount: newTokenCount,
     });
 
-    // Return as an assistant message so it renders properly
+    // Summary never creates a message boundary; wrap it in a message if needed.
     return {
-      kind: "message",
-      role: "assistant",
       priority: target.priority,
       children: [`[Summary of earlier conversation]\n${newSummary}`],
     };
@@ -157,8 +130,11 @@ interface SummaryProps {
  * <Summary
  *   id="conv-history"
  *   store={store}
- *   summarize={async ({ content, existingSummary }) => {
- *     return callAI(`Summarize, building on: ${existingSummary}\n\n${content}`);
+ *   summarize={async ({ target, existingSummary }) => {
+ *     const plainText = target.children
+ *       .map((child) => (typeof child === "string" ? child : ""))
+ *       .join("");
+ *     return callAI(`Summarize, building on: ${existingSummary}\n\n${plainText}`);
  *   }}
  *   priority={2}
  * >
@@ -181,7 +157,7 @@ interface SummaryProps {
  *     p.summary(conversationHistory, { id: "conv-history", store, priority: 2 })
  *   );
  *
- * const result = await prompt.render({ tokenizer, budget: 4000 });
+ * const result = await prompt.render({ budget: 4000, provider });
  * ```
  */
 export function Summary({
@@ -196,4 +172,77 @@ export function Summary({
     strategy: createSummaryStrategy({ id, store, summarize }),
     children,
   };
+}
+
+const SUMMARY_SYSTEM_PROMPT =
+  "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
+
+const SUMMARY_REQUEST = "Summarize the conversation above.";
+const SUMMARY_UPDATE_REQUEST =
+  "Update the summary based on the previous summary and the conversation above.";
+
+function buildSummaryPrompt(
+  target: PromptElement,
+  existingSummary: string | null
+): PromptElement {
+  const children: PromptChildren = [
+    createMessage("system", [SUMMARY_SYSTEM_PROMPT]),
+  ];
+
+  if (existingSummary) {
+    children.push(
+      createMessage("assistant", [`Current summary:\n${existingSummary}`])
+    );
+  }
+
+  if (containsMessageNodes(target)) {
+    children.push({
+      priority: 0,
+      children: [...target.children],
+    });
+    children.push(
+      createMessage("user", [
+        existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST,
+      ])
+    );
+  } else {
+    const userChildren: PromptChildren = [
+      "Conversation:\n",
+      ...target.children,
+      "\n\n",
+      existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST,
+    ];
+    children.push(createMessage("user", userChildren));
+  }
+
+  return {
+    priority: 0,
+    children,
+  };
+}
+
+function createMessage(
+  role: PromptRole,
+  children: PromptChildren
+): PromptElement {
+  return {
+    kind: "message",
+    role,
+    priority: 0,
+    children,
+  };
+}
+
+function containsMessageNodes(element: PromptElement): boolean {
+  if (element.kind === "message") {
+    return true;
+  }
+
+  for (const child of element.children) {
+    if (typeof child !== "string" && containsMessageNodes(child)) {
+      return true;
+    }
+  }
+
+  return false;
 }

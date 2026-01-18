@@ -1,19 +1,20 @@
-import { markdownRenderer } from "./renderers/markdown";
 import {
   type CriaContext,
   FitError,
   type MaybePromise,
+  type ModelProvider,
+  type PromptChild,
   type PromptElement,
-  type PromptRenderer,
+  type PromptLayout,
+  type PromptPart,
   type StrategyInput,
-  type Tokenizer,
 } from "./types";
 
-export interface RenderOptions {
-  tokenizer?: Tokenizer;
+export interface RenderOptions<TRendered = unknown> {
   /** Token budget. Omit for unlimited. */
   budget?: number;
-  renderer?: PromptRenderer<unknown>;
+  /** Provider that supplies the renderer. */
+  provider?: ModelProvider<TRendered>;
   hooks?: RenderHooks;
 }
 
@@ -57,61 +58,234 @@ export interface RenderHooks {
   onFitError?: (event: FitErrorEvent) => MaybePromise<void>;
 }
 
-type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
-  renderer: PromptRenderer<infer TOutput>;
-}
-  ? TOutput
-  : string;
-
-export async function render<TOptions extends RenderOptions>(
+export async function render<TRendered>(
   element: MaybePromise<PromptElement>,
-  { tokenizer, budget, renderer, hooks }: TOptions
-): Promise<RenderOutput<TOptions>> {
+  options: RenderOptions<TRendered>
+): Promise<TRendered> {
+  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.renderer -> provider.countTokens.
+  // The fit loop just re-renders and re-counts until we land under budget.
   /*
-   * Builders and the optional JSX runtime both return a PromptElement (or Promise).
-   * render() awaits the root value and does not walk/normalize children here.
-   * Non-Promise thenables are intentionally unsupported.
+   * Rendering is budget-agnostic; fitting owns the budget and simply calls
+   * rendering to get total tokens. Keep that separation explicit here.
    */
   const resolvedElement = element instanceof Promise ? await element : element;
+  const provider = resolveProvider(resolvedElement, options.provider);
 
-  const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<
-    RenderOutput<TOptions>
-  >;
+  // Validate scope early so renderers can stay dumb and stateful.
+  assertValidMessageScope(resolvedElement);
 
-  // Skip fitting if no budget specified (unlimited)
-  if (budget === undefined || budget === null) {
-    return (await resolvedRenderer.render(
-      resolvedElement
-    )) as RenderOutput<TOptions>;
+  if (options.budget === undefined || options.budget === null) {
+    return renderOutput(resolvedElement, provider);
   }
-
-  if (budget <= 0) {
-    return resolvedRenderer.empty();
-  }
-
-  const tokenizerResolution = resolveTokenizer(resolvedElement, tokenizer);
-  if (!tokenizerResolution) {
-    throw new Error(
-      "Token budgeting requires a tokenizer. Provide one to render(), or wrap your prompt in a provider that supplies a tokenizer (e.g. <OpenAIProvider>, <AnthropicProvider>, or <AISDKProvider>). See docs/how-to/fit-and-compaction.md for details."
-    );
-  }
-
-  const tokenizerFn = tokenizerResolution.tokenizer;
 
   const fitted = await fitToBudget(
     resolvedElement,
-    budget,
-    tokenizerFn,
-    resolvedRenderer.tokenString,
-    hooks
+    options.budget,
+    provider,
+    options.hooks,
+    { provider }
   );
+
   if (!fitted) {
-    return resolvedRenderer.empty();
+    return renderOutput({ priority: 0, children: [] }, provider);
   }
 
-  return (await resolvedRenderer.render(fitted)) as RenderOutput<TOptions>;
+  return renderOutput(fitted, provider);
 }
 
+function renderOutput<TRendered>(
+  root: PromptElement,
+  provider: ModelProvider<TRendered>
+): TRendered {
+  // Prompt tree composition is resolved before rendering; renderers only see layout.
+  const layout = layoutPrompt(root);
+  return provider.renderer.render(layout);
+}
+
+function renderAndCount<TRendered>(
+  root: PromptElement,
+  provider: ModelProvider<TRendered>
+): { output: TRendered; tokens: number } {
+  // Tree -> layout -> renderer output, then provider-owned token counting.
+  const layout = layoutPrompt(root);
+  const output = provider.renderer.render(layout);
+  const tokens = provider.countTokens(output);
+  return { output, tokens };
+}
+
+export function assertValidMessageScope(root: PromptElement): void {
+  // Enforce message boundaries early so renderers stay dumb and predictable.
+  visitScope(root, false);
+}
+
+function visitScope(node: PromptChild, inMessage: boolean): void {
+  if (typeof node === "string") {
+    ensureInMessage(inMessage, "Text nodes must be inside a message.");
+    return;
+  }
+
+  if (!node.kind) {
+    visitChildren(node.children, inMessage);
+    return;
+  }
+
+  if (node.kind === "message") {
+    visitMessage(node, inMessage);
+    return;
+  }
+
+  ensureInMessage(inMessage, messageForKind(node.kind));
+  if (node.children.length > 0) {
+    throw new Error("Semantic nodes cannot have children.");
+  }
+}
+
+function visitMessage(
+  node: PromptElement & { kind: "message" },
+  inMessage: boolean
+): void {
+  if (inMessage) {
+    throw new Error("Nested message boundaries are not allowed.");
+  }
+  visitChildren(node.children, true);
+}
+
+function visitChildren(children: PromptChild[], inMessage: boolean): void {
+  for (const child of children) {
+    visitScope(child, inMessage);
+  }
+}
+
+function ensureInMessage(inMessage: boolean, message: string): void {
+  if (!inMessage) {
+    throw new Error(message);
+  }
+}
+
+function messageForKind(kind: PromptElement["kind"]): string {
+  switch (kind) {
+    case "tool-call":
+    case "tool-result":
+      return "Tool call/result nodes must be inside a message.";
+    case "reasoning":
+      return "Reasoning nodes must be inside a message.";
+    default:
+      return "Semantic nodes must be inside a message.";
+  }
+}
+
+function layoutPrompt(root: PromptElement): PromptLayout {
+  // Flatten tree to message-bounded layout; hierarchy becomes message -> parts.
+  // Traversal order is depth-first, left-to-right so layout is deterministic.
+  const messages: PromptLayout["messages"] = [];
+
+  type NonMessageKind = Exclude<PromptElement["kind"], "message" | undefined>;
+
+  const walkChildren = (
+    children: PromptChild[],
+    current: PromptLayout["messages"][number] | null
+  ): void => {
+    for (const child of children) {
+      walk(child, current);
+    }
+  };
+
+  const pushPart = (
+    current: PromptLayout["messages"][number] | null,
+    part: PromptPart
+  ): void => {
+    if (!current) {
+      throw new Error("Semantic nodes must be inside a message.");
+    }
+    current.parts.push(part);
+  };
+
+  const pushTextPart = (
+    current: PromptLayout["messages"][number] | null,
+    text: string
+  ): void => {
+    pushPart(current, { type: "text", text });
+  };
+
+  const handleMessageNode = (
+    node: PromptElement & { kind: "message" },
+    current: PromptLayout["messages"][number] | null
+  ): void => {
+    if (current) {
+      throw new Error("Nested message boundaries are not allowed.");
+    }
+    const message = { role: node.role, parts: [] as PromptPart[] };
+    messages.push(message);
+    walkChildren(node.children, message);
+  };
+
+  const toSemanticPart = (
+    node: PromptElement & { kind: NonMessageKind }
+  ): PromptPart | null => {
+    if (node.children.length > 0) {
+      throw new Error("Semantic nodes cannot have children.");
+    }
+
+    switch (node.kind) {
+      case "tool-call":
+        return {
+          type: "tool-call",
+          toolCallId: node.toolCallId,
+          toolName: node.toolName,
+          input: node.input,
+        };
+      case "tool-result":
+        return {
+          type: "tool-result",
+          toolCallId: node.toolCallId,
+          toolName: node.toolName,
+          output: node.output,
+        };
+      case "reasoning":
+        return node.text.length > 0
+          ? { type: "reasoning", text: node.text }
+          : null;
+      default:
+        throw new Error("Unsupported semantic node.");
+    }
+  };
+
+  const handleSemanticNode = (
+    node: PromptElement & { kind: NonMessageKind },
+    current: PromptLayout["messages"][number] | null
+  ): void => {
+    const part = toSemanticPart(node);
+    if (part) {
+      pushPart(current, part);
+    }
+  };
+
+  const walk = (
+    node: PromptChild,
+    current: PromptLayout["messages"][number] | null
+  ): void => {
+    if (typeof node === "string") {
+      pushTextPart(current, node);
+      return;
+    }
+
+    if (!node.kind) {
+      walkChildren(node.children, current);
+      return;
+    }
+
+    if (node.kind === "message") {
+      handleMessageNode(node, current);
+      return;
+    }
+
+    handleSemanticNode(node, current);
+  };
+
+  walk(root, null);
+
+  return { messages };
+}
 async function safeInvoke<T>(
   handler: ((event: T) => MaybePromise<void>) | undefined,
   event: T
@@ -123,62 +297,67 @@ async function safeInvoke<T>(
   await handler(event);
 }
 
-interface TokenizerResolution {
-  tokenizer: Tokenizer;
-  source: "options" | "provider";
-  providerName?: string | undefined;
-}
-
-function resolveTokenizer(
+function resolveProvider<TRendered>(
   element: PromptElement,
-  override?: Tokenizer
-): TokenizerResolution | null {
+  override?: ModelProvider<TRendered>
+): ModelProvider<TRendered> {
+  const providers = collectProviders(element);
+
   if (override) {
-    return { tokenizer: override, source: "options" };
+    if (providers.length > 0 && !providers.includes(override)) {
+      throw new Error("Render provider does not match provider in the tree.");
+    }
+    return override;
   }
 
-  const providerResolution = findProviderTokenizer(element);
-  if (providerResolution) {
-    return { ...providerResolution, source: "provider" };
+  if (providers.length === 0) {
+    throw new Error("Rendering requires a provider with a renderer.");
   }
 
-  return null;
+  if (providers.length > 1) {
+    throw new Error("Multiple providers found in one prompt tree.");
+  }
+
+  const provider = providers[0];
+  if (!provider) {
+    throw new Error("Rendering requires a provider with a renderer.");
+  }
+
+  return provider as ModelProvider<TRendered>;
 }
 
-function findProviderTokenizer(
-  element: PromptElement
-): Omit<TokenizerResolution, "source"> | null {
-  const providerTokenizer = element.context?.provider?.tokenizer;
-  if (providerTokenizer) {
-    return {
-      tokenizer: providerTokenizer,
-      providerName: element.context?.provider?.name,
-    };
-  }
+function collectProviders(element: PromptElement): ModelProvider<unknown>[] {
+  const found: ModelProvider<unknown>[] = [];
 
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
+  const visit = (node: PromptElement): void => {
+    const provider = node.context?.provider;
+    if (provider && !found.includes(provider)) {
+      found.push(provider);
     }
-    const found = findProviderTokenizer(child);
-    if (found) {
-      return found;
-    }
-  }
 
-  return null;
+    for (const child of node.children) {
+      if (typeof child !== "string") {
+        visit(child);
+      }
+    }
+  };
+
+  visit(element);
+  return found;
 }
 
-async function fitToBudget(
+async function fitToBudget<TRendered>(
   element: PromptElement,
   budget: number,
-  tokenizer: Tokenizer,
-  tokenString: (element: PromptElement) => string,
-  hooks: RenderHooks | undefined
+  provider: ModelProvider<TRendered>,
+  hooks: RenderHooks | undefined,
+  baseContext: CriaContext
 ): Promise<PromptElement | null> {
+  // Fit loop is render-driven: render+count, then apply the lowest-importance
+  // strategy, re-render, and repeat until we fit or cannot reduce further.
   let current: PromptElement | null = element;
   let iteration = 0;
-  let totalTokens = tokenizer(tokenString(element));
+  let totalTokens = renderAndCount(element, provider).tokens;
 
   await safeInvoke(hooks?.onFitStart, {
     element,
@@ -187,7 +366,7 @@ async function fitToBudget(
   });
 
   while (current && totalTokens > budget) {
-    iteration++;
+    iteration += 1;
 
     const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
@@ -214,9 +393,6 @@ async function fitToBudget(
     });
 
     const baseCtx = {
-      budget,
-      tokenizer,
-      tokenString,
       totalTokens,
       iteration,
     };
@@ -225,13 +401,31 @@ async function fitToBudget(
       current,
       lowestImportancePriority,
       baseCtx,
-      {}, // Start with empty context at the root
+      baseContext,
       hooks,
       iteration
     );
+
+    if (!applied.applied) {
+      const error = new FitError({
+        overBudgetBy: totalTokens - budget,
+        priority: lowestImportancePriority,
+        iteration,
+        budget,
+        totalTokens,
+      });
+      await safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: lowestImportancePriority,
+        totalTokens,
+      });
+      throw error;
+    }
+
     current = applied.element;
 
-    const nextTokens = current ? tokenizer(tokenString(current)) : 0;
+    const nextTokens = current ? renderAndCount(current, provider).tokens : 0;
     if (nextTokens >= totalTokens) {
       const error = new FitError({
         overBudgetBy: nextTokens - budget,
@@ -295,8 +489,8 @@ async function applyStrategiesAtPriority(
   hooks: RenderHooks | undefined,
   iteration: number
 ): Promise<{ element: PromptElement | null; applied: boolean }> {
-  // Merge this element's context with inherited context
-  // Element context overrides inherited context
+  // Bottom-up: rewrite children first so nested strategies get first crack.
+  // Element context overrides inherited context.
   const mergedContext: CriaContext = element.context
     ? { ...inheritedContext, ...element.context }
     : inheritedContext;
@@ -310,7 +504,6 @@ async function applyStrategiesAtPriority(
       continue;
     }
 
-    // Pass merged context to children
     const applied = await applyStrategiesAtPriority(
       child,
       priority,

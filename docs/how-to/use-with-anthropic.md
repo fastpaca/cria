@@ -17,15 +17,16 @@ export ANTHROPIC_API_KEY="sk-..."
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
 import { cria } from "@fastpaca/cria";
-import { anthropic } from "@fastpaca/cria/anthropic";
+import { createProvider } from "@fastpaca/cria/anthropic";
 
 const client = new Anthropic();
+const provider = createProvider(client, "claude-sonnet-4-20250514");
 
 const { system, messages } = await cria
   .prompt()
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ renderer: anthropic });
+  .render({ provider, budget: 8000 });
 
 const response = await client.messages.create({
   model: "claude-sonnet-4-20250514",
@@ -46,6 +47,6 @@ See `../../examples/anthropic/README.md` for full setup details.
 
 ## Budgets and compaction
 
-If you pass a `budget` to `render()`, you must also supply token counts (either a `tokenizer` option, or a provider context that supplies one).
+If you pass a `budget` to `render()`, you must supply a provider. The provider owns token counting via tiktoken.
 
 Next: [Fit & compaction](fit-and-compaction.md)

@@ -4,13 +4,19 @@ import { Message, Omit, Region, Truncate } from "./components";
 import { c, cria, PromptBuilder, prompt } from "./dsl";
 import { InMemoryStore } from "./memory";
 import { render } from "./render";
+import { createTestProvider } from "./testing/plaintext";
 import type { PromptElement } from "./types";
 
-const tokenizer = (text: string): number => text.length;
+const provider = createTestProvider({
+  includeRolePrefix: true,
+  joinMessagesWith: "\n\n",
+});
+const tokensFor = (text: string): number => provider.countTokens(text);
+
 const renderBuilder = async (
   builder: PromptBuilder,
   budget = 10_000
-): Promise<string> => render(await builder.build(), { tokenizer, budget });
+): Promise<string> => render(await builder.build(), { provider, budget });
 
 describe("PromptBuilder", () => {
   describe("basic usage", () => {
@@ -26,7 +32,7 @@ describe("PromptBuilder", () => {
 
     test("builds empty region", async () => {
       const element = await cria.prompt().build();
-      const result = await render(element, { tokenizer, budget: 100 });
+      const result = await render(element, { provider, budget: tokensFor("") });
       expect(result).toBe("");
     });
 
@@ -35,9 +41,12 @@ describe("PromptBuilder", () => {
         .prompt()
         .system("Hello")
         .user("World")
-        .render({ tokenizer, budget: 100 });
+        .render({
+          provider,
+          budget: tokensFor("system: Hello\n\nuser: World"),
+        });
 
-      expect(output).toBe("System: Hello\n\nUser: World\n\n");
+      expect(output).toBe("system: Hello\n\nuser: World");
     });
   });
 
@@ -46,26 +55,26 @@ describe("PromptBuilder", () => {
       const result = await renderBuilder(
         cria.prompt().system("You are helpful.")
       );
-      expect(result).toBe("System: You are helpful.\n\n");
+      expect(result).toBe("system: You are helpful.");
     });
 
     test("user() adds a user message", async () => {
       const result = await renderBuilder(cria.prompt().user("Hello!"));
-      expect(result).toBe("User: Hello!\n\n");
+      expect(result).toBe("user: Hello!");
     });
 
     test("assistant() adds an assistant message", async () => {
       const result = await renderBuilder(
         cria.prompt().assistant("Hi there! How can I help?")
       );
-      expect(result).toBe("Assistant: Hi there! How can I help?\n\n");
+      expect(result).toBe("assistant: Hi there! How can I help?");
     });
 
     test("message() adds a custom role message", async () => {
       const result = await renderBuilder(
         cria.prompt().message("tool", "Result: 42")
       );
-      expect(result).toBe("tool: Result: 42\n\n");
+      expect(result).toBe("tool: Result: 42");
     });
 
     test("chained messages render in order", async () => {
@@ -78,7 +87,7 @@ describe("PromptBuilder", () => {
       );
 
       expect(result).toBe(
-        "System: System prompt.\n\nUser: User message.\n\nAssistant: Assistant response.\n\n"
+        "system: System prompt.\n\nuser: User message.\n\nassistant: Assistant response."
       );
     });
 
@@ -89,33 +98,42 @@ describe("PromptBuilder", () => {
           .user((m) => m.append(c`Hello `).scope((s) => s.append("World")))
       );
 
-      expect(result).toBe("User: Hello World\n\n");
+      expect(result).toBe("user: Hello World");
     });
   });
 
   describe("strategies", () => {
     test("truncate() creates truncatable content", async () => {
-      const longContent = "x".repeat(100);
+      const chunk = "x".repeat(50);
       const element = await cria
         .prompt()
-        .truncate(longContent, { budget: 10, priority: 1 })
+        .user((m) =>
+          m.truncate([chunk, chunk, chunk], { budget: 2, priority: 1 })
+        )
         .build();
 
-      const result = await render(element, { tokenizer, budget: 20 });
-      expect(result).toBe("x".repeat(10));
+      const full = `user: ${chunk}${chunk}${chunk}`;
+      const result = await render(element, {
+        provider,
+        budget: Math.max(0, tokensFor(full) - 1),
+      });
+      expect(result).toContain("user:");
+      expect(result.length).toBeLessThan(full.length);
     });
 
     test("omit() creates omittable content", async () => {
       const element = await cria
         .prompt()
-        .system("Required.")
-        .omit("Optional content", { priority: 2 })
+        .system((m) =>
+          m.append("Required.").omit(" Optional content", { priority: 2 })
+        )
         .build();
 
-      // With tight budget, omittable content is removed
-      // Budget needs to account for "System: Required.\n\n" format
-      const result = await render(element, { tokenizer, budget: 30 });
-      expect(result).toBe("System: Required.\n\n");
+      const result = await render(element, {
+        provider,
+        budget: tokensFor("system: Required."),
+      });
+      expect(result).toBe("system: Required.");
     });
   });
 
@@ -124,7 +142,7 @@ describe("PromptBuilder", () => {
       const result = await renderBuilder(
         cria.prompt().scope((s) => s.system("Nested content"))
       );
-      expect(result).toBe("System: Nested content\n\n");
+      expect(result).toBe("system: Nested content");
     });
 
     test("named scope sets id", () => {
@@ -133,7 +151,6 @@ describe("PromptBuilder", () => {
         .scope((s) => s.system("Content"), { id: "my-section" })
         .build();
 
-      // Check that the element has a nested region with the correct id
       return elementPromise.then((element) => {
         expect(element.children).toHaveLength(1);
         const section = element.children[0] as PromptElement;
@@ -152,29 +169,36 @@ describe("PromptBuilder", () => {
           )
       );
 
-      expect(result).toBe("System: Outer\n\nUser: Inner\n\n");
+      expect(result).toBe("system: Outer\n\nuser: Inner");
     });
   });
 
   describe("utilities", () => {
     test("examples() creates example list", async () => {
       const result = await renderBuilder(
-        cria.prompt().examples("Examples:", ["One", "Two", "Three"])
+        cria
+          .prompt()
+          .user((m) => m.examples("Examples:", ["One", "Two", "Three"]))
       );
 
-      expect(result).toBe("Examples:\nOne\n\nTwo\n\nThree");
+      expect(result).toBe("user: Examples:\nOne\n\nTwo\n\nThree");
     });
 
     test("raw() adds arbitrary element", async () => {
       const custom: PromptElement = {
+        kind: "message",
+        role: "user",
         priority: 0,
         children: ["Custom content"],
       };
 
       const element = await cria.prompt().raw(custom).build();
 
-      const result = await render(element, { tokenizer, budget: 100 });
-      expect(result).toBe("Custom content");
+      const result = await render(element, {
+        provider,
+        budget: tokensFor("user: Custom content"),
+      });
+      expect(result).toBe("user: Custom content");
     });
   });
 
@@ -192,11 +216,17 @@ describe("PromptBuilder", () => {
       const b1 = cria.prompt().system("Original");
       const b2 = b1.user("Added");
 
-      const r1 = await render(await b1.build(), { tokenizer, budget: 100 });
-      const r2 = await render(await b2.build(), { tokenizer, budget: 100 });
+      const r1 = await render(await b1.build(), {
+        provider,
+        budget: tokensFor("system: Original"),
+      });
+      const r2 = await render(await b2.build(), {
+        provider,
+        budget: tokensFor("system: Original\n\nuser: Added"),
+      });
 
-      expect(r1).toBe("System: Original\n\n");
-      expect(r2).toBe("System: Original\n\nUser: Added\n\n");
+      expect(r1).toBe("system: Original");
+      expect(r2).toBe("system: Original\n\nuser: Added");
     });
   });
 
@@ -206,9 +236,12 @@ describe("PromptBuilder", () => {
       const b = cria.prompt().user("B");
 
       const merged = a.merge(b);
-      const result = await merged.render({ tokenizer, budget: 100 });
+      const result = await merged.render({
+        provider,
+        budget: tokensFor("system: A\n\nuser: B"),
+      });
 
-      expect(result).toBe("System: A\n\nUser: B\n\n");
+      expect(result).toBe("system: A\n\nuser: B");
     });
   });
 
@@ -217,25 +250,30 @@ describe("PromptBuilder", () => {
       const store = new InMemoryStore<StoredSummary>();
       const summarizer = () => "S";
 
-      const builder = cria.prompt().summary("x".repeat(200), {
-        id: "conv-summary",
-        store,
-        summarize: summarizer,
-        priority: 1,
-      });
-
-      const output = await builder.render({ tokenizer, budget: 60 });
-
-      expect(output).toBe(
-        "Assistant: [Summary of earlier conversation]\nS\n\n"
+      const builder = cria.prompt().user((m) =>
+        m.summary("x".repeat(200), {
+          id: "conv-summary",
+          store,
+          summarize: summarizer,
+          priority: 1,
+        })
       );
+
+      const summaryOutput = "user: [Summary of earlier conversation]\nS";
+      const fullOutput = `user: ${"x".repeat(200)}`;
+      const budget =
+        tokensFor(fullOutput) > tokensFor(summaryOutput)
+          ? tokensFor(summaryOutput)
+          : Math.max(0, tokensFor(fullOutput) - 1);
+
+      const output = await builder.render({ provider, budget });
+
+      expect(output).toBe(summaryOutput);
       const entry = store.get("conv-summary");
       expect(entry?.data.content).toBe("S");
-      expect(entry?.data.tokenCount).toBe(1);
     });
   });
 
-  // JSX compatibility: ensure DSL output matches JSX shape for parity. DSL is primary.
   describe("equivalence with JSX components", () => {
     test("DSL produces same output as JSX for messages", async () => {
       const dslElement = await cria
@@ -244,7 +282,6 @@ describe("PromptBuilder", () => {
         .user("Hello!")
         .build();
 
-      // Equivalent JSX structure
       const jsxElement = Region({
         priority: 0,
         children: [
@@ -253,27 +290,46 @@ describe("PromptBuilder", () => {
         ],
       });
 
-      const dslResult = await render(dslElement, { tokenizer, budget: 100 });
-      const jsxResult = await render(jsxElement, { tokenizer, budget: 100 });
+      const expected = "system: You are helpful.\n\nuser: Hello!";
+      const dslResult = await render(dslElement, {
+        provider,
+        budget: tokensFor(expected),
+      });
+      const jsxResult = await render(jsxElement, {
+        provider,
+        budget: tokensFor(expected),
+      });
 
       expect(dslResult).toBe(jsxResult);
     });
 
     test("DSL produces same output as JSX for truncate", async () => {
-      const content = "x".repeat(50);
-
       const dslElement = await cria
         .prompt()
-        .truncate(content, { budget: 10, priority: 1 })
+        .user((m) => m.truncate(["x", "y", "z"], { budget: 2, priority: 1 }))
         .build();
 
       const jsxElement = Region({
         priority: 0,
-        children: [Truncate({ budget: 10, priority: 1, children: [content] })],
+        children: [
+          Message({
+            messageRole: "user",
+            children: [
+              Truncate({ budget: 2, priority: 1, children: ["x", "y", "z"] }),
+            ],
+          }),
+        ],
       });
 
-      const dslResult = await render(dslElement, { tokenizer, budget: 20 });
-      const jsxResult = await render(jsxElement, { tokenizer, budget: 20 });
+      const expected = "user: xy";
+      const dslResult = await render(dslElement, {
+        provider,
+        budget: tokensFor(expected),
+      });
+      const jsxResult = await render(jsxElement, {
+        provider,
+        budget: tokensFor(expected),
+      });
 
       expect(dslResult).toBe(jsxResult);
     });
@@ -281,21 +337,31 @@ describe("PromptBuilder", () => {
     test("DSL produces same output as JSX for omit", async () => {
       const dslElement = await cria
         .prompt()
-        .system("Required")
-        .omit("Optional", { priority: 2 })
+        .user((m) => m.append("Required").omit(" Optional", { priority: 2 }))
         .build();
 
       const jsxElement = Region({
         priority: 0,
         children: [
-          Message({ messageRole: "system", children: ["Required"] }),
-          Omit({ priority: 2, children: ["Optional"] }),
+          Message({
+            messageRole: "user",
+            children: [
+              "Required",
+              Omit({ priority: 2, children: [" Optional"] }),
+            ],
+          }),
         ],
       });
 
-      // Budget needs to account for "System: Required\n\n" format
-      const dslResult = await render(dslElement, { tokenizer, budget: 30 });
-      const jsxResult = await render(jsxElement, { tokenizer, budget: 30 });
+      const expected = "user: Required";
+      const dslResult = await render(dslElement, {
+        provider,
+        budget: tokensFor(expected),
+      });
+      const jsxResult = await render(jsxElement, {
+        provider,
+        budget: tokensFor(expected),
+      });
 
       expect(dslResult).toBe(jsxResult);
     });
@@ -305,11 +371,14 @@ describe("PromptBuilder", () => {
     test("truncate accepts string content", async () => {
       const element = await cria
         .prompt()
-        .truncate("string content", { budget: 100 })
+        .user((m) => m.truncate("string content", { budget: 100 }))
         .build();
 
-      const result = await render(element, { tokenizer, budget: 200 });
-      expect(result).toBe("string content");
+      const result = await render(element, {
+        provider,
+        budget: tokensFor("user: string content"),
+      });
+      expect(result).toBe("user: string content");
     });
 
     test("truncate accepts PromptElement content", async () => {
@@ -322,8 +391,11 @@ describe("PromptBuilder", () => {
         .truncate(inner, { budget: 100 })
         .build();
 
-      const result = await render(element, { tokenizer, budget: 200 });
-      expect(result).toBe("User: element content\n\n");
+      const result = await render(element, {
+        provider,
+        budget: tokensFor("user: element content"),
+      });
+      expect(result).toBe("user: element content");
     });
 
     test("truncate accepts PromptBuilder content", async () => {
@@ -333,8 +405,11 @@ describe("PromptBuilder", () => {
         .truncate(innerBuilder, { budget: 100 })
         .build();
 
-      const result = await render(element, { tokenizer, budget: 200 });
-      expect(result).toBe("User: builder content\n\n");
+      const result = await render(element, {
+        provider,
+        budget: tokensFor("user: builder content"),
+      });
+      expect(result).toBe("user: builder content");
     });
   });
 
@@ -344,7 +419,10 @@ describe("PromptBuilder", () => {
       .scope((r) => r.user("Scoped content"))
       .build();
 
-    const result = await render(element, { tokenizer, budget: 100 });
-    expect(result).toBe("User: Scoped content\n\n");
+    const result = await render(element, {
+      provider,
+      budget: tokensFor("user: Scoped content"),
+    });
+    expect(result).toBe("user: Scoped content");
   });
 });

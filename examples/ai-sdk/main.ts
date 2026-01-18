@@ -1,12 +1,10 @@
 import { openai } from "@ai-sdk/openai";
 import { cria, type Prompt } from "@fastpaca/cria";
-import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
 import { generateText } from "ai";
-import { encoding_for_model } from "tiktoken";
 
-// Create a tokenizer using tiktoken (GPT-4 encoding)
-const enc = encoding_for_model("gpt-4");
-const tokenizer = (text: string): number => enc.encode(text).length;
+const model = openai("gpt-4o-mini");
+const provider = createProvider(model);
 
 // Example data
 const systemPrompt = "You are a helpful AI assistant. Be concise and direct.";
@@ -81,52 +79,23 @@ const prompt = cria.merge(
   userRequest(userQuestion)
 );
 
-// Render with a token budget using the AI SDK renderer
+// Render with a token budget using the AI SDK provider
 const budget = 1000; // tokens
-const messages = await prompt.render({
-  tokenizer,
-  budget,
-  renderer,
-});
+const messages = await prompt.render({ provider, budget });
 
 console.log("=== Rendered Messages ===");
 console.log(JSON.stringify(messages, null, 2));
 
-// Calculate approximate token count from messages
-const messageText = messages
-  .map((m) => {
-    if (typeof m.content === "string") {
-      return m.content;
-    }
-    return m.content
-      .map((p) => {
-        if ("text" in p) {
-          return p.text;
-        }
-        return JSON.stringify(p);
-      })
-      .join("");
-  })
-  .join("\n");
-console.log(
-  `\n=== Approximate token count: ${tokenizer(messageText)} / ${budget} ===\n`
-);
+// Token count from provider-owned tiktoken
+const totalTokens = provider.countTokens(messages);
+console.log(`\n=== Token count: ${totalTokens} / ${budget} ===\n`);
 
 // Call OpenAI using Vercel AI SDK with structured messages
 async function main() {
-  const provider = new Provider(openai("gpt-4o-mini"));
-  const promptWithProvider = cria
-    .prompt()
-    .provider(provider, (p) => p.merge(prompt));
-
-  const messagesForSend = await promptWithProvider.render({
-    tokenizer,
-    budget,
-    renderer,
-  });
+  const messagesForSend = await prompt.render({ provider, budget });
 
   const { text } = await generateText({
-    model: openai("gpt-4o-mini"),
+    model,
     messages: messagesForSend,
   });
 

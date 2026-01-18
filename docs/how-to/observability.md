@@ -5,7 +5,9 @@ When you're fitting prompts to budgets, you want to see what changed and why. Cr
 ## Render hooks
 
 ```ts
+import OpenAI from "openai";
 import { cria, type RenderHooks } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/openai";
 
 const hooks: RenderHooks = {
   onFitStart: (event) => console.log("fit start", event.totalTokens),
@@ -15,7 +17,8 @@ const hooks: RenderHooks = {
   onFitError: (event) => console.log("fit error", event.error.overBudgetBy),
 };
 
-await cria.prompt().user(userQuestion).render({ budget: 8000, tokenizer, hooks });
+const provider = createProvider(new OpenAI(), "gpt-4o-mini");
+await cria.prompt().user(userQuestion).render({ budget: 8000, provider, hooks });
 ```
 
 ## OpenTelemetry

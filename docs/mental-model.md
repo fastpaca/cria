@@ -1,6 +1,6 @@
 # Mental model
 
-Cria treats prompts like a structured tree (similar to a UI component tree). That lets you build prompts as structured code: compose reusable pieces, keep roles explicit, and render the same tree to different targets (markdown, OpenAI, Anthropic, AI SDK) without rewriting your prompt.
+Cria treats prompts like a structured tree (similar to a UI component tree). That lets you build prompts as structured code: compose reusable pieces, keep roles explicit, and render the same tree to different provider payloads (OpenAI, Anthropic, AI SDK) without rewriting your prompt.
 
 ## What Cria is
 
@@ -21,7 +21,7 @@ Cria treats prompts like a structured tree (similar to a UI component tree). Tha
 
 ## Rendering vs calling a model
 
-Rendering converts your prompt tree into a provider-specific payload (or markdown). Calling a model is still done via the provider’s SDK.
+Rendering converts your prompt tree into a provider-specific payload. Calling a model is still done via the provider’s SDK.
 
 - Start here: [Quickstart](quickstart.md)
 - Then: [Use with OpenAI](how-to/use-with-openai.md), [Anthropic](how-to/use-with-anthropic.md), or [Vercel AI SDK](how-to/use-with-vercel-ai-sdk.md)
@@ -37,7 +37,7 @@ Next: [Fit & compaction](how-to/fit-and-compaction.md)
 
 ## Tool messages and reasoning traces
 
-Cria models these as semantic nodes so renderers can emit provider-native formats:
+Cria models these as semantic nodes so providers can emit provider-native formats:
 
 - `ToolCall` / `ToolResult`: tool I/O *messages* in the prompt
 - `Reasoning`: optional reasoning text for providers that support it

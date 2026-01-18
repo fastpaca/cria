@@ -1,21 +1,47 @@
+import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
 import { c } from "../dsl";
-import { markdownRenderer } from "../renderers/markdown";
-import type { ModelProvider } from "../types";
+import { createPlainTextRenderer } from "../testing/plaintext";
+import { ModelProvider } from "../types";
 import { createJudge } from "./index";
+
+const renderer = createPlainTextRenderer({
+  includeRolePrefix: true,
+  joinMessagesWith: "\n\n",
+});
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
+
+class MockProvider extends ModelProvider<string> {
+  readonly renderer = renderer;
+  private readonly completionValue: string;
+  private readonly objectValue: unknown | undefined;
+
+  constructor(completionValue: string, objectValue?: unknown) {
+    super();
+    this.completionValue = completionValue;
+    this.objectValue = objectValue;
+  }
+
+  countTokens(rendered: string): number {
+    return countText(rendered);
+  }
+
+  completion(): string {
+    return this.completionValue;
+  }
+
+  object<T>(_: string, schema: z.ZodType<T>): T {
+    return this.objectValue ? schema.parse(this.objectValue) : schema.parse({});
+  }
+}
 
 function createMockProvider(opts: {
   completion?: string;
   object?: unknown;
 }): ModelProvider<string> {
-  return {
-    name: "mock",
-    renderer: markdownRenderer,
-    completion: () => opts.completion ?? "",
-    object: <T>(_: string, schema: z.ZodType<T>) =>
-      opts.object ? schema.parse(opts.object) : schema.parse({}),
-  };
+  return new MockProvider(opts.completion ?? "", opts.object);
 }
 
 describe("judge", () => {
@@ -68,15 +94,16 @@ describe("judge", () => {
   test("passes criterion to evaluator", async () => {
     let capturedPrompt = "";
     const target = createMockProvider({ completion: "Response" });
-    const evaluator: ModelProvider<string> = {
-      name: "evaluator",
-      renderer: markdownRenderer,
-      completion: () => "",
-      object: <T>(rendered: string, schema: z.ZodType<T>) => {
+    const evaluator: ModelProvider<string> = new (class extends MockProvider {
+      constructor() {
+        super("");
+      }
+
+      object<T>(rendered: string, schema: z.ZodType<T>): T {
         capturedPrompt = rendered;
         return schema.parse({ score: 1, reasoning: "ok" });
-      },
-    };
+      }
+    })();
 
     const prompt = {
       priority: 0,

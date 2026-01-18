@@ -9,7 +9,7 @@
  *   .prompt()
  *   .system("You are a helpful assistant.")
  *   .user("What is the capital of France?")
- *   .render({tokenizer, budget: 4000, renderer});
+ *   .render({ budget: 4000, provider });
  * ```
  *
  * @packageDocumentation
@@ -27,14 +27,13 @@ import {
 } from "./components";
 import type { KVMemory, VectorMemory } from "./memory";
 import type { RenderOptions } from "./render";
-import { render as renderPrompt } from "./render";
+import { assertValidMessageScope, render as renderPrompt } from "./render";
 import type {
   CriaContext,
   ModelProvider,
   PromptChild,
   PromptChildren,
   PromptElement,
-  PromptRenderer,
   PromptRole,
 } from "./types";
 
@@ -60,10 +59,10 @@ export type BuilderChild =
   | Promise<string>;
 
 type RenderResult<TOptions extends RenderOptions> = TOptions extends {
-  renderer: PromptRenderer<infer TOutput>;
+  provider: ModelProvider<infer TOutput>;
 }
   ? TOutput
-  : string;
+  : unknown;
 
 const TEMPLATE_INDENT_RE = /^[ \t]*/;
 
@@ -87,6 +86,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     children: BuilderChild[],
     context: CriaContext | undefined
   ): TBuilder;
+  protected abstract allowsTextChildren(): boolean;
 
   scope(fn: (builder: TBuilder) => TBuilder, opts?: { id?: string }): TBuilder {
     if (typeof fn !== "function") {
@@ -113,7 +113,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    * Add content that will be truncated when over budget.
    */
   truncate(
-    content: string | PromptElement | PromptBuilder,
+    content: ScopeContent,
     opts: {
       budget: number;
       from?: "start" | "end";
@@ -122,7 +122,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     }
   ): TBuilder {
     const node = createPromptElement(
-      () => resolveBuilderChildren(content),
+      () => resolveContentChildren(content, this.allowsTextChildren()),
       (children) => {
         const props: Parameters<typeof Truncate>[0] = {
           children,
@@ -144,11 +144,11 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    * Add content that will be entirely removed when over budget.
    */
   omit(
-    content: string | PromptElement | PromptBuilder,
+    content: ScopeContent,
     opts?: { priority?: number; id?: string }
   ): TBuilder {
     const node = createPromptElement(
-      () => resolveBuilderChildren(content),
+      () => resolveContentChildren(content, this.allowsTextChildren()),
       (children) => {
         const props: Parameters<typeof Omit>[0] = {
           children,
@@ -259,7 +259,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    * Add content that will be summarized when over budget.
    */
   summary(
-    content: string | PromptElement | PromptBuilder,
+    content: ScopeContent,
     opts: {
       id: string;
       store: KVMemory<StoredSummary>;
@@ -268,7 +268,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     }
   ): TBuilder {
     const element = createPromptElement(
-      () => resolveBuilderChildren(content),
+      () => resolveContentChildren(content, this.allowsTextChildren()),
       (children) => {
         const props: Parameters<typeof Summary>[0] = {
           id: opts.id,
@@ -310,7 +310,10 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
   }
 
   async buildChildren(): Promise<PromptChildren> {
-    return await resolveBuilderChildren(this.children);
+    return await resolveBuilderChildren(
+      this.children,
+      this.allowsTextChildren()
+    );
   }
 
   protected addChild(child: BuilderChild): TBuilder {
@@ -328,6 +331,10 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
     context: CriaContext | undefined = undefined
   ) {
     super(children, context);
+  }
+
+  protected allowsTextChildren(): boolean {
+    return true;
   }
 
   protected create(
@@ -359,6 +366,10 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     context: CriaContext | undefined = undefined
   ) {
     super(children, context);
+  }
+
+  protected allowsTextChildren(): boolean {
+    return false;
   }
 
   /**
@@ -420,11 +431,14 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    * Build the final PromptElement tree.
    */
   async build(): Promise<PromptElement> {
-    return Region({
+    const element = Region({
       priority: 0,
       children: await this.buildChildren(),
       ...(this.context && { context: this.context }),
     });
+    // Enforce message boundaries at build time so invalid trees fail early.
+    assertValidMessageScope(element);
+    return element;
   }
 
   /**
@@ -631,24 +645,63 @@ function normalizeTemplateStrings(
 
 // Utility to recursively build and expand / resolve children
 async function resolveBuilderChildren(
-  children: BuilderChild | readonly BuilderChild[]
+  children: BuilderChild | readonly BuilderChild[],
+  allowText: boolean
 ): Promise<PromptChildren> {
   const list = Array.isArray(children) ? children : [children];
   const resolved = await Promise.all(
-    list.map(async (child) => {
-      if (typeof child === "string") {
-        return [child];
-      }
-      if (child instanceof Promise) {
-        const value = await child;
-        return [value];
-      }
-      if (child instanceof PromptBuilder) {
-        return [await child.build()];
-      }
-      return [child];
-    })
+    list.map((child) => resolveBuilderChild(child, allowText))
   );
 
   return resolved.flat();
+}
+
+async function resolveContentChildren(
+  content: ScopeContent,
+  allowText: boolean
+): Promise<PromptChildren> {
+  if (content instanceof PromptBuilder || content instanceof Promise) {
+    return await resolveBuilderChildren(content, allowText);
+  }
+
+  const normalized = normalizeTextInput(content);
+  if (!allowText) {
+    for (const child of normalized) {
+      if (typeof child === "string") {
+        throw new Error("Text nodes are only allowed inside messages.");
+      }
+    }
+  }
+  return normalized;
+}
+
+async function resolveBuilderChild(
+  child: BuilderChild,
+  allowText: boolean
+): Promise<PromptChildren> {
+  if (typeof child === "string") {
+    return ensureTextChild(child, allowText);
+  }
+
+  if (child instanceof Promise) {
+    const value = await child;
+    if (typeof value === "string") {
+      return ensureTextChild(value, allowText);
+    }
+    return [value];
+  }
+
+  if (child instanceof PromptBuilder) {
+    return [await child.build()];
+  }
+
+  return [child];
+}
+
+function ensureTextChild(value: string, allowText: boolean): PromptChildren {
+  if (!allowText) {
+    throw new Error("Text nodes are only allowed inside messages.");
+  }
+
+  return [value];
 }

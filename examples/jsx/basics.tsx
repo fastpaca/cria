@@ -1,18 +1,22 @@
 /** Minimal optional JSX example using the Cria JSX runtime. */
-import { Region, render } from "@fastpaca/cria/jsx";
+import { render } from "@fastpaca/cria";
+import { Message, Region } from "@fastpaca/cria/jsx";
+import { createProvider } from "@fastpaca/cria/openai";
+import OpenAI from "openai";
 
 const prompt = (
   <Region priority={0}>
-    <Region priority={0}>You are a friendly assistant.</Region>
-    <Region priority={1}>Say hello to the user.</Region>
+    <Message messageRole="system">You are a friendly assistant.</Message>
+    <Message messageRole="user">Say hello to the user.</Message>
   </Region>
 );
 
-const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const provider = createProvider(client, "gpt-4o-mini");
 
 async function main(): Promise<void> {
-  const output = await render(prompt, { tokenizer, budget: 100 });
-  console.log(output);
+  const output = await render(prompt, { provider, budget: 100 });
+  console.log(JSON.stringify(output, null, 2));
 }
 
 main().catch(console.error);

@@ -19,15 +19,16 @@ export OPENAI_API_KEY="sk-..."
 ```ts
 import OpenAI from "openai";
 import { cria } from "@fastpaca/cria";
-import { chatCompletions } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 
 const client = new OpenAI();
+const provider = createProvider(client, "gpt-4o-mini");
 
 const messages = await cria
   .prompt()
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ renderer: chatCompletions });
+  .render({ provider, budget: 8000 });
 
 const response = await client.chat.completions.create({
   model: "gpt-4o-mini",
@@ -50,15 +51,16 @@ See `../../examples/openai-chat-completions/README.md` for full setup details.
 ```ts
 import OpenAI from "openai";
 import { cria } from "@fastpaca/cria";
-import { responses } from "@fastpaca/cria/openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
 
 const client = new OpenAI();
+const provider = createResponsesProvider(client, "o3");
 
 const input = await cria
   .prompt()
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ renderer: responses });
+  .render({ provider, budget: 8000 });
 
 const response = await client.responses.create({ model: "o3", input });
 ```
@@ -75,10 +77,10 @@ See `../../examples/openai-responses/README.md` for full setup details.
 
 ## Budgets and compaction
 
-If you pass a `budget` to `render()`, you must also supply token counts (either a `tokenizer` option, or a provider context that supplies one).
+If you pass a `budget` to `render()`, you must supply a provider. The provider owns token counting via tiktoken.
 
 Next: [Fit & compaction](fit-and-compaction.md)
 
 ## Tool messages and reasoning traces
 
-Cria can represent tool I/O (`ToolCall`, `ToolResult`) and reasoning traces (`Reasoning`) as semantic nodes so OpenAI renderers can map them into the right shape. Treat these as compaction candidates when budgets are tight.
+Cria can represent tool I/O (`ToolCall`, `ToolResult`) and reasoning traces (`Reasoning`) as semantic nodes so OpenAI providers can map them into the right shape. Treat these as compaction candidates when budgets are tight.

@@ -6,104 +6,72 @@ import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
-  collectMessageNodes,
-  collectSemanticParts,
-  type MessageElement,
-  type SemanticPart,
+  partsToText,
   safeStringify,
-  type ToolCallPart,
-  type ToolResultPart,
 } from "../renderers/shared";
 import type {
-  ModelProvider,
-  PromptChildren,
-  PromptElement,
-  PromptRenderer,
-  Tokenizer,
+  PromptLayout,
+  PromptPart,
+  ToolCallPart,
+  ToolResultPart,
 } from "../types";
+import { ModelProvider, PromptRenderer } from "../types";
 
-/**
- * Result of rendering to Anthropic format.
- * System messages are extracted separately since Anthropic's API
- * takes them as a separate parameter.
- */
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
+
 export interface AnthropicRenderResult {
   system?: string;
   messages: MessageParam[];
 }
 
-/**
- * Renderer that outputs Anthropic-compatible messages.
- * Use this with the Anthropic SDK.
- *
- * Note: System messages are extracted to a separate `system` field since
- * Anthropic's API takes them as a separate parameter.
- *
- * @example
- * ```ts
- * import { render } from "@fastpaca/cria";
- * import { renderer } from "@fastpaca/cria/anthropic";
- *
- * const { system, messages } = await render(prompt, { tokenizer, budget, renderer });
- * const response = await client.messages.create({
- *   model: "claude-sonnet-4-20250514",
- *   system,
- *   messages,
- * });
- * ```
- */
-export const renderer: PromptRenderer<AnthropicRenderResult> = {
-  name: "anthropic",
-  tokenString: markdownRenderer.tokenString,
-  render: (element) => renderToAnthropic(element),
-  empty: () => ({ messages: [] }),
-};
+export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
+  render(layout: PromptLayout): AnthropicRenderResult {
+    const messages: MessageParam[] = [];
+    let systemText = "";
 
-function renderToAnthropic(root: PromptElement): AnthropicRenderResult {
-  const messageNodes = collectMessageNodes(root);
+    const appendSystemParts = (parts: readonly PromptPart[]) => {
+      // Anthropic uses a single system string; merge all system messages into it.
+      const nextSystem = partsToText(parts, { wrapReasoning: true });
+      if (nextSystem.length === 0) {
+        return;
+      }
+      systemText =
+        systemText.length > 0 ? `${systemText}\n\n${nextSystem}` : nextSystem;
+    };
 
-  // Extract system messages
-  const systemNodes = messageNodes.filter((m) => m.role === "system");
-  const nonSystemNodes = messageNodes.filter((m) => m.role !== "system");
+    const appendRoleMessages = (role: string, parts: readonly PromptPart[]) => {
+      const coalesced = coalesceTextParts(parts);
+      const nextMessages =
+        role === "user"
+          ? buildUserMessages(coalesced)
+          : buildAssistantMessages(coalesced);
 
-  // Combine all system messages into one string
-  const systemText = systemNodes
-    .map((m) => collectTextContent(m.children))
-    .filter((s) => s.length > 0)
-    .join("\n\n");
+      for (const message of nextMessages) {
+        messages.push(message);
+      }
+    };
 
-  // Convert non-system messages
-  const messages = convertMessages(nonSystemNodes);
+    for (const message of layout.messages) {
+      if (message.role === "system") {
+        appendSystemParts(message.parts);
+      } else {
+        appendRoleMessages(message.role, message.parts);
+      }
+    }
 
-  return {
-    ...(systemText.length > 0 ? { system: systemText } : {}),
-    messages,
-  };
-}
-
-/**
- * Convert message nodes to Anthropic format.
- * Key quirk: tool results must be in user messages, not assistant messages.
- */
-function convertMessages(nodes: MessageElement[]): MessageParam[] {
-  return nodes.flatMap(convertMessageNode);
-}
-
-function convertMessageNode(node: MessageElement): MessageParam[] {
-  const parts = coalesceTextParts(collectSemanticParts(node.children));
-
-  if (node.role === "user") {
-    return buildUserMessages(parts);
+    return {
+      ...(systemText.length > 0 ? { system: systemText } : {}),
+      messages,
+    };
   }
-
-  return buildAssistantMessages(parts);
 }
 
-function buildUserMessages(parts: readonly SemanticPart[]): MessageParam[] {
+function buildUserMessages(parts: readonly PromptPart[]): MessageParam[] {
   const content = buildUserContent(parts);
   if (content.length === 0) {
     return [];
@@ -112,11 +80,7 @@ function buildUserMessages(parts: readonly SemanticPart[]): MessageParam[] {
   return [{ role: "user", content }];
 }
 
-/**
- * Build user content blocks preserving tool result positions.
- * Adjacent text/reasoning parts are coalesced into single text blocks.
- */
-function buildUserContent(parts: readonly SemanticPart[]): ContentBlockParam[] {
+function buildUserContent(parts: readonly PromptPart[]): ContentBlockParam[] {
   const content: ContentBlockParam[] = [];
   let textBuffer = "";
 
@@ -136,17 +100,13 @@ function buildUserContent(parts: readonly SemanticPart[]): ContentBlockParam[] {
     } else if (part.type === "reasoning") {
       textBuffer += `<thinking>\n${part.text}\n</thinking>`;
     }
-    // tool-call parts in user messages are ignored
   }
 
   flushTextBuffer();
   return content;
 }
 
-function buildAssistantMessages(
-  parts: readonly SemanticPart[]
-): MessageParam[] {
-  // Separate tool results (go to user message) from assistant content
+function buildAssistantMessages(parts: readonly PromptPart[]): MessageParam[] {
   const assistantParts = parts.filter((p) => p.type !== "tool-result");
   const toolResultParts = parts.filter(
     (p): p is ToolResultPart => p.type === "tool-result"
@@ -159,6 +119,7 @@ function buildAssistantMessages(
     result.push({ role: "assistant", content });
   }
 
+  // Anthropic expects tool results as user blocks, not inside assistant content.
   if (toolResultParts.length > 0) {
     result.push({
       role: "user",
@@ -169,12 +130,8 @@ function buildAssistantMessages(
   return result;
 }
 
-/**
- * Build assistant content blocks preserving tool call positions.
- * Adjacent text/reasoning parts are coalesced into single text blocks.
- */
 function buildAssistantContent(
-  parts: readonly SemanticPart[]
+  parts: readonly PromptPart[]
 ): ContentBlockParam[] {
   const content: ContentBlockParam[] = [];
   let textBuffer = "";
@@ -195,30 +152,10 @@ function buildAssistantContent(
       flushTextBuffer();
       content.push(toToolUseBlock(part));
     }
-    // tool-result parts handled separately
   }
 
   flushTextBuffer();
   return content;
-}
-
-function collectTextContent(children: PromptChildren): string {
-  let result = "";
-
-  for (const child of children) {
-    if (typeof child === "string") {
-      result += child;
-      continue;
-    }
-
-    if (child.kind === undefined) {
-      result += collectTextContent(child.children);
-    } else if (child.kind === "reasoning") {
-      result += `<thinking>\n${child.text}\n</thinking>\n`;
-    }
-  }
-
-  return result;
 }
 
 function toToolUseBlock(part: ToolCallPart): ToolUseBlockParam {
@@ -238,6 +175,49 @@ function toToolResultBlock(part: ToolResultPart): ToolResultBlockParam {
   };
 }
 
+function countToolResultContentTokens(
+  content: ToolResultBlockParam["content"]
+): number {
+  if (typeof content === "string") {
+    return countText(content);
+  }
+
+  if (Array.isArray(content)) {
+    return content.reduce((sum, entry) => {
+      if (entry.type === "text") {
+        return sum + countText(entry.text);
+      }
+      return sum;
+    }, 0);
+  }
+
+  return 0;
+}
+
+function countContentBlockTokens(block: ContentBlockParam): number {
+  switch (block.type) {
+    case "text":
+      return countText(block.text);
+    case "tool_use":
+      return countText(block.name + safeStringify(block.input));
+    case "tool_result":
+      return countToolResultContentTokens(block.content);
+    default:
+      return 0;
+  }
+}
+
+function countAnthropicMessageTokens(message: MessageParam): number {
+  if (typeof message.content === "string") {
+    return countText(message.content);
+  }
+
+  return message.content.reduce(
+    (sum, block) => sum + countContentBlockTokens(block),
+    0
+  );
+}
+
 function extractTextFromResponse(
   content: Anthropic.Messages.ContentBlock[]
 ): string {
@@ -249,51 +229,63 @@ function extractTextFromResponse(
     .join("");
 }
 
-/**
- * Create a ModelProvider for the Anthropic API.
- *
- * @example
- * ```typescript
- * import Anthropic from "@anthropic-ai/sdk";
- * import { createProvider } from "@fastpaca/cria/anthropic";
- *
- * const client = new Anthropic();
- * const provider = createProvider(client, "claude-sonnet-4-20250514");
- * ```
- */
+export class AnthropicProvider extends ModelProvider<AnthropicRenderResult> {
+  readonly renderer = new AnthropicRenderer();
+  private readonly client: Anthropic;
+  private readonly model: Model;
+  private readonly maxTokens: number;
+
+  constructor(client: Anthropic, model: Model, maxTokens: number) {
+    super();
+    this.client = client;
+    this.model = model;
+    this.maxTokens = maxTokens;
+  }
+
+  countTokens(rendered: AnthropicRenderResult): number {
+    let tokens = 0;
+
+    if (rendered.system) {
+      tokens += countText(rendered.system);
+    }
+
+    for (const message of rendered.messages) {
+      tokens += countAnthropicMessageTokens(message);
+    }
+
+    return tokens;
+  }
+
+  async completion(rendered: AnthropicRenderResult): Promise<string> {
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: this.maxTokens,
+      ...(rendered.system ? { system: rendered.system } : {}),
+      messages: rendered.messages,
+    });
+    return extractTextFromResponse(response.content);
+  }
+
+  async object<T>(
+    rendered: AnthropicRenderResult,
+    schema: z.ZodType<T>
+  ): Promise<T> {
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: this.maxTokens,
+      system: `${rendered.system ?? ""}\n\nYou must respond with valid JSON only.`,
+      messages: rendered.messages,
+    });
+    const text = extractTextFromResponse(response.content);
+    return schema.parse(JSON.parse(text));
+  }
+}
+
 export function createProvider(
   client: Anthropic,
   model: Model,
-  options: { tokenizer?: Tokenizer; maxTokens?: number } = {}
-): ModelProvider<AnthropicRenderResult> {
+  options: { maxTokens?: number } = {}
+): AnthropicProvider {
   const maxTokens = options.maxTokens ?? 1024;
-
-  return {
-    name: "anthropic",
-    ...(options.tokenizer ? { tokenizer: options.tokenizer } : {}),
-    renderer,
-
-    async completion(rendered) {
-      const response = await client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        ...(rendered.system ? { system: rendered.system } : {}),
-        messages: rendered.messages,
-      });
-      return extractTextFromResponse(response.content);
-    },
-
-    async object<T>(rendered: AnthropicRenderResult, schema: z.ZodType<T>) {
-      // Anthropic uses tool-use pattern for structured output
-      // For simplicity, we use JSON mode with a prompt instruction
-      const response = await client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        system: `${rendered.system ?? ""}\n\nYou must respond with valid JSON only.`,
-        messages: rendered.messages,
-      });
-      const text = extractTextFromResponse(response.content);
-      return schema.parse(JSON.parse(text));
-    },
-  };
+  return new AnthropicProvider(client, model, maxTokens);
 }

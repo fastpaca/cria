@@ -1,11 +1,33 @@
 import { expect, test } from "vitest";
 import { Message, Region, ToolCall, ToolResult } from "../components";
 import { render } from "../render";
-import { renderer } from "./ai-sdk";
+import { ModelProvider, type PromptRenderer } from "../types";
+import { AiSdkRenderer } from "./ai-sdk";
 
-const tokenizer = (text: string): number => Math.ceil(text.length / 4);
+class RenderOnlyProvider<T> extends ModelProvider<T> {
+  readonly renderer: PromptRenderer<T>;
 
-test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result split)", async () => {
+  constructor(renderer: PromptRenderer<T>) {
+    super();
+    this.renderer = renderer;
+  }
+
+  countTokens(): number {
+    return 0;
+  }
+
+  completion(): string {
+    return "";
+  }
+
+  object(): never {
+    throw new Error("Not implemented");
+  }
+}
+
+const provider = new RenderOnlyProvider(new AiSdkRenderer());
+
+test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result split)", async () => {
   const prompt = Region({
     priority: 0,
     children: [
@@ -32,11 +54,7 @@ test("renderer: renders semantic IR to ModelMessage[] (tool call + tool result s
     ],
   });
 
-  const modelMessages = await render(prompt, {
-    tokenizer,
-    budget: 10_000,
-    renderer,
-  });
+  const modelMessages = await render(prompt, { provider });
 
   expect(modelMessages).toEqual([
     { role: "user", content: "hi" },

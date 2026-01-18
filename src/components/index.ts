@@ -148,7 +148,7 @@ export function ToolResult({
 }
 
 interface TruncateProps {
-  /** Maximum token count for this region's content */
+  /** Heuristic scale for how many components to drop per iteration */
   budget: number;
   /** Which end to truncate from. Default: "start" */
   from?: "start" | "end";
@@ -161,10 +161,10 @@ interface TruncateProps {
 }
 
 /**
- * A region that truncates its content to fit within a token budget.
+ * A region that truncates by dropping child components from one end.
  *
  * When the overall prompt exceeds budget, Truncate regions progressively
- * remove content from the specified direction until they meet their budget.
+ * remove components from the specified direction until the prompt fits.
  *
  * @example
  * ```tsx
@@ -181,28 +181,26 @@ export function Truncate({
   children = [],
 }: TruncateProps): PromptElement {
   const strategy: Strategy = (input) => {
-    const content = input.tokenString(input.target);
-    let tokens = input.tokenizer(content);
-    if (tokens <= budget) {
-      return input.target;
-    }
-
-    let truncated = content;
-
-    while (tokens > budget && truncated.length > 0) {
-      const charsToRemove = Math.max(1, Math.floor(truncated.length * 0.1));
-      truncated =
-        from === "start"
-          ? truncated.slice(charsToRemove)
-          : truncated.slice(0, -charsToRemove);
-      tokens = input.tokenizer(truncated);
-    }
-
-    if (truncated.length === 0) {
+    const { children: currentChildren } = input.target;
+    if (currentChildren.length === 0) {
       return null;
     }
 
-    return { ...input.target, children: [truncated] };
+    // Heuristic: drop more components when totalTokens is far above the scale.
+    const dropCount = Math.max(1, Math.floor(input.totalTokens / budget));
+    const nextChildren =
+      from === "start"
+        ? currentChildren.slice(dropCount)
+        : currentChildren.slice(
+            0,
+            Math.max(0, currentChildren.length - dropCount)
+          );
+
+    if (nextChildren.length === 0) {
+      return null;
+    }
+
+    return { ...input.target, children: nextChildren };
   };
 
   return {

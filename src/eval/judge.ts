@@ -35,7 +35,7 @@ export function createJudge(config: JudgeConfig): Judge {
   return (prompt: PromptElement): Judgment => {
     const evaluate = async (criterion: PromptChildren): Promise<EvalResult> => {
       const response = await target.completion(
-        await render(prompt, { renderer: target.renderer })
+        await render(prompt, { provider: target })
       );
       const evalPrompt = await cria
         .prompt()
@@ -50,7 +50,7 @@ export function createJudge(config: JudgeConfig): Judge {
         .build();
 
       const result = await evaluator.object(
-        await render(evalPrompt, { renderer: evaluator.renderer }),
+        await render(evalPrompt, { provider: evaluator }),
         EvalResultSchema
       );
 

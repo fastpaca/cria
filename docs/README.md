@@ -16,7 +16,7 @@ Cria turns prompts into composable components with explicit roles and strategies
 - [RAG with VectorSearch](how-to/rag.md)
 - [Summarize long history](how-to/summarize-history.md)
 - [Fit & compaction (budgets, priorities, FitError)](how-to/fit-and-compaction.md)
-- [Observability (hooks, snapshots, OpenTelemetry)](how-to/observability.md)
+- [Observability (hooks, OpenTelemetry)](how-to/observability.md)
 - [Write custom components](how-to/custom-components.md)
 
 ## Reference (minimal)
