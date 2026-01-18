@@ -465,7 +465,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
 export type Prompt = PromptBuilder;
 
 /**
- * Namespace for building prompts without JSX.
+ * Namespace for building prompts as code.
  *
  * @example
  * ```typescript
@@ -501,6 +501,34 @@ export const prompt = () => PromptBuilder.create();
 export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
   cria.merge(...builders);
 
+/**
+ * Tagged template literal function for building prompt children with automatic indentation normalization.
+ *
+ * Interpolates values into template strings and normalizes indentation by stripping
+ * common leading whitespace. Useful for writing multi-line prompt content with clean formatting.
+ *
+ * @param strings - Template string segments
+ * @param values - Interpolated values (strings, numbers, booleans, PromptElements, arrays, etc.)
+ * @returns Array of prompt children (strings and PromptElements)
+ *
+ * @example
+ * ```typescript
+ * import { c } from "@fastpaca/cria";
+ *
+ * const children = c`
+ *   System: You are a helpful assistant.
+ *   User: ${userMessage}
+ *   Assistant: ${assistantResponse}
+ * `;
+ * ```
+ *
+ * @example
+ * ```typescript
+ * const name = "Alice";
+ * const age = 30;
+ * const children = c`Name: ${name}, Age: ${age}`;
+ * ```
+ */
 export function c(
   strings: TemplateStringsArray,
   ...values: readonly TextInput[]
