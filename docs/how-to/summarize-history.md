@@ -23,11 +23,11 @@ export OPENAI_API_KEY="sk-..."
 
 ```ts
 import OpenAI from "openai";
-import { Provider } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 
 const store = new InMemoryStore<StoredSummary>();
-const provider = new Provider(new OpenAI(), "gpt-4o-mini");
+const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
 const prompt = cria
   .prompt()

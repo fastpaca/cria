@@ -32,14 +32,16 @@ If you set a budget but don’t provide token counts, `render()` throws.
 
 ### Using a provider tokenizer (example)
 
-If you’re already using a provider helper, you can often omit `tokenizer` and let the provider supply one:
+If you’re already using a provider helper, you can attach a tokenizer to it so `render()` can reuse it without passing `tokenizer` every time:
 
 ```ts
 import OpenAI from "openai";
-import { chatCompletions, Provider } from "@fastpaca/cria/openai";
-import { cria } from "@fastpaca/cria";
+import { chatCompletions, createProvider } from "@fastpaca/cria/openai";
+import { cria, type Tokenizer } from "@fastpaca/cria";
 
-const provider = new Provider(new OpenAI(), "gpt-4o-mini");
+const tokenizer: Tokenizer = (text) => Math.ceil(text.length / 4); // rough estimate
+
+const provider = createProvider(new OpenAI(), "gpt-4o-mini", { tokenizer });
 
 const messages = await cria
   .prompt()

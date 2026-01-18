@@ -23,11 +23,6 @@
 Cria is a lightweight prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
 
 ```ts
-import { Provider, renderer } from "@fastpaca/cria/ai-sdk";
-import { openai } from "@ai-sdk/openai";
-
-const provider = new Provider(openai("gpt-5-nano"));
-
 const messages = await cria
   .prompt()
   .system("You are a research assistant.")
@@ -128,20 +123,23 @@ const { text } = await generateText({ model, messages });
 Use the `@fastpaca/cria/eval` entrypoint for judge-style evaluation helpers.
 
 ```ts
-import { cria } from "@fastpaca/cria";
-import { Provider } from "@fastpaca/cria/ai-sdk";
+import { c, cria } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
 import { createJudge } from "@fastpaca/cria/eval";
 import { openai } from "@ai-sdk/openai";
 
-const Helpful = () =>
-  cria.prompt().system("Evaluate helpfulness. Return JSON: { score, reasoning }.");
-
 const judge = createJudge({
-  target: new Provider(openai("gpt-4o")),
-  evaluator: new Provider(openai("gpt-4o-mini")),
+  target: createProvider(openai("gpt-4o")),
+  evaluator: createProvider(openai("gpt-4o-mini")),
 });
 
-await judge(prompt).toPass(Helpful());
+const prompt = await cria
+  .prompt()
+  .system("You are a helpful customer support agent.")
+  .user("How do I update my payment method?")
+  .build();
+
+await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
 ```
 
 ## Roadmap
@@ -155,13 +153,13 @@ await judge(prompt).toPass(Helpful());
 - [x] Memory: InMemoryStore, Redis, Postgres, Chroma, Qdrant
 - [x] Observability: render hooks, validation schemas, snapshots, OpenTelemetry
 - [x] Tokenizer helpers
+- [x] Prompt eval / testing functionality
 
 **Planned**
 
 - [ ] Next.js adapter
 - [ ] GenAI semantic conventions for OpenTelemetry
 - [ ] Visualization tool
-- [ ] Prompt eval / testing functionality
 
 ## Contributing
 
