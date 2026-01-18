@@ -18,8 +18,8 @@
       "import": "./dist/index.js"
     },
     "./ai-sdk": {
-      "types": "./dist/providers/ai-sdk.d.ts",
-      "import": "./dist/providers/ai-sdk.js"
+      "types": "./dist/integrations/ai-sdk.d.ts",
+      "import": "./dist/integrations/ai-sdk.js"
     },
     "./jsx": {
       "types": "./dist/jsx/index.d.ts",
@@ -34,12 +34,12 @@
       "import": "./dist/jsx/jsx-dev-runtime.js"
     },
     "./openai": {
-      "types": "./dist/providers/openai.d.ts",
-      "import": "./dist/providers/openai.js"
+      "types": "./dist/integrations/openai.d.ts",
+      "import": "./dist/integrations/openai.js"
     },
     "./anthropic": {
-      "types": "./dist/providers/anthropic.d.ts",
-      "import": "./dist/providers/anthropic.js"
+      "types": "./dist/integrations/anthropic.d.ts",
+      "import": "./dist/integrations/anthropic.js"
     },
     "./memory": {
       "types": "./dist/memory/index.d.ts",

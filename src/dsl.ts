@@ -167,7 +167,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    * Contexts must be compatible (either identical or undefined).
    */
   merge(...builders: TBuilder[]): TBuilder {
-    const sources = [this, ...builders];
+    const sources: BuilderBase<TBuilder>[] = [this, ...builders];
     let nextContext = this.context;
     const totalChildren = sources.reduce(
       (sum, builder) => sum + builder.children.length,
@@ -201,12 +201,14 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    *
    * @example
    * ```typescript
-   * import { Provider } from "@fastpaca/cria/ai-sdk";
+   * import { createProvider } from "@fastpaca/cria/ai-sdk";
+   * import { openai } from "@ai-sdk/openai";
    *
-   * const provider = new Provider(openai("gpt-4o"));
-   * .provider(provider, (p) =>
-   *   p.summary(content, { id: "conv", store })
-   * )
+   * const provider = createProvider(openai("gpt-4o"));
+   * cria.prompt()
+   *   .provider(provider, (p) =>
+   *     p.summary(content, { id: "conv", store })
+   *   )
    * ```
    */
   provider(
@@ -508,7 +510,7 @@ export function c(
 
   for (let index = 0; index < normalizedStrings.length; index += 1) {
     const segment = normalizedStrings[index];
-    if (segment.length > 0) {
+    if (segment !== undefined && segment.length > 0) {
       children.push(segment);
     }
 
@@ -556,7 +558,8 @@ function normalizeTextInput(content?: TextInput): PromptChildren {
     return [String(content)];
   }
 
-  return [content];
+  // At this point, content must be PromptElement (PromptChild minus string/number/boolean)
+  return [content as PromptChild];
 }
 
 function normalizeTemplateStrings(

@@ -53,8 +53,8 @@ export interface ModelProvider<TRendered> {
 /**
  * Context that can be provided through the component tree.
  *
- * Provider components (like `<AISDKProvider>`) inject context that
- * child components can access during rendering and strategy execution.
+ * Provider scopes inject context that child components can access during
+ * rendering and strategy execution.
  */
 export interface CriaContext {
   /** Model provider for AI-powered operations */

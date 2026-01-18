@@ -120,7 +120,7 @@ function createSummaryStrategy({
       newSummary = await defaultSummarizer(summarizerContext, context.provider);
     } else {
       throw new Error(
-        `Summary "${id}" requires either a 'summarize' function or a provider scope. DSL: wrap in cria.provider(new Provider(), (p) => p.summary(...)). JSX: wrap with <AISDKProvider>...</AISDKProvider>.`
+        `Summary "${id}" requires either a 'summarize' function or a provider scope. Use cria.provider(modelProvider, (p) => p.summary(...)) to supply one.`
       );
     }
 
@@ -165,7 +165,7 @@ interface SummaryProps {
  * replaces the original content.
  *
  * If no `summarize` function is provided, the component will use the
- * `ModelProvider` from an ancestor provider component with a default
+ * `ModelProvider` from an ancestor provider scope with a default
  * summarization prompt.
  *
  * @example Using a custom summarizer
@@ -186,23 +186,22 @@ interface SummaryProps {
  * </Summary>
  * ```
  *
- * @example Using a provider component
- * ```tsx
- * import { InMemoryStore, Summary, type StoredSummary, render } from "@fastpaca/cria";
- * import { AISDKProvider } from "@fastpaca/cria/ai-sdk";
+ * @example Using a provider scope (DSL)
+ * ```ts
+ * import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
+ * import { createProvider } from "@fastpaca/cria/ai-sdk";
  * import { openai } from "@ai-sdk/openai";
  *
  * const store = new InMemoryStore<StoredSummary>();
+ * const provider = createProvider(openai("gpt-4o"));
  *
- * const prompt = (
- *   <AISDKProvider model={openai("gpt-4o")}>
- *     <Summary id="conv-history" store={store} priority={2}>
- *       {conversationHistory}
- *     </Summary>
- *   </AISDKProvider>
- * );
+ * const prompt = cria
+ *   .prompt()
+ *   .provider(provider, (p) =>
+ *     p.summary(conversationHistory, { id: "conv-history", store, priority: 2 })
+ *   );
  *
- * const result = await render(prompt, { tokenizer, budget: 4000 });
+ * const result = await prompt.render({ tokenizer, budget: 4000 });
  * ```
  */
 export function Summary({
