@@ -79,9 +79,6 @@ export {
   type SnapshotElement,
 } from "./snapshot";
 export type {
-  CompletionMessage,
-  CompletionRequest,
-  CompletionResult,
   CriaContext,
   JsonValue,
   MaybePromise,

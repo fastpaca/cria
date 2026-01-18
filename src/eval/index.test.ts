@@ -1,149 +1,99 @@
 import { describe, expect, test } from "vitest";
+import type { z } from "zod";
+import { c } from "../dsl";
 import { markdownRenderer } from "../renderers/markdown";
 import type { ModelProvider } from "../types";
-import { createJudge, cria } from "./index";
+import { createJudge } from "./index";
 
-function createCapturingProvider(responseText: string): {
-  provider: ModelProvider<string>;
-  getCaptured: () => string;
-} {
-  let captured = "";
-  const provider: ModelProvider<string> = {
-    name: "capturing-provider",
-    renderer: markdownRenderer,
-    completion: (rendered) => {
-      captured = rendered;
-      return Promise.resolve({ text: responseText });
-    },
-  };
-
+function createMockProvider(opts: {
+  completion?: string;
+  object?: unknown;
+}): ModelProvider<string> {
   return {
-    provider,
-    getCaptured: () => captured,
+    name: "mock",
+    renderer: markdownRenderer,
+    completion: () => opts.completion ?? "",
+    object: <T>(_: string, schema: z.ZodType<T>) =>
+      opts.object ? schema.parse(opts.object) : schema.parse({}),
   };
 }
 
 describe("judge", () => {
-  test("evaluate returns score, reasoning, and response", async () => {
-    const { provider: target } = createCapturingProvider("Target response");
-    const { provider: evaluator, getCaptured } = createCapturingProvider(
-      JSON.stringify({ score: 0.9, reasoning: "Solid" })
-    );
+  test("toPass succeeds when score >= threshold", async () => {
+    const target = createMockProvider({ completion: "Hello!" });
+    const evaluator = createMockProvider({
+      object: { score: 0.9, reasoning: "Great" },
+    });
 
-    const prompt = cria.prompt().user("Question?");
-    const criterion = cria
-      .prompt()
-      .system("Evaluate helpfulness. Return JSON: { score, reasoning }.");
+    const prompt = {
+      priority: 0,
+      children: [
+        {
+          kind: "message" as const,
+          role: "user",
+          priority: 0,
+          children: ["Hi"],
+        },
+      ],
+    };
 
     const judge = createJudge({ target, evaluator });
-    const result = await judge(prompt).evaluate(criterion);
-
-    expect(result.score).toBe(0.9);
-    expect(result.reasoning).toBe("Solid");
-    expect(result.passed).toBe(true);
-    expect(result.response).toBe("Target response");
-    expect(getCaptured()).toContain("Response to evaluate:");
-    expect(getCaptured()).toContain("Target response");
+    await expect(judge(prompt).toPass(c`Be friendly`)).resolves.toBeUndefined();
   });
 
-  test("toPass throws when score is below threshold", async () => {
-    const { provider: target } = createCapturingProvider("Target response");
-    const { provider: evaluator } = createCapturingProvider(
-      JSON.stringify({ score: 0.2, reasoning: "Not great" })
-    );
+  test("toPass throws when score < threshold", async () => {
+    const target = createMockProvider({ completion: "Whatever." });
+    const evaluator = createMockProvider({
+      object: { score: 0.3, reasoning: "Not helpful" },
+    });
 
-    const prompt = cria.prompt().user("Question?");
-    const criterion = cria
-      .prompt()
-      .system("Return JSON: { score, reasoning }.");
+    const prompt = {
+      priority: 0,
+      children: [
+        {
+          kind: "message" as const,
+          role: "user",
+          priority: 0,
+          children: ["Help me"],
+        },
+      ],
+    };
 
     const judge = createJudge({ target, evaluator, threshold: 0.8 });
-
-    await expect(judge(prompt).toPass(criterion)).rejects.toThrow(
-      "Expected prompt to pass criterion."
+    await expect(judge(prompt).toPass(c`Be helpful`)).rejects.toThrow(
+      "Expected prompt to pass criterion"
     );
   });
 
-  test("toPassAll evaluates once and reuses the response", async () => {
-    let calls = 0;
-    const target: ModelProvider<string> = {
-      name: "target",
-      renderer: markdownRenderer,
-      completion: () => {
-        calls += 1;
-        return Promise.resolve({ text: "Target response" });
-      },
-    };
+  test("passes criterion to evaluator", async () => {
+    let capturedPrompt = "";
+    const target = createMockProvider({ completion: "Response" });
     const evaluator: ModelProvider<string> = {
       name: "evaluator",
       renderer: markdownRenderer,
-      completion: () =>
-        Promise.resolve({
-          text: JSON.stringify({ score: 0.9, reasoning: "Good" }),
-        }),
-    };
-
-    const prompt = cria.prompt().user("Question?");
-    const criteria = [
-      cria.prompt().system("Criterion A. Return JSON."),
-      cria.prompt().system("Criterion B. Return JSON."),
-    ];
-
-    const judge = createJudge({ target, evaluator });
-    await judge(prompt).toPassAll(criteria);
-
-    expect(calls).toBe(1);
-  });
-
-  test("toPassWeighted uses weighted scores", async () => {
-    const target: ModelProvider<string> = {
-      name: "target",
-      renderer: markdownRenderer,
-      completion: () => Promise.resolve({ text: "Target response" }),
-    };
-    const evaluator: ModelProvider<string> = {
-      name: "evaluator",
-      renderer: markdownRenderer,
-      completion: (rendered) => {
-        const score = rendered.includes("criterion-a") ? 0.2 : 0.9;
-        return Promise.resolve({
-          text: JSON.stringify({ score, reasoning: "ok" }),
-        });
+      completion: () => "",
+      object: <T>(rendered: string, schema: z.ZodType<T>) => {
+        capturedPrompt = rendered;
+        return schema.parse({ score: 1, reasoning: "ok" });
       },
     };
 
-    const prompt = cria.prompt().user("Question?");
-    const criteria = [
-      { criterion: cria.prompt().system("criterion-a"), weight: 0.7 },
-      { criterion: cria.prompt().system("criterion-b"), weight: 0.3 },
-    ];
-
-    const judge = createJudge({ target, evaluator, threshold: 0.8 });
-
-    await expect(judge(prompt).toPassWeighted(criteria)).rejects.toThrow(
-      "Expected prompt to pass weighted criteria."
-    );
-  });
-
-  test("rejects invalid evaluator JSON", async () => {
-    const target: ModelProvider<string> = {
-      name: "target",
-      renderer: markdownRenderer,
-      completion: () => Promise.resolve({ text: "Target response" }),
+    const prompt = {
+      priority: 0,
+      children: [
+        {
+          kind: "message" as const,
+          role: "user",
+          priority: 0,
+          children: ["Test"],
+        },
+      ],
     };
-    const evaluator: ModelProvider<string> = {
-      name: "evaluator",
-      renderer: markdownRenderer,
-      completion: () => Promise.resolve({ text: "not json" }),
-    };
-
-    const prompt = cria.prompt().user("Question?");
-    const criterion = cria.prompt().system("Return JSON.");
 
     const judge = createJudge({ target, evaluator });
+    await judge(prompt).toPass(c`Check for politeness`);
 
-    await expect(judge(prompt).evaluate(criterion)).rejects.toThrow(
-      "Evaluator response must be valid JSON."
-    );
+    expect(capturedPrompt).toContain("politeness");
+    expect(capturedPrompt).toContain("You are an evaluator");
   });
 });

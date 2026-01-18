@@ -80,13 +80,15 @@ ${ctx.content}`;
     ],
   };
 
-  const rendered = await render(prompt, {
+  const renderOptions: Parameters<typeof render>[1] = {
     renderer: provider.renderer,
-    tokenizer: provider.tokenizer,
-  });
-  const result = await provider.completion(rendered);
+  };
+  if (provider.tokenizer) {
+    renderOptions.tokenizer = provider.tokenizer;
+  }
+  const rendered = await render(prompt, renderOptions);
 
-  return result.text;
+  return provider.completion(rendered);
 }
 
 interface SummaryStrategyOptions {

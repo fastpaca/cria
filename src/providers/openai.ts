@@ -12,6 +12,7 @@ import type {
   ResponseInputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
+import type { z } from "zod";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -22,15 +23,17 @@ import {
   safeStringify,
   type ToolResultPart,
 } from "../renderers/shared";
-import { tiktokenTokenizer } from "../tokenizers";
 import type {
-  CompletionResult,
   ModelProvider,
   PromptChildren,
   PromptElement,
   PromptRenderer,
   Tokenizer,
 } from "../types";
+
+// =============================================================================
+// Chat Completions Renderer
+// =============================================================================
 
 /**
  * Renderer that outputs ChatCompletionMessageParam[] for the OpenAI Chat Completions API.
@@ -159,9 +162,9 @@ function toToolMessage(part: ToolResultPart): ChatCompletionToolMessageParam {
   };
 }
 
-// ============================================================================
+// =============================================================================
 // Responses API Renderer (for reasoning models)
-// ============================================================================
+// =============================================================================
 
 /**
  * Renderer that outputs ResponseInputItem[] for the OpenAI Responses API.
@@ -321,12 +324,67 @@ function mapRoleForResponses(role: string): ResponseRole {
   return RESPONSE_ROLE_MAP[role] ?? "assistant";
 }
 
+// =============================================================================
+// Provider
+// =============================================================================
+
+/**
+ * Create a ModelProvider for the OpenAI Chat Completions API.
+ *
+ * @example
+ * ```typescript
+ * import OpenAI from "openai";
+ * import { createProvider } from "@fastpaca/cria/openai";
+ *
+ * const client = new OpenAI();
+ * const provider = createProvider(client, "gpt-4o");
+ * ```
+ */
+export function createProvider(
+  client: OpenAI,
+  model: string,
+  options: { tokenizer?: Tokenizer } = {}
+): ModelProvider<ChatCompletionMessageParam[]> {
+  return {
+    name: "openai",
+    ...(options.tokenizer ? { tokenizer: options.tokenizer } : {}),
+    renderer: chatCompletions,
+
+    async completion(messages) {
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+      });
+      return response.choices[0]?.message?.content ?? "";
+    },
+
+    async object<T>(
+      messages: ChatCompletionMessageParam[],
+      schema: z.ZodType<T>
+    ) {
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+        response_format: {
+          type: "json_object",
+        },
+      });
+      const text = response.choices[0]?.message?.content ?? "";
+      return schema.parse(JSON.parse(text));
+    },
+  };
+}
+
+// =============================================================================
+// JSX Component
+// =============================================================================
+
 interface OpenAIProviderProps {
   /** OpenAI client instance */
   client: OpenAI;
   /** Model to use (e.g. "gpt-4o", "gpt-4o-mini") */
   model: string;
-  /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
+  /** Optional tokenizer to use for budgeting */
   tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
   children?: PromptChildren;
@@ -356,84 +414,18 @@ interface OpenAIProviderProps {
  *
  * const result = await render(prompt, { tokenizer, budget: 4000 });
  * ```
-/**
- * ModelProvider implementation that wraps an OpenAI client.
- * Use this with the DSL's `.provider()` method.
- *
- * @example
- * ```typescript
- * import OpenAI from "openai";
- * import { cria } from "@fastpaca/cria";
- * import { Provider } from "@fastpaca/cria/openai";
- *
- * const client = new OpenAI();
- * const provider = new Provider(client, "gpt-4o");
- *
- * const prompt = cria
- *   .prompt()
- *   .provider(provider, (p) =>
- *     p.summary(content, { id: "summary", store })
- *   )
- *   .build();
- * ```
  */
-export class Provider implements ModelProvider<ChatCompletionMessageParam[]> {
-  readonly name = "openai";
-  readonly renderer: PromptRenderer<ChatCompletionMessageParam[]> =
-    chatCompletions;
-  readonly tokenizer?: Tokenizer;
-  private readonly client: OpenAI;
-  private readonly model: string;
-
-  constructor(
-    client: OpenAI,
-    model: string,
-    options: { tokenizer?: Tokenizer } = {}
-  ) {
-    this.client = client;
-    this.model = model;
-    this.tokenizer = options.tokenizer ?? tiktokenTokenizer(model);
-  }
-
-  async completion(
-    messages: ChatCompletionMessageParam[]
-  ): Promise<CompletionResult> {
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
-    });
-
-    const text = response.choices[0]?.message?.content ?? "";
-    return { text };
-  }
-}
-
 export function OpenAIProvider({
   client,
   model,
   tokenizer,
   children = [],
 }: OpenAIProviderProps): PromptElement {
-  const provider: ModelProvider<ChatCompletionMessageParam[]> = {
-    name: "openai",
-    renderer: chatCompletions,
-    tokenizer: tokenizer ?? tiktokenTokenizer(model),
-    async completion(
-      messages: ChatCompletionMessageParam[]
-    ): Promise<CompletionResult> {
-      const response = await client.chat.completions.create({
-        model,
-        messages,
-      });
-
-      const text = response.choices[0]?.message?.content ?? "";
-      return { text };
-    },
-  };
-
   return {
     priority: 0,
     children,
-    context: { provider },
+    context: {
+      provider: createProvider(client, model, tokenizer ? { tokenizer } : {}),
+    },
   };
 }

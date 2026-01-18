@@ -7,7 +7,7 @@ import {
   ToolResult,
 } from "../components";
 import { render } from "../render";
-import { chatCompletions, responses } from "./index";
+import { chatCompletions, responses } from "./openai";
 
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 

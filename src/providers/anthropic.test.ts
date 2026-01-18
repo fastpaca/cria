@@ -7,7 +7,7 @@ import {
   ToolResult,
 } from "../components";
 import { render } from "../render";
-import { anthropic } from "./index";
+import { renderer } from "./anthropic";
 
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 
@@ -26,7 +26,7 @@ test("anthropic: extracts system message separately", async () => {
   const result = await render(prompt, {
     tokenizer,
     budget: 10_000,
-    renderer: anthropic,
+    renderer,
   });
 
   expect(result).toEqual({
@@ -47,7 +47,7 @@ test("anthropic: renders user and assistant messages", async () => {
   const result = await render(prompt, {
     tokenizer,
     budget: 10_000,
-    renderer: anthropic,
+    renderer,
   });
 
   expect(result).toEqual({
@@ -79,7 +79,7 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
   const result = await render(prompt, {
     tokenizer,
     budget: 10_000,
-    renderer: anthropic,
+    renderer,
   });
 
   expect(result).toEqual({
@@ -126,7 +126,7 @@ test("anthropic: renders tool results in user messages", async () => {
   const result = await render(prompt, {
     tokenizer,
     budget: 10_000,
-    renderer: anthropic,
+    renderer,
   });
 
   expect(result).toEqual({
@@ -201,7 +201,7 @@ test("anthropic: full conversation with tool use", async () => {
   const result = await render(prompt, {
     tokenizer,
     budget: 10_000,
-    renderer: anthropic,
+    renderer,
   });
 
   expect(result).toEqual({
@@ -263,7 +263,7 @@ test("anthropic: includes reasoning as text with thinking tags", async () => {
   const result = await render(prompt, {
     tokenizer,
     budget: 10_000,
-    renderer: anthropic,
+    renderer,
   });
 
   expect(result).toEqual({

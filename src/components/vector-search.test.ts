@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { VectorMemory, VectorSearchResult } from "../memory";
-import type { CompletionMessage, PromptElement } from "../types";
+import type { PromptElement } from "../types";
 import { VectorSearch } from "./vector-search";
 
 // Mock data for testing
@@ -89,7 +89,7 @@ describe("VectorSearch", () => {
 
   it("derives query from the last user message by default", async () => {
     const { store, getLastQuery } = createMockStore(mockResults);
-    const messages: CompletionMessage[] = [
+    const messages = [
       { role: "assistant", content: "Previous answer" },
       { role: "user", content: "What is RAG?" },
     ];
@@ -114,7 +114,7 @@ describe("VectorSearch", () => {
 
   it("uses a custom extractor when provided", async () => {
     const { store, getLastQuery } = createMockStore(mockResults);
-    const messages: CompletionMessage[] = [
+    const messages = [
       { role: "user", content: "ignore me" },
       { role: "assistant", content: "assistant reply" },
     ];

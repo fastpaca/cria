@@ -6,6 +6,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import type { z } from "zod";
 import { markdownRenderer } from "../renderers/markdown";
 import {
   coalesceTextParts,
@@ -17,15 +18,16 @@ import {
   type ToolCallPart,
   type ToolResultPart,
 } from "../renderers/shared";
-import { tiktokenTokenizer } from "../tokenizers";
 import type {
-  CompletionResult,
   ModelProvider,
-  PromptChildren,
   PromptElement,
   PromptRenderer,
   Tokenizer,
 } from "../types";
+
+// =============================================================================
+// Renderer
+// =============================================================================
 
 /**
  * Result of rendering to Anthropic format.
@@ -47,9 +49,9 @@ export interface AnthropicRenderResult {
  * @example
  * ```ts
  * import { render } from "@fastpaca/cria";
- * import { anthropic } from "@fastpaca/cria/anthropic";
+ * import { renderer } from "@fastpaca/cria/anthropic";
  *
- * const { system, messages } = await render(prompt, { tokenizer, budget, renderer: anthropic });
+ * const { system, messages } = await render(prompt, { tokenizer, budget, renderer });
  * const response = await client.messages.create({
  *   model: "claude-sonnet-4-20250514",
  *   system,
@@ -57,7 +59,7 @@ export interface AnthropicRenderResult {
  * });
  * ```
  */
-export const anthropic: PromptRenderer<AnthropicRenderResult> = {
+export const renderer: PromptRenderer<AnthropicRenderResult> = {
   name: "anthropic",
   tokenString: markdownRenderer.tokenString,
   render: (element) => renderToAnthropic(element),
@@ -203,6 +205,8 @@ function buildAssistantContent(
   return content;
 }
 
+type PromptChildren = PromptElement["children"];
+
 function collectTextContent(children: PromptChildren): string {
   let result = "";
 
@@ -239,60 +243,6 @@ function toToolResultBlock(part: ToolResultPart): ToolResultBlockParam {
   };
 }
 
-/**
- * ModelProvider implementation that wraps an Anthropic client.
- * Use this with the DSL's `.provider()` method.
- *
- * @example
- * ```typescript
- * import Anthropic from "@anthropic-ai/sdk";
- * import { cria } from "@fastpaca/cria";
- * import { Provider } from "@fastpaca/cria/anthropic";
- *
- * const client = new Anthropic();
- * const provider = new Provider(client, "claude-sonnet-4-20250514");
- *
- * const prompt = cria
- *   .prompt()
- *   .provider(provider, (p) =>
- *     p.summary(content, { id: "summary", store })
- *   )
- *   .build();
- * ```
- */
-export class Provider implements ModelProvider<AnthropicRenderResult> {
-  readonly name = "anthropic";
-  readonly renderer: PromptRenderer<AnthropicRenderResult> = anthropic;
-  readonly tokenizer?: Tokenizer;
-  private readonly client: Anthropic;
-  private readonly model: Model;
-  private readonly maxTokens: number;
-
-  constructor(
-    client: Anthropic,
-    model: Model,
-    maxTokens = 1024,
-    options: { tokenizer?: Tokenizer } = {}
-  ) {
-    this.client = client;
-    this.model = model;
-    this.maxTokens = maxTokens;
-    this.tokenizer = options.tokenizer ?? tiktokenTokenizer(model);
-  }
-
-  async completion(rendered: AnthropicRenderResult): Promise<CompletionResult> {
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: this.maxTokens,
-      ...(rendered.system ? { system: rendered.system } : {}),
-      messages: rendered.messages,
-    });
-
-    const text = extractTextFromResponse(response.content);
-    return { text };
-  }
-}
-
 function extractTextFromResponse(
   content: Anthropic.Messages.ContentBlock[]
 ): string {
@@ -304,6 +254,63 @@ function extractTextFromResponse(
     .join("");
 }
 
+// =============================================================================
+// Provider
+// =============================================================================
+
+/**
+ * Create a ModelProvider for the Anthropic API.
+ *
+ * @example
+ * ```typescript
+ * import Anthropic from "@anthropic-ai/sdk";
+ * import { createProvider } from "@fastpaca/cria/anthropic";
+ *
+ * const client = new Anthropic();
+ * const provider = createProvider(client, "claude-sonnet-4-20250514");
+ * ```
+ */
+export function createProvider(
+  client: Anthropic,
+  model: Model,
+  options: { tokenizer?: Tokenizer; maxTokens?: number } = {}
+): ModelProvider<AnthropicRenderResult> {
+  const maxTokens = options.maxTokens ?? 1024;
+
+  return {
+    name: "anthropic",
+    ...(options.tokenizer ? { tokenizer: options.tokenizer } : {}),
+    renderer,
+
+    async completion(rendered) {
+      const response = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        ...(rendered.system ? { system: rendered.system } : {}),
+        messages: rendered.messages,
+      });
+      return extractTextFromResponse(response.content);
+    },
+
+    async object<T>(rendered: AnthropicRenderResult, schema: z.ZodType<T>) {
+      // Anthropic uses tool-use pattern for structured output
+      // For simplicity, we use JSON mode with a prompt instruction
+      const response = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        system: `${rendered.system ?? ""}\n\nYou must respond with valid JSON only.`,
+        messages: rendered.messages,
+      });
+      const text = extractTextFromResponse(response.content);
+      return schema.parse(JSON.parse(text));
+    },
+  };
+}
+
+// =============================================================================
+// JSX Component
+// =============================================================================
+
 interface AnthropicProviderProps {
   /** Anthropic client instance */
   client: Anthropic;
@@ -311,7 +318,7 @@ interface AnthropicProviderProps {
   model: Model;
   /** Maximum tokens to generate. Defaults to 1024. */
   maxTokens?: number;
-  /** Optional tokenizer to use for budgeting; defaults to a tiktoken-based tokenizer */
+  /** Optional tokenizer to use for budgeting */
   tokenizer?: Tokenizer;
   /** Child components that will have access to this provider */
   children?: PromptChildren;
@@ -349,28 +356,14 @@ export function AnthropicProvider({
   tokenizer,
   children = [],
 }: AnthropicProviderProps): PromptElement {
-  const provider: ModelProvider<AnthropicRenderResult> = {
-    name: "anthropic",
-    renderer: anthropic,
-    tokenizer: tokenizer ?? tiktokenTokenizer(model),
-    async completion(
-      rendered: AnthropicRenderResult
-    ): Promise<CompletionResult> {
-      const response = await client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        ...(rendered.system ? { system: rendered.system } : {}),
-        messages: rendered.messages,
-      });
-
-      const text = extractTextFromResponse(response.content);
-      return { text };
-    },
-  };
+  const options: { tokenizer?: Tokenizer; maxTokens?: number } = { maxTokens };
+  if (tokenizer) {
+    options.tokenizer = tokenizer;
+  }
 
   return {
     priority: 0,
     children,
-    context: { provider },
+    context: { provider: createProvider(client, model, options) },
   };
 }

@@ -3,11 +3,13 @@ import type {
   VectorSearchOptions,
   VectorSearchResult,
 } from "../memory";
-import type {
-  CompletionMessage,
-  PromptChildren,
-  PromptElement,
-} from "../types";
+import type { PromptChildren, PromptElement } from "../types";
+
+/** Simple message shape for query extraction. */
+interface Message {
+  role: string;
+  content: string;
+}
 
 /**
  * Function that formats search results into prompt content.
@@ -38,9 +40,7 @@ function defaultFormatter<T>(results: VectorSearchResult<T>[]): string {
     .join("\n\n");
 }
 
-type QueryExtractor = (
-  messages: CompletionMessage[]
-) => string | null | undefined;
+type QueryExtractor = (messages: Message[]) => string | null | undefined;
 
 interface VectorSearchProps<T = unknown> {
   /** Vector memory store to search */
@@ -53,7 +53,7 @@ interface VectorSearchProps<T = unknown> {
   /**
    * Optional messages to derive a query from (uses last user message by default).
    */
-  messages?: CompletionMessage[];
+  messages?: Message[];
   /** Custom query extractor (overrides the default last-user-message behavior). */
   extractQuery?: QueryExtractor;
   /** Maximum number of results to return. Default: 5 */
@@ -89,7 +89,7 @@ function queryFromChildren(children?: PromptChildren): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-function defaultExtractQuery(messages: CompletionMessage[]): string | null {
+function defaultExtractQuery(messages: Message[]): string | null {
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   const content = lastUser?.content.trim() ?? "";
   return content === "" ? null : content;
@@ -97,7 +97,7 @@ function defaultExtractQuery(messages: CompletionMessage[]): string | null {
 
 interface QuerySources {
   query?: string | undefined;
-  messages?: CompletionMessage[] | undefined;
+  messages?: Message[] | undefined;
   extractQuery?: QueryExtractor | undefined;
   children?: PromptChildren | undefined;
 }

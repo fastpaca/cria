@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import { expect, test } from "vitest";
 import { render } from "../render";
-import { Messages, renderer } from "./index";
+import { Messages, renderer } from "./ai-sdk";
 
 const tokenizer = (text: string): number => Math.ceil(text.length / 4);
 

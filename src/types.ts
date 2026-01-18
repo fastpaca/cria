@@ -14,57 +14,17 @@ export const PromptRoleSchema = z
 export type PromptRole = z.infer<typeof PromptRoleSchema>;
 
 /**
- * A structured content part in a completion message.
- */
-export type CompletionContentPart =
-  | { type: "text"; text: string }
-  | {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-    }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    }
-  | { type: "reasoning"; text: string };
-
-/**
- * A message in a completion request.
- *
- * Content can be either a plain string (for simple text messages) or
- * an array of structured parts (for messages with tool calls, results, or reasoning).
- */
-export interface CompletionMessage {
-  role: PromptRole;
-  content: string | CompletionContentPart[];
-}
-
-/**
- * Rendered prompt messages for a completion.
- */
-export type CompletionRequest = CompletionMessage[];
-
-/**
- * Result from a completion request.
- */
-export interface CompletionResult {
-  /** The generated text response */
-  text: string;
-}
-
-/**
  * A model provider that can generate completions.
  *
  * This abstraction allows Cria components to call AI models without
- * being coupled to a specific SDK.
+ * being coupled to a specific SDK. Each provider specifies its own
+ * rendered message type (e.g., AI SDK's ModelMessage[], OpenAI's
+ * ChatCompletionMessageParam[]).
  */
-export interface ModelProvider<TRendered = CompletionRequest> {
+export interface ModelProvider<TRendered> {
   /** Provider identifier for debugging */
   name: string;
+
   /**
    * Tokenizer for this provider's model.
    *
@@ -76,8 +36,18 @@ export interface ModelProvider<TRendered = CompletionRequest> {
 
   /** Renderer that produces provider-specific prompt input. */
   renderer: PromptRenderer<TRendered>;
-  /** Generate a completion from rendered prompt input. */
-  completion(rendered: TRendered): MaybePromise<CompletionResult>;
+
+  /** Generate a text completion from rendered prompt input. */
+  completion(rendered: TRendered): MaybePromise<string>;
+
+  /**
+   * Generate a structured object validated against the schema.
+   *
+   * Implementations should use native structured output when available
+   * (e.g., AI SDK's generateObject, OpenAI's json_schema response_format),
+   * falling back to completion + JSON.parse + schema.parse internally.
+   */
+  object<T>(rendered: TRendered, schema: z.ZodType<T>): MaybePromise<T>;
 }
 
 /**
