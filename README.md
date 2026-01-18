@@ -1,5 +1,7 @@
 <h1 align="center">Cria</h1>
 
+> **Note:** Cria is under active development. We're iterating heavily and the API may change before 2.0. Use in production at your own discretion.
+
 <p align="center">
   <i>Your prompts deserve the same structure as your code.</i>
 </p>
