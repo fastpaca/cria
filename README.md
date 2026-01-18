@@ -130,18 +130,18 @@ Use the `@fastpaca/cria/eval` entrypoint for judge-style evaluation helpers.
 ```ts
 import { cria } from "@fastpaca/cria";
 import { Provider } from "@fastpaca/cria/ai-sdk";
-import { judge } from "@fastpaca/cria/eval";
+import { createJudge } from "@fastpaca/cria/eval";
 import { openai } from "@ai-sdk/openai";
 
 const Helpful = () =>
   cria.prompt().system("Evaluate helpfulness. Return JSON: { score, reasoning }.");
 
-const run = judge({
+const judge = createJudge({
   target: new Provider(openai("gpt-4o")),
   evaluator: new Provider(openai("gpt-4o-mini")),
 });
 
-await run(prompt).toPass(Helpful());
+await judge(prompt).toPass(Helpful());
 ```
 
 ## Roadmap

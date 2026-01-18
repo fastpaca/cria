@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { markdownRenderer } from "../renderers/markdown";
 import type { ModelProvider } from "../types";
-import { cria, judge } from "./index";
+import { createJudge, cria } from "./index";
 
 function createCapturingProvider(responseText: string): {
   provider: ModelProvider<string>;
@@ -35,8 +35,8 @@ describe("judge", () => {
       .prompt()
       .system("Evaluate helpfulness. Return JSON: { score, reasoning }.");
 
-    const run = judge({ target, evaluator });
-    const result = await run(prompt).evaluate(criterion);
+    const judge = createJudge({ target, evaluator });
+    const result = await judge(prompt).evaluate(criterion);
 
     expect(result.score).toBe(0.9);
     expect(result.reasoning).toBe("Solid");
@@ -57,9 +57,9 @@ describe("judge", () => {
       .prompt()
       .system("Return JSON: { score, reasoning }.");
 
-    const run = judge({ target, evaluator, threshold: 0.8 });
+    const judge = createJudge({ target, evaluator, threshold: 0.8 });
 
-    await expect(run(prompt).toPass(criterion)).rejects.toThrow(
+    await expect(judge(prompt).toPass(criterion)).rejects.toThrow(
       "Expected prompt to pass criterion."
     );
   });
@@ -89,8 +89,8 @@ describe("judge", () => {
       cria.prompt().system("Criterion B. Return JSON."),
     ];
 
-    const run = judge({ target, evaluator });
-    await run(prompt).toPassAll(criteria);
+    const judge = createJudge({ target, evaluator });
+    await judge(prompt).toPassAll(criteria);
 
     expect(calls).toBe(1);
   });
@@ -118,9 +118,9 @@ describe("judge", () => {
       { criterion: cria.prompt().system("criterion-b"), weight: 0.3 },
     ];
 
-    const run = judge({ target, evaluator, threshold: 0.8 });
+    const judge = createJudge({ target, evaluator, threshold: 0.8 });
 
-    await expect(run(prompt).toPassWeighted(criteria)).rejects.toThrow(
+    await expect(judge(prompt).toPassWeighted(criteria)).rejects.toThrow(
       "Expected prompt to pass weighted criteria."
     );
   });
@@ -140,9 +140,9 @@ describe("judge", () => {
     const prompt = cria.prompt().user("Question?");
     const criterion = cria.prompt().system("Return JSON.");
 
-    const run = judge({ target, evaluator });
+    const judge = createJudge({ target, evaluator });
 
-    await expect(run(prompt).evaluate(criterion)).rejects.toThrow(
+    await expect(judge(prompt).evaluate(criterion)).rejects.toThrow(
       "Evaluator response must be valid JSON."
     );
   });

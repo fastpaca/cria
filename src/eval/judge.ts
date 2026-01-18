@@ -32,9 +32,11 @@ export interface Judgment {
   toPassWeighted(criteria: readonly WeightedCriterion[]): Promise<void>;
 }
 
+export type Judge = (prompt: PromptInput) => Judgment;
+
 const RESPONSE_HEADER = "Response to evaluate:";
 
-export function judge(config: JudgeConfig): (prompt: PromptInput) => Judgment {
+export function createJudge(config: JudgeConfig): Judge {
   const { target, evaluator, threshold = DEFAULT_THRESHOLD, timeout } = config;
 
   return (prompt: PromptInput): Judgment => {
@@ -203,8 +205,8 @@ function parseEvaluatorOutput(raw: string): EvaluatorOutput {
     throw new Error("Evaluator response must be an object.");
   }
 
-  const score = parsed.score;
-  const reasoning = parsed.reasoning;
+  const score = parsed["score"];
+  const reasoning = parsed["reasoning"];
 
   if (typeof score !== "number" || Number.isNaN(score)) {
     throw new Error("Evaluator score must be a number.");

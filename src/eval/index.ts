@@ -5,7 +5,7 @@
  * ```typescript
  * import { cria } from "@fastpaca/cria";
  * import { Provider } from "@fastpaca/cria/ai-sdk";
- * import { judge } from "@fastpaca/cria/eval";
+ * import { createJudge } from "@fastpaca/cria/eval";
  * import { openai } from "@ai-sdk/openai";
  *
  * // Define evaluation criteria as Cria prompts
@@ -14,7 +14,7 @@
  *   .system("Evaluate helpfulness. Return JSON: { score: 0-1, reasoning: string }.");
  *
  * // Create a configured judge
- * const check = judge({
+ * const judge = createJudge({
  *   target: new Provider(openai("gpt-4o")),
  *   evaluator: new Provider(openai("gpt-4o-mini")),
  * });
@@ -26,23 +26,23 @@
  *   .user(question);
  *
  * // Assert in tests
- * await check(support("How do I update my payment method?")).toPass(Helpful());
+ * await judge(support("How do I update my payment method?")).toPass(Helpful());
  * ```
  *
  * @packageDocumentation
  */
 
 import { cria as baseCria } from "../dsl";
-import { judge } from "./judge";
 
 export type {
   EvalResult,
+  Judge,
   JudgeConfig,
   Judgment,
   PromptInput,
   WeightedCriterion,
 } from "./judge";
 // biome-ignore lint/performance/noBarrelFile: Intentional package entrypoint
-export { DEFAULT_THRESHOLD, judge } from "./judge";
+export { createJudge, DEFAULT_THRESHOLD } from "./judge";
 
-export const cria = { ...baseCria, judge } as const;
+export const cria = { ...baseCria, judge: createJudge } as const;
