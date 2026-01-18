@@ -1,5 +1,5 @@
+import { cria } from "../dsl";
 import type { KVMemory } from "../memory";
-import { render } from "../render";
 import type {
   MaybePromise,
   ModelProvider,
@@ -45,9 +45,8 @@ async function defaultSummarizer(
   const systemPrompt =
     "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
 
-  let userPrompt: string;
-  if (ctx.existingSummary) {
-    userPrompt = `Here is the existing summary of the conversation so far:
+  const userPrompt = ctx.existingSummary
+    ? `Here is the existing summary of the conversation so far:
 
 ${ctx.existingSummary}
 
@@ -55,38 +54,19 @@ Here is new conversation content to incorporate into the summary:
 
 ${ctx.content}
 
-Please provide an updated summary that incorporates both the existing summary and the new content.`;
-  } else {
-    userPrompt = `Please summarize the following conversation:
+Please provide an updated summary that incorporates both the existing summary and the new content.`
+    : `Please summarize the following conversation:
 
 ${ctx.content}`;
-  }
 
-  const prompt: PromptElement = {
-    priority: 0,
-    children: [
-      {
-        kind: "message",
-        role: "system",
-        priority: 0,
-        children: [systemPrompt],
-      },
-      {
-        kind: "message",
-        role: "user",
-        priority: 0,
-        children: [userPrompt],
-      },
-    ],
-  };
-
-  const renderOptions: Parameters<typeof render>[1] = {
-    renderer: provider.renderer,
-  };
-  if (provider.tokenizer) {
-    renderOptions.tokenizer = provider.tokenizer;
-  }
-  const rendered = await render(prompt, renderOptions);
+  const rendered = await cria
+    .prompt()
+    .system(systemPrompt)
+    .user(userPrompt)
+    .render({
+      renderer: provider.renderer,
+      ...(provider.tokenizer ? { tokenizer: provider.tokenizer } : {}),
+    });
 
   return provider.completion(rendered);
 }
