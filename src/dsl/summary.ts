@@ -7,19 +7,14 @@ import { render } from "../render";
 import type {
   MaybePromise,
   ModelProvider,
-  PromptNode,
   PromptRole,
   PromptScope,
   ScopeChildren,
   Strategy,
   StrategyInput,
 } from "../types";
-import { createMessage, createScope } from "./strategies";
-
-/** Helper to create a simple text message */
-function textMessage(role: PromptRole, text: string): PromptNode {
-  return createMessage(role, [{ type: "text", text }]);
-}
+import { PromptBuilder } from "./builder";
+import { createScope } from "./strategies";
 
 /**
  * Stored summary data persisted across renders.
@@ -54,7 +49,10 @@ async function defaultSummarizer(
   ctx: SummarizerContext,
   provider: ModelProvider<unknown>
 ): Promise<string> {
-  const summaryPrompt = buildSummaryPrompt(ctx.target, ctx.existingSummary);
+  const summaryPrompt = await buildSummaryPrompt(
+    ctx.target,
+    ctx.existingSummary
+  );
   const rendered = await render(summaryPrompt, { provider });
 
   return provider.completion(rendered);
@@ -99,10 +97,12 @@ function createSummaryStrategy({
       content: newSummary,
     });
 
-    return createScope(
-      [textMessage(role, `[Summary of earlier conversation]\n${newSummary}`)],
-      { priority: target.priority }
-    );
+    // Return a scope with the summary message using the DSL
+    const tree = await PromptBuilder.create()
+      .message(role, `[Summary of earlier conversation]\n${newSummary}`)
+      .build();
+
+    return { ...tree, priority: target.priority };
   };
 }
 
@@ -141,33 +141,22 @@ export function Summary({
   });
 }
 
-const SUMMARY_SYSTEM_PROMPT =
-  "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
-
-const SUMMARY_REQUEST = "Summarize the conversation above.";
-const SUMMARY_UPDATE_REQUEST =
-  "Update the summary based on the previous summary and the conversation above.";
-
 function buildSummaryPrompt(
   target: PromptScope,
   existingSummary: string | null
-): PromptScope {
-  const children: PromptNode[] = [textMessage("system", SUMMARY_SYSTEM_PROMPT)];
-
-  if (existingSummary) {
-    children.push(
-      textMessage("assistant", `Current summary:\n${existingSummary}`)
-    );
-  }
-
-  children.push(createScope([...target.children]));
-
-  children.push(
-    textMessage(
-      "user",
-      existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST
+): Promise<PromptScope> {
+  return PromptBuilder.create()
+    .system(
+      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information."
     )
-  );
-
-  return createScope(children);
+    .when(existingSummary !== null, (p) =>
+      p.assistant(`Current summary:\n${existingSummary}`)
+    )
+    .merge(target.children)
+    .user(
+      existingSummary
+        ? "Update the summary based on the previous summary and the conversation above."
+        : "Summarize the conversation above."
+    )
+    .build();
 }

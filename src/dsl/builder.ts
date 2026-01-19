@@ -369,6 +369,79 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   }
 
   /**
+   * Merge builders or raw nodes into this one.
+   * Accepts PromptBuilders, individual PromptNodes, or arrays of PromptNodes.
+   *
+   * @example
+   * ```typescript
+   * // Merge builders
+   * cria.prompt().system("A").merge(otherBuilder)
+   *
+   * // Merge raw nodes
+   * cria.prompt().system("A").merge(...scope.children)
+   * ```
+   */
+  override merge(
+    ...items: (PromptBuilder | PromptNode | readonly PromptNode[])[]
+  ): PromptBuilder {
+    const newChildren: BuilderChild[] = [...this.children];
+    let nextContext = this.context;
+
+    for (const item of items) {
+      nextContext = this.mergeItem(item, newChildren, nextContext);
+    }
+
+    return this.create(newChildren, nextContext);
+  }
+
+  private mergeItem(
+    item: PromptBuilder | PromptNode | readonly PromptNode[],
+    target: BuilderChild[],
+    currentContext: CriaContext | undefined
+  ): CriaContext | undefined {
+    if (item instanceof PromptBuilder) {
+      if (item.context && currentContext && item.context !== currentContext) {
+        throw new Error(
+          "Cannot merge builders with different contexts/providers"
+        );
+      }
+      target.push(...item.children);
+      return item.context ?? currentContext;
+    }
+
+    if (Array.isArray(item)) {
+      for (const node of item) {
+        target.push(node);
+      }
+      return currentContext;
+    }
+
+    if (isPromptNode(item)) {
+      target.push(item);
+    }
+
+    return currentContext;
+  }
+
+  /**
+   * Conditionally apply a transformation to the builder.
+   *
+   * @example
+   * ```typescript
+   * cria.prompt()
+   *   .system("Hello")
+   *   .when(hasContext, (p) => p.user("Context: ..."))
+   *   .user("Question")
+   * ```
+   */
+  when(
+    condition: boolean,
+    fn: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder {
+    return condition ? fn(this) : this;
+  }
+
+  /**
    * Add a system message.
    */
   system(

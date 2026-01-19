@@ -8,7 +8,7 @@ import type {
   VectorSearchResult,
 } from "../memory";
 import type { PromptPart, PromptRole, PromptScope } from "../types";
-import { createMessage, createScope } from "./strategies";
+import { PromptBuilder } from "./builder";
 
 /** Simple message shape for query extraction. */
 interface Message {
@@ -170,8 +170,12 @@ export async function VectorSearch<T = unknown>({
   const results = await store.search(finalQuery, searchOptions);
   const content = formatResults(results);
 
-  return createScope([createMessage(role, [{ type: "text", text: content }])], {
+  // Use the DSL to build the result scope
+  const tree = await PromptBuilder.create().message(role, content).build();
+
+  return {
+    ...tree,
     priority,
     ...(id && { id }),
-  });
+  };
 }
