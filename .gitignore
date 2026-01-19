@@ -33,7 +33,8 @@ coverage/
 # Git worktrees
 .worktrees/
 
-# Local design docs
+# Local design docs - AI sucks and there is no good
+# standardisation for these.
 .design-docs/
 .code/
 .plans/
@@ -41,3 +42,4 @@ plan/
 plans/
 todos/
 .docs/
+docs/specs/
