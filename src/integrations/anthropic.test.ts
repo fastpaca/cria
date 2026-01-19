@@ -1,11 +1,7 @@
 import { expect, test } from "vitest";
+import { cria } from "../dsl";
 import { render } from "../render";
-import type {
-  PromptMessageNode,
-  PromptPart,
-  PromptRenderer,
-  PromptScope,
-} from "../types";
+import type { PromptMessageNode, PromptRenderer } from "../types";
 import { ModelProvider } from "../types";
 import { AnthropicRenderer } from "./anthropic";
 
@@ -32,34 +28,22 @@ class RenderOnlyProvider<T> extends ModelProvider<T> {
 
 const provider = new RenderOnlyProvider(new AnthropicRenderer());
 
-const text = (value: string): PromptPart => ({ type: "text", text: value });
-
-function rootScope(
-  ...children: (PromptMessageNode | PromptScope)[]
-): PromptScope {
-  return {
-    kind: "scope",
-    priority: 0,
-    children,
-  };
-}
-
-function message(
+/**
+ * Creates a message node with arbitrary PromptPart children.
+ * Used for testing renderer behavior with specific part types.
+ */
+function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",
-  children: PromptPart[]
+  children: PromptMessageNode["children"]
 ): PromptMessageNode {
-  return {
-    kind: "message",
-    role,
-    children,
-  };
+  return { kind: "message", role, children };
 }
 
 test("anthropic: extracts system message separately", async () => {
-  const prompt = rootScope(
-    message("system", [text("You are a helpful assistant.")]),
-    message("user", [text("Hello!")])
-  );
+  const prompt = cria.scope([
+    cria.system("You are a helpful assistant."),
+    cria.user("Hello!"),
+  ]);
 
   const result = await render(prompt, { provider });
 
@@ -70,10 +54,7 @@ test("anthropic: extracts system message separately", async () => {
 });
 
 test("anthropic: renders user and assistant messages", async () => {
-  const prompt = rootScope(
-    message("user", [text("Hello!")]),
-    message("assistant", [text("Hi there!")])
-  );
+  const prompt = cria.scope([cria.user("Hello!"), cria.assistant("Hi there!")]);
 
   const result = await render(prompt, { provider });
 
@@ -86,16 +67,16 @@ test("anthropic: renders user and assistant messages", async () => {
 });
 
 test("anthropic: renders tool calls as tool_use blocks", async () => {
-  const prompt = rootScope(
-    message("assistant", [
+  const prompt = cria.scope([
+    messageWithParts("assistant", [
       {
         type: "tool-call",
         input: { city: "Paris" },
         toolCallId: "call_123",
         toolName: "getWeather",
       },
-    ])
-  );
+    ]),
+  ]);
 
   const result = await render(prompt, { provider });
 
@@ -117,8 +98,8 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
 });
 
 test("anthropic: renders tool results in user messages", async () => {
-  const prompt = rootScope(
-    message("assistant", [
+  const prompt = cria.scope([
+    messageWithParts("assistant", [
       {
         type: "tool-call",
         input: { city: "Paris" },
@@ -126,15 +107,15 @@ test("anthropic: renders tool results in user messages", async () => {
         toolName: "getWeather",
       },
     ]),
-    message("tool", [
+    messageWithParts("tool", [
       {
         type: "tool-result",
         output: { temperature: 20 },
         toolCallId: "call_123",
         toolName: "getWeather",
       },
-    ])
-  );
+    ]),
+  ]);
 
   const result = await render(prompt, { provider });
 
@@ -166,11 +147,11 @@ test("anthropic: renders tool results in user messages", async () => {
 });
 
 test("anthropic: full conversation with tool use", async () => {
-  const prompt = rootScope(
-    message("system", [text("You are a weather assistant.")]),
-    message("user", [text("What's the weather in Paris?")]),
-    message("assistant", [
-      text("Let me check."),
+  const prompt = cria.scope([
+    cria.system("You are a weather assistant."),
+    cria.user("What's the weather in Paris?"),
+    messageWithParts("assistant", [
+      { type: "text", text: "Let me check." },
       {
         type: "tool-call",
         input: { city: "Paris" },
@@ -178,7 +159,7 @@ test("anthropic: full conversation with tool use", async () => {
         toolName: "getWeather",
       },
     ]),
-    message("tool", [
+    messageWithParts("tool", [
       {
         type: "tool-result",
         output: { temp: 18 },
@@ -186,8 +167,8 @@ test("anthropic: full conversation with tool use", async () => {
         toolName: "getWeather",
       },
     ]),
-    message("assistant", [text("The temperature in Paris is 18°C.")])
-  );
+    cria.assistant("The temperature in Paris is 18°C."),
+  ]);
 
   const result = await render(prompt, { provider });
 
@@ -234,12 +215,12 @@ test("anthropic: full conversation with tool use", async () => {
 });
 
 test("anthropic: includes reasoning as text with thinking tags", async () => {
-  const prompt = rootScope(
-    message("assistant", [
+  const prompt = cria.scope([
+    messageWithParts("assistant", [
       { type: "reasoning", text: "Let me think about this..." },
-      text("The answer is 4."),
-    ])
-  );
+      { type: "text", text: "The answer is 4." },
+    ]),
+  ]);
 
   const result = await render(prompt, { provider });
 

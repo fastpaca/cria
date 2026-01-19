@@ -1,13 +1,8 @@
 import type { Attributes, Span, Tracer } from "@opentelemetry/api";
 import { describe, expect, test } from "vitest";
-import { render } from "../index";
+import { cria, render } from "../index";
 import { createTestProvider } from "../testing/plaintext";
-import type {
-  PromptMessageNode,
-  PromptPart,
-  PromptScope,
-  Strategy,
-} from "../types";
+import type { PromptMessageNode, PromptScope, Strategy } from "../types";
 import { createOtelRenderHooks } from "./otel";
 
 class StubSpan implements Span {
@@ -84,26 +79,10 @@ const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
 const FIT_ERROR = /Cannot fit prompt/;
 
-const text = (value: string): PromptPart => ({ type: "text", text: value });
-
-function rootScope(
-  ...children: (PromptMessageNode | PromptScope)[]
-): PromptScope {
-  return {
-    kind: "scope",
-    priority: 0,
-    children,
-  };
-}
-
-function userMessage(value: string): PromptMessageNode {
-  return {
-    kind: "message",
-    role: "user",
-    children: [text(value)],
-  };
-}
-
+/**
+ * Creates an omit scope with a custom strategy for testing OTEL behavior.
+ * This is intentionally raw to test the instrumentation with specific behaviors.
+ */
 function omitScope(
   children: (PromptMessageNode | PromptScope)[],
   opts: { priority: number }
@@ -121,10 +100,10 @@ describe("createOtelRenderHooks", () => {
   test("emits spans for fit lifecycle", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = rootScope(
-      userMessage("A"),
-      omitScope([userMessage("BBBB")], { priority: 1 })
-    );
+    const element = cria.scope([
+      cria.user("A"),
+      omitScope([cria.user("BBBB")], { priority: 1 }),
+    ]);
 
     await render(element, { provider, budget: tokensFor("A"), hooks });
 
@@ -144,7 +123,7 @@ describe("createOtelRenderHooks", () => {
   test("records errors on fit failure", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = rootScope(userMessage("Too long"));
+    const element = cria.scope([cria.user("Too long")]);
 
     await expect(
       render(element, {
@@ -167,7 +146,7 @@ describe("createOtelRenderHooks", () => {
     } as unknown as Tracer;
 
     const hooks = createOtelRenderHooks({ tracer });
-    const element = rootScope(userMessage("Hello"));
+    const element = cria.scope([cria.user("Hello")]);
 
     await expect(
       render(element, {

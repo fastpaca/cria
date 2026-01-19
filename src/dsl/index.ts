@@ -40,8 +40,32 @@ export type {
 export type { ResultFormatter } from "./vector-search";
 
 // Import for namespace
-import { c as templateC } from "../templating";
+import {
+  normalizeTextInput,
+  type TextInput,
+  c as templateC,
+} from "../templating";
+import type {
+  PromptMessageNode,
+  PromptRole,
+  PromptScope,
+  ScopeChildren,
+} from "../types";
 import { PromptBuilder } from "./builder";
+import { createMessage, createScope } from "./strategies";
+
+/** Create a standalone message node */
+function message(role: PromptRole, content: TextInput): PromptMessageNode {
+  return createMessage(role, normalizeTextInput(content));
+}
+
+/** Create a standalone scope node */
+function scope(
+  children: ScopeChildren,
+  opts?: { priority?: number; id?: string }
+): PromptScope {
+  return createScope(children, opts);
+}
 
 /**
  * Namespace for building prompts as code.
@@ -50,11 +74,16 @@ import { PromptBuilder } from "./builder";
  * ```typescript
  * import { cria } from "@fastpaca/cria";
  *
+ * // Full prompt builder
  * const prompt = cria
  *   .prompt()
  *   .system("You are helpful.")
  *   .user("Hello!")
  *   .build();
+ *
+ * // Standalone nodes
+ * const msg = cria.user("Hello!");
+ * const root = cria.scope([msg]);
  * ```
  */
 export const cria = {
@@ -67,6 +96,12 @@ export const cria = {
     }
     return first.merge(...rest);
   },
+  // Standalone node creators
+  message,
+  scope,
+  user: (content: TextInput) => message("user", content),
+  system: (content: TextInput) => message("system", content),
+  assistant: (content: TextInput) => message("assistant", content),
 } as const;
 
 /**

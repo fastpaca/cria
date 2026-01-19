@@ -1,47 +1,18 @@
 import { expect, test } from "vitest";
-import { render } from "./index";
+import { cria, render } from "./index";
 import type { FitErrorEvent } from "./render";
 import { createTestProvider } from "./testing/plaintext";
-import type {
-  PromptMessageNode,
-  PromptPart,
-  PromptScope,
-  Strategy,
-} from "./types";
+import type { PromptMessageNode, PromptScope, Strategy } from "./types";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
 
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 
-const text = (value: string): PromptPart => ({ type: "text", text: value });
-
-function rootScope(
-  ...children: (PromptMessageNode | PromptScope)[]
-): PromptScope {
-  return {
-    kind: "scope",
-    priority: 0,
-    children,
-  };
-}
-
-function userMessage(value: string): PromptMessageNode {
-  return {
-    kind: "message",
-    role: "user",
-    children: [text(value)],
-  };
-}
-
-function assistantMessage(value: string): PromptMessageNode {
-  return {
-    kind: "message",
-    role: "assistant",
-    children: [text(value)],
-  };
-}
-
+/**
+ * Creates an omit scope with a custom strategy for testing render behavior.
+ * This is intentionally raw to test the render pipeline with specific behaviors.
+ */
 function omitScope(
   children: (PromptMessageNode | PromptScope)[],
   opts: { priority: number; id?: string }
@@ -56,6 +27,10 @@ function omitScope(
   };
 }
 
+/**
+ * Creates a truncate scope with a custom strategy for testing render behavior.
+ * This is intentionally raw to test the render pipeline with specific behaviors.
+ */
 function truncateScope(
   children: (PromptMessageNode | PromptScope)[],
   opts: { budget: number; priority: number }
@@ -81,7 +56,7 @@ function truncateScope(
 }
 
 test("render: basic text output", async () => {
-  const element = rootScope(userMessage("Hello, world!"));
+  const element = cria.scope([cria.user("Hello, world!")]);
   const result = await render(element, {
     provider,
     budget: tokensFor("Hello, world!"),
@@ -90,11 +65,11 @@ test("render: basic text output", async () => {
 });
 
 test("render: nested scopes", async () => {
-  const element = rootScope(
-    { kind: "scope", priority: 0, children: [userMessage("Start ")] },
-    { kind: "scope", priority: 0, children: [userMessage("Middle")] },
-    { kind: "scope", priority: 0, children: [userMessage(" End")] }
-  );
+  const element = cria.scope([
+    cria.scope([cria.user("Start ")]),
+    cria.scope([cria.user("Middle")]),
+    cria.scope([cria.user(" End")]),
+  ]);
   const result = await render(element, {
     provider,
     budget: tokensFor("Start Middle End"),
@@ -103,13 +78,13 @@ test("render: nested scopes", async () => {
 });
 
 test("render: omit removes scope when over budget", async () => {
-  const element = rootScope(
-    userMessage("Important "),
-    omitScope([userMessage("Less important content that should be removed")], {
+  const element = cria.scope([
+    cria.user("Important "),
+    omitScope([cria.user("Less important content that should be removed")], {
       priority: 1,
     }),
-    userMessage("Also important")
-  );
+    cria.user("Also important"),
+  ]);
 
   const full =
     "Important Less important content that should be removedAlso important";
@@ -129,13 +104,13 @@ test("render: omit removes scope when over budget", async () => {
 });
 
 test("render: truncate reduces content", async () => {
-  const element = rootScope(
-    userMessage("Head "),
-    truncateScope([userMessage("Alpha "), userMessage("Beta")], {
+  const element = cria.scope([
+    cria.user("Head "),
+    truncateScope([cria.user("Alpha "), cria.user("Beta")], {
       budget: 4,
       priority: 1,
-    })
-  );
+    }),
+  ]);
 
   const truncated = "Head Beta";
   const result = await render(element, {
@@ -146,11 +121,11 @@ test("render: truncate reduces content", async () => {
 });
 
 test("render: priority ordering - lower priority removed first", async () => {
-  const element = rootScope(
-    { kind: "scope", priority: 0, children: [userMessage("Critical")] },
-    omitScope([userMessage("Medium importance")], { priority: 1 }),
-    omitScope([userMessage("Low importance")], { priority: 2 })
-  );
+  const element = cria.scope([
+    cria.scope([cria.user("Critical")]),
+    omitScope([cria.user("Medium importance")], { priority: 1 }),
+    omitScope([cria.user("Low importance")], { priority: 2 }),
+  ]);
 
   const result = await render(element, {
     provider,
@@ -160,9 +135,9 @@ test("render: priority ordering - lower priority removed first", async () => {
 });
 
 test("render: throws FitError when cannot fit", async () => {
-  const element = rootScope(
-    userMessage("This content has no strategy and cannot be reduced")
-  );
+  const element = cria.scope([
+    cria.user("This content has no strategy and cannot be reduced"),
+  ]);
 
   const tooLong = "This content has no strategy and cannot be reduced";
   await expect(
@@ -174,10 +149,10 @@ test("render: throws FitError when cannot fit", async () => {
 });
 
 test("render: multiple strategies at same priority applied together", async () => {
-  const element = rootScope(
-    omitScope([userMessage("AAA")], { id: "a", priority: 1 }),
-    omitScope([userMessage("BBB")], { id: "b", priority: 1 })
-  );
+  const element = cria.scope([
+    omitScope([cria.user("AAA")], { id: "a", priority: 1 }),
+    omitScope([cria.user("BBB")], { id: "b", priority: 1 }),
+  ]);
 
   const result = await render(element, { provider, budget: 0 });
   expect(result).toBe("");
@@ -185,10 +160,10 @@ test("render: multiple strategies at same priority applied together", async () =
 
 test("render: hooks fire in expected order", async () => {
   const calls: string[] = [];
-  const element = rootScope(
-    userMessage("A"),
-    omitScope([userMessage("BBBB")], { priority: 1 })
-  );
+  const element = cria.scope([
+    cria.user("A"),
+    omitScope([cria.user("BBBB")], { priority: 1 }),
+  ]);
 
   const result = await render(element, {
     provider,
@@ -214,7 +189,7 @@ test("render: hooks fire in expected order", async () => {
 });
 
 test("render: onFitError fires before FitError throws", async () => {
-  const element = rootScope(userMessage("Too long"));
+  const element = cria.scope([cria.user("Too long")]);
   let errorEvent: FitErrorEvent | null = null;
 
   await expect(
@@ -234,10 +209,10 @@ test("render: onFitError fires before FitError throws", async () => {
 });
 
 test("render: hook errors bubble (sync error)", async () => {
-  const element = rootScope(
-    userMessage("A"),
-    omitScope([userMessage("BBBB")], { priority: 1 })
-  );
+  const element = cria.scope([
+    cria.user("A"),
+    omitScope([cria.user("BBBB")], { priority: 1 }),
+  ]);
 
   await expect(
     render(element, {
@@ -253,10 +228,10 @@ test("render: hook errors bubble (sync error)", async () => {
 });
 
 test("render: hook errors bubble (async error)", async () => {
-  const element = rootScope(
-    userMessage("A"),
-    omitScope([userMessage("BBBB")], { priority: 1 })
-  );
+  const element = cria.scope([
+    cria.user("A"),
+    omitScope([cria.user("BBBB")], { priority: 1 }),
+  ]);
 
   await expect(
     render(element, {
@@ -273,14 +248,17 @@ test("render: hook errors bubble (async error)", async () => {
 });
 
 test("render: assistant message fields map to output", async () => {
-  const element = rootScope(assistantMessage("Hello "), {
-    kind: "message",
-    role: "assistant",
-    children: [
-      { type: "reasoning", text: "Thinking" },
-      { type: "tool-call", toolCallId: "c1", toolName: "calc", input: 1 },
-    ],
-  });
+  const element = cria.scope([
+    cria.assistant("Hello "),
+    {
+      kind: "message",
+      role: "assistant",
+      children: [
+        { type: "reasoning", text: "Thinking" },
+        { type: "tool-call", toolCallId: "c1", toolName: "calc", input: 1 },
+      ],
+    },
+  ]);
 
   const result = await render(element, {
     provider,
