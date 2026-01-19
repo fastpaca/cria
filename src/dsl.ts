@@ -1,5 +1,5 @@
 /**
- * Fluent DSL for building prompts without JSX.
+ * Fluent DSL for building prompts.
  *
  * @example
  * ```typescript
@@ -355,7 +355,7 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
 }
 
 /**
- * Fluent builder for constructing prompt trees without JSX.
+ * Fluent builder for constructing prompt trees.
  *
  * Every method returns a new immutable builder instance; large chains will copy
  * child arrays, so keep prompts reasonably sized.

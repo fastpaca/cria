@@ -43,7 +43,6 @@ Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.m
 - **Need to cap history but keep structure?** Use `Last(...)`.
 - **Need to drop optional context when the context window is full?** Use `.omit(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
-- **Prefer TSX?** Import the optional JSX surface from `@fastpaca/cria/jsx`.
 
 ## Integrations
 
@@ -169,7 +168,6 @@ await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
 - Issues and PRs are welcome.
 - Keep changes small and focused.
 - If you add a feature, include a short example or doc note.
-- Prefer DSL-based examples in contributions; JSX lives under `@fastpaca/cria/jsx` as optional sugar.
 
 ## Support
 

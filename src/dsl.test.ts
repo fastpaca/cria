@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { StoredSummary } from "./components";
-import { Message, Omit, Region, ToolResult, Truncate } from "./components";
+import { Message, ToolResult } from "./components";
 import { c, cria, PromptBuilder, prompt } from "./dsl";
 import { InMemoryStore } from "./memory";
 import { render } from "./render";
@@ -284,99 +284,6 @@ describe("PromptBuilder", () => {
       expect(output).toBe(summaryOutput);
       const entry = store.get("conv-summary");
       expect(entry?.data.content).toBe("S");
-    });
-  });
-
-  describe("equivalence with JSX components", () => {
-    test("DSL produces same output as JSX for messages", async () => {
-      const dslElement = await cria
-        .prompt()
-        .system("You are helpful.")
-        .user("Hello!")
-        .build();
-
-      const jsxElement = Region({
-        priority: 0,
-        children: [
-          Message({ messageRole: "system", children: ["You are helpful."] }),
-          Message({ messageRole: "user", children: ["Hello!"] }),
-        ],
-      });
-
-      const expected = "system: You are helpful.\n\nuser: Hello!";
-      const dslResult = await render(dslElement, {
-        provider,
-        budget: tokensFor(expected),
-      });
-      const jsxResult = await render(jsxElement, {
-        provider,
-        budget: tokensFor(expected),
-      });
-
-      expect(dslResult).toBe(jsxResult);
-    });
-
-    test("DSL produces same output as JSX for truncate", async () => {
-      const dslElement = await cria
-        .prompt()
-        .user((m) => m.truncate(["x", "y", "z"], { budget: 2, priority: 1 }))
-        .build();
-
-      const jsxElement = Region({
-        priority: 0,
-        children: [
-          Message({
-            messageRole: "user",
-            children: [
-              Truncate({ budget: 2, priority: 1, children: ["x", "y", "z"] }),
-            ],
-          }),
-        ],
-      });
-
-      const expected = "user: xy";
-      const dslResult = await render(dslElement, {
-        provider,
-        budget: tokensFor(expected),
-      });
-      const jsxResult = await render(jsxElement, {
-        provider,
-        budget: tokensFor(expected),
-      });
-
-      expect(dslResult).toBe(jsxResult);
-    });
-
-    test("DSL produces same output as JSX for omit", async () => {
-      const dslElement = await cria
-        .prompt()
-        .user((m) => m.append("Required").omit(" Optional", { priority: 2 }))
-        .build();
-
-      const jsxElement = Region({
-        priority: 0,
-        children: [
-          Message({
-            messageRole: "user",
-            children: [
-              "Required",
-              Omit({ priority: 2, children: [" Optional"] }),
-            ],
-          }),
-        ],
-      });
-
-      const expected = "user: Required";
-      const dslResult = await render(dslElement, {
-        provider,
-        budget: tokensFor(expected),
-      });
-      const jsxResult = await render(jsxElement, {
-        provider,
-        budget: tokensFor(expected),
-      });
-
-      expect(dslResult).toBe(jsxResult);
     });
   });
 

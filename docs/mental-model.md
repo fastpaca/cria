@@ -14,11 +14,6 @@ Cria treats prompts like a structured tree (similar to a UI component tree). Tha
 - Not an LLM SDK: you still call OpenAI/Anthropic/AI SDK yourself.
 - Not a tool runner: Cria can represent tool calls/results in the prompt, but it doesn’t execute tools.
 
-## DSL vs optional JSX
-
-- **DSL (default):** chain calls on `cria.prompt()`.
-- **JSX (optional):** use `@fastpaca/cria/jsx` if your team prefers TSX; it produces the same underlying tree.
-
 ## Rendering vs calling a model
 
 Rendering converts your prompt tree into a provider-specific payload. Calling a model is still done via the provider’s SDK.

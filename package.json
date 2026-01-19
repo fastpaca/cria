@@ -21,18 +21,6 @@
       "types": "./dist/integrations/ai-sdk.d.ts",
       "import": "./dist/integrations/ai-sdk.js"
     },
-    "./jsx": {
-      "types": "./dist/jsx/index.d.ts",
-      "import": "./dist/jsx/index.js"
-    },
-    "./jsx-runtime": {
-      "types": "./dist/jsx/jsx-runtime.d.ts",
-      "import": "./dist/jsx/jsx-runtime.js"
-    },
-    "./jsx-dev-runtime": {
-      "types": "./dist/jsx/jsx-dev-runtime.d.ts",
-      "import": "./dist/jsx/jsx-dev-runtime.js"
-    },
     "./openai": {
       "types": "./dist/integrations/openai.d.ts",
       "import": "./dist/integrations/openai.js"
@@ -105,19 +93,6 @@
   "files": [
     "dist"
   ],
-  "typesVersions": {
-    "*": {
-      "jsx": [
-        "./dist/jsx/index.d.ts"
-      ],
-      "jsx-runtime": [
-        "./dist/jsx/jsx-runtime.d.ts"
-      ],
-      "jsx-dev-runtime": [
-        "./dist/jsx/jsx-dev-runtime.d.ts"
-      ]
-    }
-  },
   "scripts": {
     "build": "tsc",
     "check": "ultracite check",

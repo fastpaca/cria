@@ -6,23 +6,12 @@
       "includes": [
         "src/index.ts",
         "src/components/index.ts",
-        "src/memory/index.ts",
-        "src/jsx-dev-runtime.ts"
+        "src/memory/index.ts"
       ],
       "linter": {
         "rules": {
           "performance": {
             "noBarrelFile": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["src/jsx-runtime.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noNamespace": "off"
           }
         }
       }
