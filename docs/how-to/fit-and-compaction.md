@@ -65,7 +65,7 @@ Use `omit(...)` for anything you *want* to include, but can live without.
 
 ## Tool messages and reasoning traces
 
-Cria can represent tool I/O as semantic nodes (`ToolCall`, `ToolResult`), and optional reasoning (`Reasoning`). These are often some of the biggest token sources, so they’re good compaction candidates:
+Cria can represent tool I/O as semantic nodes (`ToolCall`, `ToolResult`), and optional reasoning (`Reasoning`). Tool calls live in assistant messages, tool results live in tool messages. These are often some of the biggest token sources, so they’re good compaction candidates:
 
 - Keep `ToolResult`, omit `ToolCall` (or the reverse) by assigning priorities.
 - Summarize a long tool trace into a short ledger and keep only that.
@@ -80,15 +80,17 @@ const prompt = cria
   .prompt()
   .system("You are helpful.")
   .user("What's the weather in Oslo?")
-  .raw(
-    ToolCall({
-      toolCallId: "call_1",
-      toolName: "weather",
-      input: { city: "Oslo" },
-      priority: 3,
-    })
+  .assistant((m) =>
+    m.raw(
+      ToolCall({
+        toolCallId: "call_1",
+        toolName: "weather",
+        input: { city: "Oslo" },
+        priority: 3,
+      })
+    )
   )
-  .raw(
+  .tool(
     ToolResult({
       toolCallId: "call_1",
       toolName: "weather",
@@ -96,7 +98,7 @@ const prompt = cria
       priority: 1,
     })
   )
-  .raw(Reasoning({ text: "…verbose trace…", priority: 4 }));
+  .assistant((m) => m.raw(Reasoning({ text: "...verbose trace...", priority: 4 })));
 ```
 
 ## Handling FitError

@@ -71,6 +71,7 @@ export { render } from "./render";
 export type {
   CriaContext,
   MaybePromise,
+  MessageElement,
   PromptChild,
   PromptChildren,
   PromptElement,
@@ -80,10 +81,13 @@ export type {
   PromptNodeKind,
   PromptPart,
   PromptRole,
+  ReasoningElement,
   Strategy,
   StrategyInput,
   StrategyResult,
+  ToolCallElement,
   ToolCallPart,
+  ToolResultElement,
   ToolResultPart,
 } from "./types";
 export {

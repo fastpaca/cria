@@ -83,4 +83,4 @@ Next: [Fit & compaction](fit-and-compaction.md)
 
 ## Tool messages and reasoning traces
 
-Cria can represent tool I/O (`ToolCall`, `ToolResult`) and reasoning traces (`Reasoning`) as semantic nodes so OpenAI providers can map them into the right shape. Treat these as compaction candidates when budgets are tight.
+Cria can represent tool I/O (`ToolCall`, `ToolResult`) and reasoning traces (`Reasoning`) as semantic nodes so OpenAI providers can map them into the right shape. Tool calls live in assistant messages, tool results live in tool messages. Treat these as compaction candidates when budgets are tight.

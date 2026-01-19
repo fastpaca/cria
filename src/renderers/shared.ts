@@ -46,7 +46,6 @@ export function safeStringify(value: unknown): string {
     return String(value);
   }
 }
-
 /**
  * Extract text content from prompt parts.
  * Optionally wraps reasoning parts in thinking tags.

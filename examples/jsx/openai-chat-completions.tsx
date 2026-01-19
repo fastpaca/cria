@@ -12,8 +12,8 @@ import OpenAI from "openai";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const provider = createProvider(client, "gpt-5");
 
-// Build your prompt with the DSL; use a raw assistant message to include tool calls/results
-const assistantWithTools = Message({
+// Build your prompt with the DSL; tool calls live in assistant messages.
+const assistantToolCall = Message({
   messageRole: "assistant",
   priority: 1,
   children: [
@@ -23,6 +23,14 @@ const assistantWithTools = Message({
       toolCallId: "call_123",
       toolName: "getWeather",
     }),
+  ],
+});
+
+// Tool results are their own tool messages.
+const toolResultMessage = Message({
+  messageRole: "tool",
+  priority: 1,
+  children: [
     ToolResult({
       output: { temperature: 18, condition: "sunny" },
       priority: 1,
@@ -36,7 +44,8 @@ const prompt = cria
   .prompt()
   .system("You are a helpful weather assistant.")
   .user("What's the weather in Paris? Should I bring a jacket?")
-  .raw(assistantWithTools);
+  .raw(assistantToolCall)
+  .raw(toolResultMessage);
 
 async function main() {
   // Render to OpenAI Chat Completions format

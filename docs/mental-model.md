@@ -39,7 +39,8 @@ Next: [Fit & compaction](how-to/fit-and-compaction.md)
 
 Cria models these as semantic nodes so providers can emit provider-native formats:
 
-- `ToolCall` / `ToolResult`: tool I/O *messages* in the prompt
-- `Reasoning`: optional reasoning text for providers that support it
+- `ToolCall`: assistant tool calls (inside assistant messages)
+- `ToolResult`: tool outputs returned as tool messages
+- `Reasoning`: optional reasoning text (assistant-only)
 
 Treat these like any other content for compaction: give them priorities, truncate/summarize them, or omit them when you’re over budget.

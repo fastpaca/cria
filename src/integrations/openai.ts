@@ -15,7 +15,12 @@ import {
   partsToText,
   safeStringify,
 } from "../renderers/shared";
-import type { PromptLayout, PromptPart, ToolResultPart } from "../types";
+import type {
+  PromptLayout,
+  PromptMessage,
+  PromptPart,
+  ToolResultPart,
+} from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 const encoder = getEncoding("cl100k_base");
@@ -28,8 +33,7 @@ export class OpenAIChatRenderer extends PromptRenderer<
     const messages: ChatCompletionMessageParam[] = [];
 
     for (const message of layout.messages) {
-      const nextMessages = partsToChatMessages(message.role, message.parts);
-      messages.push(...nextMessages);
+      messages.push(toChatMessage(message));
     }
 
     return messages;
@@ -44,11 +48,7 @@ export class OpenAIResponsesRenderer extends PromptRenderer<
     let reasoningIndex = 0;
 
     for (const message of layout.messages) {
-      const nextItems = partsToResponseItems(
-        mapRoleForResponses(message.role),
-        message.parts,
-        () => reasoningIndex++
-      );
+      const nextItems = toResponseItems(message, () => reasoningIndex++);
       items.push(...nextItems);
     }
 
@@ -56,39 +56,30 @@ export class OpenAIResponsesRenderer extends PromptRenderer<
   }
 }
 
-function partsToChatMessages(
-  role: string,
-  parts: readonly PromptPart[]
-): ChatCompletionMessageParam[] {
-  const coalesced = coalesceTextParts(parts);
+function toChatMessage(message: PromptMessage): ChatCompletionMessageParam {
+  const coalesced = coalesceTextParts(message.parts);
 
-  if (role === "system") {
-    return [toSystemMessage(coalesced)];
+  if (message.role === "system") {
+    return toSystemMessage(coalesced);
   }
 
-  if (role === "user") {
-    return [toUserMessage(coalesced)];
+  if (message.role === "user") {
+    return toUserMessage(coalesced);
   }
 
-  // OpenAI tool results must be separate role="tool" messages, not assistant parts.
-  const assistantParts = coalesced.filter(
-    (p): p is Exclude<PromptPart, { type: "tool-result" }> =>
-      p.type !== "tool-result"
-  );
-  const toolResultParts = coalesced.filter(
-    (p): p is ToolResultPart => p.type === "tool-result"
-  );
-  const result: ChatCompletionMessageParam[] = [];
-
-  if (assistantParts.length > 0 || toolResultParts.length === 0) {
-    result.push(toAssistantMessage(assistantParts));
+  if (message.role === "assistant") {
+    return toAssistantMessage(coalesced);
   }
 
-  for (const toolResult of toolResultParts) {
-    result.push(toToolMessage(toolResult));
+  if (message.role === "tool") {
+    const toolResult = coalesced[0];
+    if (!toolResult || toolResult.type !== "tool-result") {
+      throw new Error("Tool messages must contain a tool result.");
+    }
+    return toToolMessage(toolResult);
   }
 
-  return result;
+  throw new Error(`Unsupported role "${message.role}" for OpenAI chat.`);
 }
 
 function toSystemMessage(
@@ -110,8 +101,11 @@ function toUserMessage(
 }
 
 function toAssistantMessage(
-  parts: readonly Exclude<PromptPart, { type: "tool-result" }>[]
+  parts: readonly PromptPart[]
 ): ChatCompletionAssistantMessageParam {
+  if (parts.some((part) => part.type === "tool-result")) {
+    throw new Error("Tool results must be inside tool messages.");
+  }
   const textContent = partsToText(parts, { wrapReasoning: true });
   const toolCalls: ChatCompletionMessageToolCall[] = parts
     .filter(
@@ -158,8 +152,37 @@ const RESPONSE_ROLE_MAP: Record<string, ResponseRole> = {
   user: "user",
 };
 
-function mapRoleForResponses(role: string): ResponseRole {
-  return RESPONSE_ROLE_MAP[role] ?? "assistant";
+function mapRoleForResponses(role: string): ResponseRole | null {
+  if (role === "assistant") {
+    return "assistant";
+  }
+  return RESPONSE_ROLE_MAP[role] ?? null;
+}
+
+function toResponseItems(
+  message: PromptMessage,
+  nextReasoningIndex: () => number
+): ResponseInputItem[] {
+  if (message.role === "tool") {
+    const toolResult = message.parts[0];
+    if (!toolResult || toolResult.type !== "tool-result") {
+      throw new Error("Tool messages must contain a tool result.");
+    }
+    return [
+      {
+        type: "function_call_output",
+        call_id: toolResult.toolCallId,
+        output: safeStringify(toolResult.output),
+      },
+    ];
+  }
+
+  const role = mapRoleForResponses(message.role);
+  if (!role) {
+    throw new Error(`Unsupported role "${message.role}" for OpenAI responses.`);
+  }
+
+  return partsToResponseItems(role, message.parts, nextReasoningIndex);
 }
 
 function partsToResponseItems(
@@ -201,13 +224,7 @@ function partsToResponseItems(
         });
         break;
       case "tool-result":
-        flushTextBuffer();
-        items.push({
-          type: "function_call_output",
-          call_id: part.toolCallId,
-          output: safeStringify(part.output),
-        });
-        break;
+        throw new Error("Tool results must be inside tool messages.");
       default:
         break;
     }

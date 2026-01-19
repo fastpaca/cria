@@ -122,6 +122,11 @@ test("anthropic: renders tool results in user messages", async () => {
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
+        ],
+      }),
+      Message({
+        messageRole: "tool",
+        children: [
           ToolResult({
             output: { temperature: 20 },
             priority: 1,
@@ -187,7 +192,7 @@ test("anthropic: full conversation with tool use", async () => {
         ],
       }),
       Message({
-        messageRole: "user",
+        messageRole: "tool",
         children: [
           ToolResult({
             output: { temp: 18 },

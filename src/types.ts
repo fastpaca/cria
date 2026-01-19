@@ -138,6 +138,11 @@ export type PromptElement =
     })
   | (PromptElementBase & { kind: "reasoning"; text: string });
 
+export type MessageElement = Extract<PromptElement, { kind: "message" }>;
+export type ToolCallElement = Extract<PromptElement, { kind: "tool-call" }>;
+export type ToolResultElement = Extract<PromptElement, { kind: "tool-result" }>;
+export type ReasoningElement = Extract<PromptElement, { kind: "reasoning" }>;
+
 export type PromptChild = string | PromptElement;
 export type PromptChildren = PromptChild[];
 
@@ -222,6 +227,7 @@ export type ToolCallPart = Extract<PromptPart, { type: "tool-call" }>;
 export type ToolResultPart = Extract<PromptPart, { type: "tool-result" }>;
 
 export interface PromptMessage {
+  // Tool messages are strict: exactly one tool-result part, no text.
   role: PromptRole;
   parts: PromptPart[];
 }

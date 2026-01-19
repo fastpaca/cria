@@ -28,7 +28,7 @@ const assistantToolCall = Message({
 });
 
 const toolResultMessage = Message({
-  messageRole: "user",
+  messageRole: "tool",
   priority: 1,
   children: [
     ToolResult({

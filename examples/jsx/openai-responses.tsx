@@ -21,23 +21,22 @@ const prompt = cria
   .system("You are a helpful weather assistant.")
   .user("What's the weather in Paris? Should I bring a jacket?")
   .assistant((m) =>
-    m
-      .raw(
-        ToolCall({
-          input: { city: "Paris" },
-          priority: 1,
-          toolCallId: "call_abc123",
-          toolName: "getWeather",
-        })
-      )
-      .raw(
-        ToolResult({
-          output: { temperature: 18, condition: "sunny" },
-          priority: 1,
-          toolCallId: "call_abc123",
-          toolName: "getWeather",
-        })
-      )
+    m.raw(
+      ToolCall({
+        input: { city: "Paris" },
+        priority: 1,
+        toolCallId: "call_abc123",
+        toolName: "getWeather",
+      })
+    )
+  )
+  .tool(
+    ToolResult({
+      output: { temperature: 18, condition: "sunny" },
+      priority: 1,
+      toolCallId: "call_abc123",
+      toolName: "getWeather",
+    })
   );
 
 async function main() {

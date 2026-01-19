@@ -27,7 +27,7 @@ class RenderOnlyProvider<T> extends ModelProvider<T> {
 
 const provider = new RenderOnlyProvider(new AiSdkRenderer());
 
-test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result split)", async () => {
+test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result)", async () => {
   const prompt = Region({
     priority: 0,
     children: [
@@ -44,6 +44,11 @@ test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result
             toolName: "getWeather",
             input: { city: "Paris" },
           }),
+        ],
+      }),
+      Message({
+        messageRole: "tool",
+        children: [
           ToolResult({
             toolCallId: "w1",
             toolName: "getWeather",

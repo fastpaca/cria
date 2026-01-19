@@ -5,7 +5,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 ## Structure
 
 - `Region`: groups children into a logical block (a “subtree” you can prioritize and compact).
-- `Message`: semantic messages with roles (`system`, `user`, `assistant`, `tool`, or custom).
+- `Message`: semantic messages with roles (`system`, `user`, `assistant`, `tool`, or custom). Tool messages must contain only `ToolResult`.
 
 ## Fit & compaction
 
@@ -22,9 +22,9 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 
 These exist so providers can emit provider-native formats and so you can compact “traces” intentionally.
 
-- `ToolCall`: represents a tool call message.
-- `ToolResult`: represents tool output.
-- `Reasoning`: optional reasoning text (for providers/models that support it).
+- `ToolCall`: tool calls made by the assistant (must live inside an assistant message).
+- `ToolResult`: tool output returned to the model (must live inside a tool message).
+- `Reasoning`: optional reasoning text (assistant-only).
 
 ## Formatting helpers
 

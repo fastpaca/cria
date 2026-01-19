@@ -134,6 +134,11 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
+        ],
+      }),
+      Message({
+        messageRole: "tool",
+        children: [
           ToolResult({
             output: { temperature: 20 },
             priority: 1,
@@ -191,6 +196,11 @@ test("chatCompletions: full conversation flow", async () => {
             toolCallId: "call_1",
             toolName: "getWeather",
           }),
+        ],
+      }),
+      Message({
+        messageRole: "tool",
+        children: [
           ToolResult({
             output: { temp: 18, condition: "sunny" },
             priority: 1,
@@ -303,7 +313,7 @@ test("responses: renders tool results as function_call_output items", async () =
     priority: 0,
     children: [
       Message({
-        messageRole: "assistant",
+        messageRole: "tool",
         children: [
           ToolResult({
             output: { temperature: 20 },

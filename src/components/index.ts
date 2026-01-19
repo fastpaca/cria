@@ -1,8 +1,12 @@
 import type {
+  MessageElement,
   PromptChildren,
   PromptElement,
   PromptRole,
+  ReasoningElement,
   Strategy,
+  ToolCallElement,
+  ToolResultElement,
 } from "../types";
 
 interface RegionProps {
@@ -64,7 +68,7 @@ export function Message({
   strategy,
   id,
   children = [],
-}: MessageProps): PromptElement {
+}: MessageProps): MessageElement {
   return {
     kind: "message",
     role: messageRole,
@@ -84,7 +88,7 @@ export function Reasoning({
   priority = 0,
   strategy,
   id,
-}: ReasoningProps): PromptElement {
+}: ReasoningProps): ReasoningElement {
   return {
     kind: "reasoning",
     text,
@@ -108,7 +112,7 @@ export function ToolCall({
   priority = 0,
   strategy,
   id,
-}: ToolCallProps): PromptElement {
+}: ToolCallProps): ToolCallElement {
   return {
     kind: "tool-call",
     toolCallId,
@@ -134,7 +138,7 @@ export function ToolResult({
   priority = 0,
   strategy,
   id,
-}: ToolResultProps): PromptElement {
+}: ToolResultProps): ToolResultElement {
   return {
     kind: "tool-result",
     toolCallId,

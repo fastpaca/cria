@@ -46,14 +46,23 @@ export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
 
     const appendRoleMessages = (role: string, parts: readonly PromptPart[]) => {
       const coalesced = coalesceTextParts(parts);
-      const nextMessages =
-        role === "user"
-          ? buildUserMessages(coalesced)
-          : buildAssistantMessages(coalesced);
-
-      for (const message of nextMessages) {
-        messages.push(message);
+      if (role === "user") {
+        messages.push(...buildUserMessages(coalesced));
+        return;
       }
+      if (role === "assistant") {
+        messages.push(...buildAssistantMessages(coalesced));
+        return;
+      }
+      if (role === "tool") {
+        const toolResult = coalesced[0];
+        if (!toolResult || toolResult.type !== "tool-result") {
+          throw new Error("Tool messages must contain a tool result.");
+        }
+        messages.push(toToolResultMessage(toolResult));
+        return;
+      }
+      throw new Error(`Unsupported role "${role}" for Anthropic.`);
     };
 
     for (const message of layout.messages) {
@@ -92,10 +101,7 @@ function buildUserContent(parts: readonly PromptPart[]): ContentBlockParam[] {
   };
 
   for (const part of parts) {
-    if (part.type === "tool-result") {
-      flushTextBuffer();
-      content.push(toToolResultBlock(part));
-    } else if (part.type === "text") {
+    if (part.type === "text") {
       textBuffer += part.text;
     } else if (part.type === "reasoning") {
       textBuffer += `<thinking>\n${part.text}\n</thinking>`;
@@ -107,27 +113,11 @@ function buildUserContent(parts: readonly PromptPart[]): ContentBlockParam[] {
 }
 
 function buildAssistantMessages(parts: readonly PromptPart[]): MessageParam[] {
-  const assistantParts = parts.filter((p) => p.type !== "tool-result");
-  const toolResultParts = parts.filter(
-    (p): p is ToolResultPart => p.type === "tool-result"
-  );
-
-  const content = buildAssistantContent(assistantParts);
-  const result: MessageParam[] = [];
-
-  if (content.length > 0) {
-    result.push({ role: "assistant", content });
+  const content = buildAssistantContent(parts);
+  if (content.length === 0) {
+    return [];
   }
-
-  // Anthropic expects tool results as user blocks, not inside assistant content.
-  if (toolResultParts.length > 0) {
-    result.push({
-      role: "user",
-      content: toolResultParts.map(toToolResultBlock),
-    });
-  }
-
-  return result;
+  return [{ role: "assistant", content }];
 }
 
 function buildAssistantContent(
@@ -151,11 +141,20 @@ function buildAssistantContent(
     } else if (part.type === "tool-call") {
       flushTextBuffer();
       content.push(toToolUseBlock(part));
+    } else if (part.type === "tool-result") {
+      throw new Error("Tool results must be inside tool messages.");
     }
   }
 
   flushTextBuffer();
   return content;
+}
+
+function toToolResultMessage(part: ToolResultPart): MessageParam {
+  return {
+    role: "user",
+    content: [toToolResultBlock(part)],
+  };
 }
 
 function toToolUseBlock(part: ToolCallPart): ToolUseBlockParam {

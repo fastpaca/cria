@@ -12,7 +12,7 @@ import {
   partsToText,
   safeStringify,
 } from "../renderers/shared";
-import type { PromptLayout, PromptPart } from "../types";
+import type { PromptLayout, PromptMessage, PromptPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 const encoder = getEncoding("cl100k_base");
@@ -25,62 +25,73 @@ export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
   render(layout: PromptLayout): ModelMessage[] {
     const messages: ModelMessage[] = [];
     for (const message of layout.messages) {
-      messages.push(...partsToModelMessages(message.role, message.parts));
+      messages.push(toModelMessage(message));
     }
     return messages;
   }
 }
 
-type ToolResultPromptPart = Extract<PromptPart, { type: "tool-result" }>;
-type NonToolPromptPart = Exclude<PromptPart, { type: "tool-result" }>;
+function toModelMessage(message: PromptMessage): ModelMessage {
+  const coalesced = coalesceTextParts(message.parts);
 
-function partsToModelMessages(
-  role: string,
-  parts: readonly PromptPart[]
-): ModelMessage[] {
-  const coalesced = coalesceTextParts(parts);
-
-  // AI SDK tool results must be separate role="tool" messages
-  const mainParts = coalesced.filter(
-    (p): p is NonToolPromptPart => p.type !== "tool-result"
-  );
-  const toolParts = coalesced.filter(
-    (p): p is ToolResultPromptPart => p.type === "tool-result"
-  );
-
-  const result: ModelMessage[] = [];
-  if (mainParts.length > 0 || toolParts.length === 0) {
-    result.push(toModelMessage(role, mainParts));
+  switch (message.role) {
+    case "system":
+      return toSystemMessage(coalesced);
+    case "user":
+      return toUserMessage(coalesced);
+    case "assistant":
+      return toAssistantMessage(coalesced);
+    case "tool":
+      return toToolMessage(coalesced);
+    default:
+      throw new Error(
+        `Unsupported role "${message.role}" for AI SDK renderer.`
+      );
   }
-  if (toolParts.length > 0) {
-    result.push(toToolModelMessage(toolParts));
-  }
-  return result;
 }
 
-function toModelMessage(
-  role: string,
-  parts: readonly NonToolPromptPart[]
-): ModelMessage {
-  if (role === "system") {
-    return { role: "system", content: partsToText(parts) };
-  }
-  if (role === "user") {
-    return { role: "user", content: partsToText(parts) };
-  }
-  // NonToolPromptPart is structurally identical to AssistantPart subset
-  return { role: "assistant", content: parts as AssistantPart[] };
+function toSystemMessage(parts: readonly PromptPart[]): ModelMessage {
+  return { role: "system", content: partsToText(parts) };
 }
 
-function toToolModelMessage(
-  parts: readonly ToolResultPromptPart[]
-): ModelMessage {
-  const content: ToolResultPart[] = parts.map((p) => ({
-    type: "tool-result",
-    toolCallId: p.toolCallId,
-    toolName: p.toolName,
-    output: coerceToolResultOutput(p.output),
-  }));
+function toUserMessage(parts: readonly PromptPart[]): ModelMessage {
+  return { role: "user", content: partsToText(parts) };
+}
+
+function toAssistantMessage(parts: readonly PromptPart[]): ModelMessage {
+  const content: AssistantPart[] = [];
+  for (const part of parts) {
+    if (part.type === "text") {
+      content.push({ type: "text", text: part.text });
+    } else if (part.type === "reasoning") {
+      content.push({ type: "reasoning", text: part.text });
+    } else if (part.type === "tool-call") {
+      content.push({
+        type: "tool-call",
+        toolCallId: part.toolCallId,
+        toolName: part.toolName,
+        input: part.input,
+      });
+    } else if (part.type === "tool-result") {
+      throw new Error("Tool results must be inside tool messages.");
+    }
+  }
+  return { role: "assistant", content };
+}
+
+function toToolMessage(parts: readonly PromptPart[]): ModelMessage {
+  const toolResult = parts[0];
+  if (!toolResult || toolResult.type !== "tool-result") {
+    throw new Error("Tool messages must contain a tool result.");
+  }
+  const content: ToolResultPart[] = [
+    {
+      type: "tool-result",
+      toolCallId: toolResult.toolCallId,
+      toolName: toolResult.toolName,
+      output: coerceToolResultOutput(toolResult.output),
+    },
+  ];
   return { role: "tool", content };
 }
 

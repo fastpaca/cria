@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { StoredSummary } from "./components";
-import { Message, Omit, Region, Truncate } from "./components";
+import { Message, Omit, Region, ToolResult, Truncate } from "./components";
 import { c, cria, PromptBuilder, prompt } from "./dsl";
 import { InMemoryStore } from "./memory";
 import { render } from "./render";
@@ -72,9 +72,22 @@ describe("PromptBuilder", () => {
 
     test("message() adds a custom role message", async () => {
       const result = await renderBuilder(
-        cria.prompt().message("tool", "Result: 42")
+        cria.prompt().message("developer", "Result: 42")
       );
-      expect(result).toBe("tool: Result: 42");
+      expect(result).toBe("developer: Result: 42");
+    });
+
+    test("tool() adds a tool result message", async () => {
+      const result = await renderBuilder(
+        cria.prompt().tool(
+          ToolResult({
+            toolCallId: "call_1",
+            toolName: "calc",
+            output: { answer: 42 },
+          })
+        )
+      );
+      expect(result).toBe('tool: [tool-result:calc]{"answer":42}');
     });
 
     test("chained messages render in order", async () => {

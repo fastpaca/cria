@@ -75,9 +75,6 @@ export async function render<TRendered>(
   const resolvedElement = element instanceof Promise ? await element : element;
   const provider = resolveProvider(resolvedElement, options.provider);
 
-  // Validate scope early so renderers can stay dumb and stateful.
-  assertValidMessageScope(resolvedElement);
-
   if (options.budget === undefined || options.budget === null) {
     return renderOutput(resolvedElement, provider);
   }
@@ -118,64 +115,8 @@ function renderAndCount<TRendered>(
 }
 
 export function assertValidMessageScope(root: PromptElement): void {
-  // Enforce message boundaries early so renderers stay dumb and predictable.
-  visitScope(root, false);
-}
-
-function visitScope(node: PromptChild, inMessage: boolean): void {
-  if (typeof node === "string") {
-    ensureInMessage(inMessage, "Text nodes must be inside a message.");
-    return;
-  }
-
-  if (!node.kind) {
-    visitChildren(node.children, inMessage);
-    return;
-  }
-
-  if (node.kind === "message") {
-    visitMessage(node, inMessage);
-    return;
-  }
-
-  ensureInMessage(inMessage, messageForKind(node.kind));
-  if (node.children.length > 0) {
-    throw new Error("Semantic nodes cannot have children.");
-  }
-}
-
-function visitMessage(
-  node: PromptElement & { kind: "message" },
-  inMessage: boolean
-): void {
-  if (inMessage) {
-    throw new Error("Nested message boundaries are not allowed.");
-  }
-  visitChildren(node.children, true);
-}
-
-function visitChildren(children: PromptChild[], inMessage: boolean): void {
-  for (const child of children) {
-    visitScope(child, inMessage);
-  }
-}
-
-function ensureInMessage(inMessage: boolean, message: string): void {
-  if (!inMessage) {
-    throw new Error(message);
-  }
-}
-
-function messageForKind(kind: PromptElement["kind"]): string {
-  switch (kind) {
-    case "tool-call":
-    case "tool-result":
-      return "Tool call/result nodes must be inside a message.";
-    case "reasoning":
-      return "Reasoning nodes must be inside a message.";
-    default:
-      return "Semantic nodes must be inside a message.";
-  }
+  // Enforce layout invariants by reusing the layout pass.
+  layoutPrompt(root);
 }
 
 function layoutPrompt(root: PromptElement): PromptLayout {
@@ -184,6 +125,45 @@ function layoutPrompt(root: PromptElement): PromptLayout {
   const messages: PromptLayout["messages"] = [];
 
   type NonMessageKind = Exclude<PromptElement["kind"], "message" | undefined>;
+
+  const assertPartAllowedInRole = (
+    role: PromptLayout["messages"][number]["role"],
+    part: PromptPart
+  ): void => {
+    if (role === "tool") {
+      if (part.type !== "tool-result") {
+        throw new Error("Tool messages can only contain tool results.");
+      }
+      return;
+    }
+
+    if (part.type === "tool-result") {
+      throw new Error("Tool results must be inside a tool message.");
+    }
+
+    if (part.type === "tool-call" && role !== "assistant") {
+      throw new Error("Tool calls must be inside an assistant message.");
+    }
+
+    if (part.type === "reasoning" && role !== "assistant") {
+      throw new Error("Reasoning must be inside an assistant message.");
+    }
+  };
+
+  const assertToolMessageParts = (
+    message: PromptLayout["messages"][number]
+  ) => {
+    if (message.role !== "tool") {
+      return;
+    }
+
+    if (
+      message.parts.length !== 1 ||
+      message.parts[0]?.type !== "tool-result"
+    ) {
+      throw new Error("Tool messages must contain exactly one tool result.");
+    }
+  };
 
   const walkChildren = (
     children: PromptChild[],
@@ -199,8 +179,13 @@ function layoutPrompt(root: PromptElement): PromptLayout {
     part: PromptPart
   ): void => {
     if (!current) {
-      throw new Error("Semantic nodes must be inside a message.");
+      throw new Error(
+        part.type === "text"
+          ? "Text nodes must be inside a message."
+          : "Semantic nodes must be inside a message."
+      );
     }
+    assertPartAllowedInRole(current.role, part);
     current.parts.push(part);
   };
 
@@ -221,6 +206,7 @@ function layoutPrompt(root: PromptElement): PromptLayout {
     const message = { role: node.role, parts: [] as PromptPart[] };
     messages.push(message);
     walkChildren(node.children, message);
+    assertToolMessageParts(message);
   };
 
   const toSemanticPart = (

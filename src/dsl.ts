@@ -35,6 +35,7 @@ import type {
   PromptChildren,
   PromptElement,
   PromptRole,
+  ToolResultElement,
 } from "./types";
 
 type TextValue = PromptChild | boolean | number | null | undefined;
@@ -414,6 +415,24 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     opts?: { priority?: number; id?: string }
   ): PromptBuilder {
     return this.addMessage("assistant", content, opts);
+  }
+
+  /**
+   * Add a tool result message.
+   */
+  tool(
+    result: ToolResultElement | readonly ToolResultElement[],
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const children = Array.isArray(result) ? [...result] : [result];
+    return this.addChild(
+      Message({
+        messageRole: "tool",
+        children,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+        ...(opts?.id ? { id: opts.id } : {}),
+      })
+    );
   }
 
   /**
