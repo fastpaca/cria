@@ -3,10 +3,14 @@ import { cria } from "../dsl";
 import { render } from "../render";
 import type { PromptMessageNode, PromptRenderer } from "../types";
 import { ModelProvider } from "../types";
-import { OpenAIChatRenderer, OpenAIResponsesRenderer } from "./openai";
+import {
+  OpenAIChatRenderer,
+  OpenAIResponsesRenderer,
+  type OpenAiToolIO,
+} from "./openai";
 
-class RenderOnlyProvider<T> extends ModelProvider<T> {
-  readonly renderer: PromptRenderer<T>;
+class RenderOnlyProvider<T> extends ModelProvider<T, OpenAiToolIO> {
+  readonly renderer: PromptRenderer<T, OpenAiToolIO>;
 
   constructor(renderer: PromptRenderer<T>) {
     super();
@@ -36,8 +40,8 @@ const responsesProvider = new RenderOnlyProvider(new OpenAIResponsesRenderer());
  */
 function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",
-  children: PromptMessageNode["children"]
-): PromptMessageNode {
+  children: PromptMessageNode<OpenAiToolIO>["children"]
+): PromptMessageNode<OpenAiToolIO> {
   return { kind: "message", role, children };
 }
 
@@ -79,7 +83,7 @@ test("chatCompletions: renders tool calls on assistant message", async () => {
       { type: "text", text: "Let me check the weather." },
       {
         type: "tool-call",
-        input: { city: "Paris" },
+        input: '{"city":"Paris"}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },
@@ -112,7 +116,7 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
     messageWithParts("assistant", [
       {
         type: "tool-call",
-        input: { city: "Paris" },
+        input: '{"city":"Paris"}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },
@@ -120,7 +124,7 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
     messageWithParts("tool", [
       {
         type: "tool-result",
-        output: { temperature: 20 },
+        output: '{"temperature":20}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },
@@ -159,7 +163,7 @@ test("chatCompletions: full conversation flow", async () => {
     messageWithParts("assistant", [
       {
         type: "tool-call",
-        input: { city: "Paris" },
+        input: '{"city":"Paris"}',
         toolCallId: "call_1",
         toolName: "getWeather",
       },
@@ -167,7 +171,7 @@ test("chatCompletions: full conversation flow", async () => {
     messageWithParts("tool", [
       {
         type: "tool-result",
-        output: { temp: 18, condition: "sunny" },
+        output: '{"temp":18,"condition":"sunny"}',
         toolCallId: "call_1",
         toolName: "getWeather",
       },
@@ -234,7 +238,7 @@ test("responses: renders tool calls as function_call items", async () => {
     messageWithParts("assistant", [
       {
         type: "tool-call",
-        input: { city: "Paris" },
+        input: '{"city":"Paris"}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },
@@ -260,7 +264,7 @@ test("responses: renders tool results as function_call_output items", async () =
     messageWithParts("tool", [
       {
         type: "tool-result",
-        output: { temperature: 20 },
+        output: '{"temperature":20}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },
@@ -307,7 +311,7 @@ test("responses: emits text before reasoning and tool calls", async () => {
       { type: "reasoning", text: "thinking..." },
       {
         type: "tool-call",
-        input: { city: "Paris" },
+        input: '{"city":"Paris"}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },

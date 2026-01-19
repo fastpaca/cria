@@ -3,10 +3,10 @@ import { cria } from "../dsl";
 import { render } from "../render";
 import type { PromptMessageNode, PromptRenderer } from "../types";
 import { ModelProvider } from "../types";
-import { AiSdkRenderer } from "./ai-sdk";
+import { AiSdkRenderer, type AiSdkToolIO } from "./ai-sdk";
 
-class RenderOnlyProvider<T> extends ModelProvider<T> {
-  readonly renderer: PromptRenderer<T>;
+class RenderOnlyProvider<T> extends ModelProvider<T, AiSdkToolIO> {
+  readonly renderer: PromptRenderer<T, AiSdkToolIO>;
 
   constructor(renderer: PromptRenderer<T>) {
     super();
@@ -34,8 +34,8 @@ const provider = new RenderOnlyProvider(new AiSdkRenderer());
  */
 function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",
-  children: PromptMessageNode["children"]
-): PromptMessageNode {
+  children: PromptMessageNode<AiSdkToolIO>["children"]
+): PromptMessageNode<AiSdkToolIO> {
   return { kind: "message", role, children };
 }
 

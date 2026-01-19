@@ -12,8 +12,8 @@ const provider = createTestProvider({
 });
 const tokensFor = (text: string): number => provider.countTokens(text);
 
-const renderBuilder = async (
-  builder: PromptBuilder,
+const renderBuilder = async <P>(
+  builder: PromptBuilder<P>,
   budget = 10_000
 ): Promise<string> => render(await builder.build(), { provider, budget });
 
@@ -88,11 +88,11 @@ describe("PromptBuilder", () => {
 
     test("tool() adds a tool result message", async () => {
       const result = await renderBuilder(
-        cria.prompt().tool({
+        cria.prompt(provider).tool({
           type: "tool-result",
           toolCallId: "call_1",
           toolName: "calc",
-          output: { answer: 42 },
+          output: '{"answer":42}',
         })
       );
       expect(result).toBe('tool: [tool-result:calc]{"answer":42}');
@@ -287,6 +287,28 @@ describe("PromptBuilder", () => {
       expect(() => a.merge(b)).toThrow(
         "Cannot merge builders with different contexts/providers"
       );
+    });
+
+    test("provider() rejects rebinding to a different provider", () => {
+      const providerA = createTestProvider({ includeRolePrefix: true });
+      const providerB = createTestProvider({ includeRolePrefix: true });
+
+      const builder = cria.prompt(providerA);
+
+      expect(() => builder.provider(providerB)).toThrow(
+        "Cannot bind a prompt builder to a different provider."
+      );
+    });
+
+    test("providerScope() rejects mismatched providers", () => {
+      const providerA = createTestProvider({ includeRolePrefix: true });
+      const providerB = createTestProvider({ includeRolePrefix: true });
+
+      const builder = cria.prompt(providerA);
+
+      expect(() =>
+        builder.providerScope(providerB, (p) => p.system("Scoped"))
+      ).toThrow("Cannot bind a prompt builder to a different provider.");
     });
   });
 

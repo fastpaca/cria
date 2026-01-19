@@ -69,6 +69,7 @@ export type {
   PromptRole,
   PromptScope,
   PromptTree,
+  ProviderToolIO,
   ReasoningPart,
   ScopeChildren,
   Strategy,
@@ -76,6 +77,7 @@ export type {
   StrategyResult,
   TextPart,
   ToolCallPart,
+  ToolIOForProvider,
   ToolResultPart,
 } from "./types";
 export { FitError, ModelProvider, PromptRenderer } from "./types";

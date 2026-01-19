@@ -1,14 +1,15 @@
 import { z } from "zod";
 import type { TextInput } from "../dsl";
-import { c, cria } from "../dsl";
+import { cria } from "../dsl";
+import { normalizeTextInput } from "../dsl/templating";
 import { render } from "../render";
-import type { ModelProvider, PromptTree } from "../types";
+import type { ModelProvider, PromptTree, ProviderToolIO } from "../types";
 
 export const DEFAULT_THRESHOLD = 0.8;
 
 export interface JudgeConfig {
-  target: ModelProvider<unknown>;
-  evaluator: ModelProvider<unknown>;
+  target: ModelProvider<unknown, ProviderToolIO>;
+  evaluator: ModelProvider<unknown, ProviderToolIO>;
   threshold?: number;
 }
 
@@ -30,6 +31,18 @@ const EvalResultSchema = z.object({
   reasoning: z.string(),
 });
 
+const formatCriterion = (criterion: TextInput): string => {
+  const parts = normalizeTextInput<ProviderToolIO>(criterion);
+  let text = "";
+  for (const part of parts) {
+    if (part.type === "tool-call" || part.type === "tool-result") {
+      throw new Error("Judge criteria cannot include tool calls or results.");
+    }
+    text += part.text;
+  }
+  return text;
+};
+
 export function createJudge(config: JudgeConfig): Judge {
   const { target, evaluator, threshold = DEFAULT_THRESHOLD } = config;
 
@@ -38,12 +51,13 @@ export function createJudge(config: JudgeConfig): Judge {
       const response = await target.completion(
         await render(prompt, { provider: target })
       );
+      const criteriaText = formatCriterion(criterion);
       const evalPrompt = await cria
         .prompt()
-        .system(c`You are an evaluator. 
+        .system(`You are an evaluator. 
           Score the response from 0 to 1 based on ALL criteria below.
 
-          Criteria: ${criterion}
+          Criteria: ${criteriaText}
 
           Return JSON: { "score": <0-1>, "reasoning": "<brief explanation>" }
         `)

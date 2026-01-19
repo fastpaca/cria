@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { countText, safeStringify } from "../renderers/shared";
+import { countText } from "../renderers/shared";
 import type { PromptLayout, PromptMessage } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
@@ -8,7 +8,12 @@ export interface PlainTextRendererOptions {
   includeRolePrefix?: boolean;
 }
 
-export class PlainTextRenderer extends PromptRenderer<string> {
+interface PlainTextToolIO {
+  callInput: string;
+  resultOutput: string;
+}
+
+export class PlainTextRenderer extends PromptRenderer<string, PlainTextToolIO> {
   private readonly joinMessagesWith: string;
   private readonly includeRolePrefix: boolean;
 
@@ -18,7 +23,7 @@ export class PlainTextRenderer extends PromptRenderer<string> {
     this.includeRolePrefix = options.includeRolePrefix ?? false;
   }
 
-  override render(layout: PromptLayout): string {
+  override render(layout: PromptLayout<PlainTextToolIO>): string {
     const messages = layout.map((message) =>
       formatPlaintextMessage(message, this.includeRolePrefix)
     );
@@ -26,13 +31,13 @@ export class PlainTextRenderer extends PromptRenderer<string> {
     return messages.join(this.joinMessagesWith);
   }
 
-  override historyToLayout(rendered: string): PromptLayout {
+  override historyToLayout(rendered: string): PromptLayout<PlainTextToolIO> {
     return [{ role: "user", text: rendered }];
   }
 }
 
 function formatPlaintextMessage(
-  message: PromptMessage,
+  message: PromptMessage<PlainTextToolIO>,
   includeRolePrefix: boolean
 ): string {
   const content = renderPlaintextContent(message);
@@ -42,9 +47,11 @@ function formatPlaintextMessage(
   return content;
 }
 
-function renderPlaintextContent(message: PromptMessage): string {
+function renderPlaintextContent(
+  message: PromptMessage<PlainTextToolIO>
+): string {
   if (message.role === "tool") {
-    return `[tool-result:${message.toolName}]${safeStringify(message.output)}`;
+    return `[tool-result:${message.toolName}]${message.output}`;
   }
 
   if (message.role === "assistant") {
@@ -55,7 +62,7 @@ function renderPlaintextContent(message: PromptMessage): string {
 }
 
 function renderAssistantContent(
-  message: Extract<PromptMessage, { role: "assistant" }>
+  message: Extract<PromptMessage<PlainTextToolIO>, { role: "assistant" }>
 ): string {
   let content = "";
   if (message.text) {
@@ -66,16 +73,16 @@ function renderAssistantContent(
   }
   if (message.toolCalls) {
     for (const call of message.toolCalls) {
-      content += `[tool-call:${call.toolName}]${safeStringify(call.input)}`;
+      content += `[tool-call:${call.toolName}]${call.input}`;
     }
   }
   return content;
 }
 
-export class PlainTextProvider extends ModelProvider<string> {
-  readonly renderer: PromptRenderer<string>;
+export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
+  readonly renderer: PromptRenderer<string, PlainTextToolIO>;
 
-  constructor(renderer: PromptRenderer<string>) {
+  constructor(renderer: PromptRenderer<string, PlainTextToolIO>) {
     super();
     this.renderer = renderer;
   }
@@ -95,12 +102,12 @@ export class PlainTextProvider extends ModelProvider<string> {
 
 export function createPlainTextRenderer(
   options: PlainTextRendererOptions = {}
-): PromptRenderer<string> {
+): PromptRenderer<string, PlainTextToolIO> {
   return new PlainTextRenderer(options);
 }
 
 export function createTestProvider(
   options: PlainTextRendererOptions = {}
-): ModelProvider<string> {
+): ModelProvider<string, PlainTextToolIO> {
   return new PlainTextProvider(createPlainTextRenderer(options));
 }

@@ -7,7 +7,12 @@ import type {
   VectorSearchOptions,
   VectorSearchResult,
 } from "../memory";
-import type { PromptPart, PromptRole, PromptScope } from "../types";
+import type {
+  PromptPart,
+  PromptRole,
+  PromptScope,
+  ProviderToolIO,
+} from "../types";
 import { PromptBuilder } from "./builder";
 
 /** Simple message shape for query extraction. */
@@ -47,7 +52,10 @@ function defaultFormatter<T>(results: VectorSearchResult<T>[]): string {
 
 type QueryExtractor = (messages: Message[]) => string | null | undefined;
 
-interface VectorSearchProps<T = unknown> {
+interface VectorSearchProps<
+  T = unknown,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
   /** Vector memory store to search */
   store: VectorMemory<T>;
   /**
@@ -74,10 +82,12 @@ interface VectorSearchProps<T = unknown> {
   /** Role for the emitted message. Default: "user" */
   role?: PromptRole;
   /** Query text provided as children (preferred over `query` when present). */
-  children?: readonly PromptPart[];
+  children?: readonly PromptPart<TToolIO>[];
 }
 
-function queryFromChildren(children?: readonly PromptPart[]): string | null {
+function queryFromChildren<TToolIO extends ProviderToolIO>(
+  children?: readonly PromptPart<TToolIO>[]
+): string | null {
   if (!children || children.length === 0) {
     return null;
   }
@@ -136,7 +146,10 @@ function deriveQuery(props: QuerySources): string | null | undefined {
 /**
  * Renders vector search results into a scoped message.
  */
-export async function VectorSearch<T = unknown>({
+export async function VectorSearch<
+  T = unknown,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+>({
   store,
   query,
   messages,
@@ -148,7 +161,7 @@ export async function VectorSearch<T = unknown>({
   id,
   role = "user",
   children,
-}: VectorSearchProps<T>): Promise<PromptScope> {
+}: VectorSearchProps<T, TToolIO>): Promise<PromptScope<TToolIO>> {
   const finalQuery = deriveQuery({
     query,
     messages,

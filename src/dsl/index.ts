@@ -43,6 +43,7 @@ import type {
   PromptMessageNode,
   PromptRole,
   PromptScope,
+  ProviderToolIO,
   ScopeChildren,
 } from "../types";
 import { PromptBuilder } from "./builder";
@@ -55,23 +56,26 @@ import {
 } from "./templating";
 
 /** Create a standalone message node */
-function message(role: PromptRole, content: TextInput): PromptMessageNode {
-  return createMessage(role, normalizeTextInput(content));
+function message<TToolIO extends ProviderToolIO>(
+  role: PromptRole,
+  content: TextInput<TToolIO>
+): PromptMessageNode<TToolIO> {
+  return createMessage(role, normalizeTextInput<TToolIO>(content));
 }
 
 /** Create a standalone scope node */
-function scope(
-  children: ScopeChildren,
+function scope<TToolIO extends ProviderToolIO>(
+  children: ScopeChildren<TToolIO>,
   opts?: { priority?: number; id?: string }
-): PromptScope {
+): PromptScope<TToolIO> {
   return createScope(children, opts);
 }
 
 function createPrompt(): PromptBuilder<unknown>;
-function createPrompt<TProvider extends ModelProvider<unknown>>(
+function createPrompt<TProvider extends ModelProvider<unknown, ProviderToolIO>>(
   provider: TProvider
 ): PromptBuilder<TProvider>;
-function createPrompt(provider?: ModelProvider<unknown>) {
+function createPrompt(provider?: ModelProvider<unknown, ProviderToolIO>) {
   if (provider === undefined) {
     return PromptBuilder.create();
   }

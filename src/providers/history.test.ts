@@ -152,7 +152,7 @@ describe("Prompt history parsing", () => {
             type: "tool-call",
             toolCallId: "call_1",
             toolName: "calc",
-            input: { a: 1 },
+            input: '{"a":1}',
           },
         ],
       },
@@ -160,7 +160,7 @@ describe("Prompt history parsing", () => {
         role: "tool",
         toolCallId: "call_1",
         toolName: "calc",
-        output: { result: 2 },
+        output: '{"result":2}',
       },
     ]);
   });

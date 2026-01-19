@@ -1,7 +1,7 @@
 import type { LanguageModel, ModelMessage } from "ai";
 import { generateObject, generateText } from "ai";
 import type { z } from "zod";
-import { countText, safeStringify } from "../renderers/shared";
+import { countText } from "../renderers/shared";
 import type {
   PromptLayout,
   PromptMessage,
@@ -10,8 +10,19 @@ import type {
 } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
-export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
-  override render(layout: PromptLayout): ModelMessage[] {
+type AiContentPart = Exclude<ModelMessage["content"], string>[number];
+type AiToolCallPart = Extract<AiContentPart, { type: "tool-call" }>;
+type AiToolResultPart = Extract<AiContentPart, { type: "tool-result" }>;
+type AiTextPart = Extract<AiContentPart, { type: "text" }>;
+type AiReasoningPart = Extract<AiContentPart, { type: "reasoning" }>;
+
+export interface AiSdkToolIO {
+  callInput: AiToolCallPart["input"];
+  resultOutput: AiToolResultPart["output"];
+}
+
+export class AiSdkRenderer extends PromptRenderer<ModelMessage[], AiSdkToolIO> {
+  override render(layout: PromptLayout<AiSdkToolIO>): ModelMessage[] {
     /*
     AI SDK expects message "content" as either a string or a parts array.
     PromptLayout already normalized our semantic messages, so here we simply
@@ -20,33 +31,14 @@ export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
     return layout.map(renderModelMessage);
   }
 
-  override historyToLayout(messages: ModelMessage[]): PromptLayout {
+  override historyToLayout(
+    messages: ModelMessage[]
+  ): PromptLayout<AiSdkToolIO> {
     return parseAiSdkHistory(messages);
   }
 }
 
-type AiContentPart = Exclude<ModelMessage["content"], string>[number];
-type AiToolCallPart = Extract<AiContentPart, { type: "tool-call" }>;
-type AiToolResultPart = Extract<AiContentPart, { type: "tool-result" }>;
-type AiTextPart = Extract<AiContentPart, { type: "text" }>;
-type AiReasoningPart = Extract<AiContentPart, { type: "reasoning" }>;
-type AiToolResultOutput = AiToolResultPart extends { output: infer T }
-  ? T
-  : never;
-
-const coerce = (output: unknown): AiToolResultOutput => {
-  if (typeof output === "string") {
-    return { type: "text", value: output };
-  }
-
-  if (hasOutputShape(output)) {
-    return output;
-  }
-
-  return { type: "text", value: safeStringify(output) };
-};
-
-function renderModelMessage(message: PromptMessage): ModelMessage {
+function renderModelMessage(message: PromptMessage<AiSdkToolIO>): ModelMessage {
   if (message.role === "tool") {
     return renderToolMessage(message);
   }
@@ -59,7 +51,7 @@ function renderModelMessage(message: PromptMessage): ModelMessage {
 }
 
 function renderToolMessage(
-  message: Extract<PromptMessage, { role: "tool" }>
+  message: Extract<PromptMessage<AiSdkToolIO>, { role: "tool" }>
 ): ModelMessage {
   return {
     role: "tool",
@@ -68,16 +60,16 @@ function renderToolMessage(
         type: "tool-result",
         toolCallId: message.toolCallId,
         toolName: message.toolName,
-        output: coerce(message.output),
+        output: message.output,
       },
     ],
   };
 }
 
 function renderAssistantMessage(
-  message: Extract<PromptMessage, { role: "assistant" }>
+  message: Extract<PromptMessage<AiSdkToolIO>, { role: "assistant" }>
 ): ModelMessage {
-  const parts: PromptPart[] = [];
+  const parts: PromptPart<AiSdkToolIO>[] = [];
   if (message.text) {
     parts.push({ type: "text", text: message.text });
   }
@@ -95,12 +87,6 @@ function renderAssistantMessage(
   return { role: "assistant", content: parts } as ModelMessage;
 }
 
-const hasOutputShape = (v: unknown): v is AiToolResultOutput =>
-  typeof v === "object" &&
-  v !== null &&
-  "type" in v &&
-  typeof (v as { type: unknown }).type === "string";
-
 const isAiToolCallPart = (part: AiContentPart): part is AiToolCallPart =>
   part.type === "tool-call";
 
@@ -113,11 +99,15 @@ const isAiTextPart = (part: AiContentPart): part is AiTextPart =>
 const isAiReasoningPart = (part: AiContentPart): part is AiReasoningPart =>
   part.type === "reasoning";
 
-function parseAiSdkHistory(messages: ModelMessage[]): PromptLayout {
+function parseAiSdkHistory(
+  messages: ModelMessage[]
+): PromptLayout<AiSdkToolIO> {
   return messages.flatMap(parseAiSdkMessage);
 }
 
-function parseAiSdkMessage(message: ModelMessage): PromptMessage[] {
+function parseAiSdkMessage(
+  message: ModelMessage
+): PromptMessage<AiSdkToolIO>[] {
   if (message.role === "assistant") {
     return [parseAiSdkAssistant(message)];
   }
@@ -129,7 +119,7 @@ function parseAiSdkMessage(message: ModelMessage): PromptMessage[] {
 
 function parseAiSdkAssistant(
   message: Extract<ModelMessage, { role: "assistant" }>
-): PromptMessage {
+): PromptMessage<AiSdkToolIO> {
   if (typeof message.content === "string") {
     return { role: "assistant", text: message.content };
   }
@@ -137,7 +127,10 @@ function parseAiSdkAssistant(
   const { text, reasoning, toolCalls } = collectAiSdkAssistantParts(
     message.content
   );
-  const assistant: Extract<PromptMessage, { role: "assistant" }> = {
+  const assistant: Extract<
+    PromptMessage<AiSdkToolIO>,
+    { role: "assistant" }
+  > = {
     role: "assistant",
     text,
   };
@@ -152,7 +145,7 @@ function parseAiSdkAssistant(
 
 function parseAiSdkTool(
   message: Extract<ModelMessage, { role: "tool" }>
-): PromptMessage {
+): PromptMessage<AiSdkToolIO> {
   if (typeof message.content === "string") {
     return {
       role: "tool",
@@ -176,7 +169,7 @@ function parseAiSdkTool(
 
 function parseAiSdkTextMessage(
   message: Extract<ModelMessage, { role: "system" | "user" }>
-): PromptMessage {
+): PromptMessage<AiSdkToolIO> {
   if (typeof message.content === "string") {
     return { role: message.role, text: message.content };
   }
@@ -187,11 +180,11 @@ function parseAiSdkTextMessage(
 function collectAiSdkAssistantParts(parts: AiContentPart[]): {
   text: string;
   reasoning: string;
-  toolCalls: PromptToolCallPart[];
+  toolCalls: PromptToolCallPart<AiSdkToolIO>[];
 } {
   let text = "";
   let reasoning = "";
-  const toolCalls: PromptToolCallPart[] = [];
+  const toolCalls: PromptToolCallPart<AiSdkToolIO>[] = [];
 
   for (const part of parts) {
     if (isAiTextPart(part)) {
@@ -231,15 +224,23 @@ function countModelMessageTokens(message: ModelMessage): number {
     if (part.type === "text" || part.type === "reasoning") {
       tokens += countText(part.text);
     } else if (part.type === "tool-call") {
-      tokens += countText(part.toolName + safeStringify(part.input));
+      const input =
+        typeof part.input === "string"
+          ? part.input
+          : JSON.stringify(part.input);
+      tokens += countText(part.toolName + input);
     } else if (part.type === "tool-result") {
-      tokens += countText(safeStringify(part.output));
+      const output =
+        typeof part.output === "string"
+          ? part.output
+          : JSON.stringify(part.output);
+      tokens += countText(output);
     }
   }
   return tokens;
 }
 
-export class AiSdkProvider extends ModelProvider<ModelMessage[]> {
+export class AiSdkProvider extends ModelProvider<ModelMessage[], AiSdkToolIO> {
   readonly renderer = new AiSdkRenderer();
   private readonly model: LanguageModel;
 

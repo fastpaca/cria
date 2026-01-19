@@ -64,6 +64,16 @@ test("render: basic text output", async () => {
   expect(result).toBe("Hello, world!");
 });
 
+test("render: throws when provider override mismatches tree provider", async () => {
+  const providerA = createTestProvider({ includeRolePrefix: true });
+  const providerB = createTestProvider({ includeRolePrefix: true });
+  const element = await cria.prompt(providerA).user("Hello").build();
+
+  await expect(
+    render(element, { provider: providerB, budget: tokensFor("Hello") })
+  ).rejects.toThrow("Render provider does not match provider in the tree.");
+});
+
 test("render: nested scopes", async () => {
   const element = cria.scope([
     cria.scope([cria.user("Start ")]),

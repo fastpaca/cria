@@ -41,9 +41,28 @@ export type PromptRole = "system" | "user" | "assistant" | "tool";
  * rendered message type (e.g., AI SDK's ModelMessage[], OpenAI's
  * ChatCompletionMessageParam[]).
  */
-export abstract class ModelProvider<TRendered> {
+export interface ProviderToolIO {
+  callInput: unknown;
+  resultOutput: unknown;
+}
+
+interface UnboundToolIO {
+  callInput: never;
+  resultOutput: never;
+}
+
+export type ToolIOForProvider<P> =
+  P extends ModelProvider<unknown, infer TToolIO> ? TToolIO : UnboundToolIO;
+
+type ToolCallInput<TToolIO extends ProviderToolIO> = TToolIO["callInput"];
+type ToolResultOutput<TToolIO extends ProviderToolIO> = TToolIO["resultOutput"];
+
+export abstract class ModelProvider<
+  TRendered,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
   /** Renderer that produces provider-specific prompt input. */
-  abstract readonly renderer: PromptRenderer<TRendered>;
+  abstract readonly renderer: PromptRenderer<TRendered, TToolIO>;
 
   /** Count tokens for rendered output (tiktoken-backed). */
   abstract countTokens(rendered: TRendered): number;
@@ -72,7 +91,7 @@ export abstract class ModelProvider<TRendered> {
  */
 export interface CriaContext {
   /** Model provider for AI-powered operations */
-  provider?: ModelProvider<unknown> | undefined;
+  provider?: ModelProvider<unknown, ProviderToolIO> | undefined;
 }
 
 // Convenience type for functions that can return a promise or a value.
@@ -81,50 +100,70 @@ export type MaybePromise<T> = T | Promise<T>;
 /**
  * Content parts that appear as leaf nodes in message nodes.
  */
-export type PromptPart =
+export interface ToolCallPart<TToolIO extends ProviderToolIO = ProviderToolIO> {
+  type: "tool-call";
+  toolCallId: string;
+  toolName: string;
+  input: ToolCallInput<TToolIO>;
+}
+
+export interface ToolResultPart<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  type: "tool-result";
+  toolCallId: string;
+  toolName: string;
+  output: ToolResultOutput<TToolIO>;
+}
+
+export type PromptPart<TToolIO extends ProviderToolIO = ProviderToolIO> =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
-  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
+  | ToolCallPart<TToolIO>
+  | ToolResultPart<TToolIO>;
 
-export type ToolCallPart = Extract<PromptPart, { type: "tool-call" }>;
-export type ToolResultPart = Extract<PromptPart, { type: "tool-result" }>;
-export type ReasoningPart = Extract<PromptPart, { type: "reasoning" }>;
-export type TextPart = Extract<PromptPart, { type: "text" }>;
+export type ReasoningPart<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  Extract<PromptPart<TToolIO>, { type: "reasoning" }>;
+export type TextPart<TToolIO extends ProviderToolIO = ProviderToolIO> = Extract<
+  PromptPart<TToolIO>,
+  { type: "text" }
+>;
 
 /**
  * Structural scope node in the prompt tree.
  * Scopes group messages for compaction and composition.
  */
-export interface PromptScope {
+export interface PromptScope<TToolIO extends ProviderToolIO = ProviderToolIO> {
   kind: "scope";
   priority: number;
   strategy?: Strategy | undefined;
   id?: string | undefined;
   context?: CriaContext | undefined;
-  children: readonly PromptNode[];
+  children: readonly PromptNode<TToolIO>[];
 }
 
 /**
  * Message boundary node in the prompt tree.
  */
-export interface PromptMessageNode {
+export interface PromptMessageNode<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
   kind: "message";
   role: PromptRole;
   id?: string | undefined;
-  children: readonly PromptPart[];
+  children: readonly PromptPart<TToolIO>[];
 }
 
-export type PromptNode = PromptScope | PromptMessageNode;
-export type PromptTree = PromptScope;
+export type PromptNode<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  | PromptScope<TToolIO>
+  | PromptMessageNode<TToolIO>;
+export type PromptTree<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  PromptScope<TToolIO>;
 
-export type ScopeChildren = readonly PromptNode[];
-export type MessageChildren = readonly PromptPart[];
+export type ScopeChildren<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  readonly PromptNode<TToolIO>[];
+export type MessageChildren<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  readonly PromptPart<TToolIO>[];
 
 export interface SystemMessage {
   role: "system";
@@ -136,18 +175,20 @@ export interface UserMessage {
   text: string;
 }
 
-export interface AssistantMessage {
+export interface AssistantMessage<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
   role: "assistant";
   text: string;
   reasoning?: string | undefined;
-  toolCalls?: readonly ToolCallPart[] | undefined;
+  toolCalls?: readonly ToolCallPart<TToolIO>[] | undefined;
 }
 
-export interface ToolMessage {
+export interface ToolMessage<TToolIO extends ProviderToolIO = ProviderToolIO> {
   role: "tool";
   toolCallId: string;
   toolName: string;
-  output: unknown;
+  output: ToolResultOutput<TToolIO>;
 }
 
 /*
@@ -157,31 +198,36 @@ PromptLayout is a list of fully-shaped messages. The union is deliberate:
 - System/User messages are text-only.
 This keeps invalid combinations out of the layout by construction.
 */
-export type PromptMessage =
+export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
   | SystemMessage
   | UserMessage
-  | AssistantMessage
-  | ToolMessage;
+  | AssistantMessage<TToolIO>
+  | ToolMessage<TToolIO>;
 
-export type PromptLayout = readonly PromptMessage[];
+export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  readonly PromptMessage<TToolIO>[];
 
 /**
  * A renderer that converts a flat prompt layout into provider-specific output.
  */
-export abstract class PromptRenderer<TOutput> {
+export abstract class PromptRenderer<
+  TOutput,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
   /** Render a layout into provider-specific output. */
-  abstract render(layout: PromptLayout): TOutput;
+  abstract render(layout: PromptLayout<TToolIO>): TOutput;
 
   /**
    * Convert provider-specific history back into a prompt layout.
    * Providers can override this to enable `prompt.history(...)`.
    */
-  historyToLayout(_rendered: TOutput): PromptLayout {
+  historyToLayout(_rendered: TOutput): PromptLayout<TToolIO> {
     throw new Error("This provider does not support history parsing.");
   }
 }
 
-export type StrategyResult = PromptScope | null;
+export type StrategyResult<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  PromptScope<TToolIO> | null;
 
 /**
  * Context passed to strategy functions during the fit loop.
@@ -191,8 +237,10 @@ export type StrategyResult = PromptScope | null;
  * @property iteration - Which iteration of the fit loop (for debugging)
  * @property context - Inherited context from ancestor provider components
  */
-export interface StrategyInput {
-  target: PromptScope;
+export interface StrategyInput<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  target: PromptScope<TToolIO>;
   totalTokens: number;
   iteration: number;
   /** Context inherited from ancestor provider components */
@@ -214,7 +262,9 @@ export interface StrategyInput {
  * Strategies have full ownership of their subtree: they can replace the element
  * and/or rewrite any children.
  */
-export type Strategy = (input: StrategyInput) => MaybePromise<StrategyResult>;
+export type Strategy = <TToolIO extends ProviderToolIO>(
+  input: StrategyInput<TToolIO>
+) => MaybePromise<StrategyResult<TToolIO>>;
 
 /**
  * Error thrown when the prompt cannot be fit within the budget.

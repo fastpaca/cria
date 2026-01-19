@@ -4,16 +4,18 @@
  * @packageDocumentation
  */
 
-import type { PromptPart } from "../types";
+import type { PromptPart, ProviderToolIO } from "../types";
 
-export type TextValue =
-  | PromptPart
+export type TextValue<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  | PromptPart<TToolIO>
   | boolean
   | number
   | string
   | null
   | undefined;
-export type TextInput = TextValue | readonly TextInput[];
+export type TextInput<TToolIO extends ProviderToolIO = ProviderToolIO> =
+  | TextValue<TToolIO>
+  | readonly TextInput<TToolIO>[];
 
 const TEMPLATE_INDENT_RE = /^[ \t]*/;
 
@@ -32,9 +34,17 @@ const TEMPLATE_INDENT_RE = /^[ \t]*/;
 export function c(
   strings: TemplateStringsArray,
   ...values: readonly TextInput[]
-): readonly PromptPart[] {
+): readonly PromptPart[];
+export function c<TToolIO extends ProviderToolIO>(
+  strings: TemplateStringsArray,
+  ...values: readonly TextInput<TToolIO>[]
+): readonly PromptPart<TToolIO>[];
+export function c<TToolIO extends ProviderToolIO>(
+  strings: TemplateStringsArray,
+  ...values: readonly TextInput<TToolIO>[]
+): readonly PromptPart<TToolIO>[] {
   const normalizedStrings = normalizeTemplateStrings(strings);
-  const children: PromptPart[] = [];
+  const children: PromptPart<TToolIO>[] = [];
 
   for (let index = 0; index < normalizedStrings.length; index += 1) {
     const segment = normalizedStrings[index];
@@ -43,7 +53,7 @@ export function c(
     }
 
     if (index < values.length) {
-      const normalized = normalizeTextInput(values[index]);
+      const normalized = normalizeTextInput<TToolIO>(values[index]);
       if (normalized.length > 0) {
         children.push(...normalized);
       }
@@ -53,34 +63,40 @@ export function c(
   return children;
 }
 
-export function textPart(value: string): PromptPart {
+export function textPart<TToolIO extends ProviderToolIO = ProviderToolIO>(
+  value: string
+): PromptPart<TToolIO> {
   return { type: "text", text: value };
 }
 
-export function isPromptPart(value: unknown): value is PromptPart {
+export function isPromptPart<TToolIO extends ProviderToolIO = ProviderToolIO>(
+  value: unknown
+): value is PromptPart<TToolIO> {
   return typeof value === "object" && value !== null && "type" in value;
 }
 
 // Normalize text-like inputs into prompt parts.
-export function normalizeTextInput(content?: TextInput): PromptPart[] {
+export function normalizeTextInput<TToolIO extends ProviderToolIO>(
+  content?: TextInput<TToolIO>
+): PromptPart<TToolIO>[] {
   if (content === null || content === undefined) {
     return [];
   }
 
   if (Array.isArray(content)) {
-    const flattened: PromptPart[] = [];
+    const flattened: PromptPart<TToolIO>[] = [];
     for (const item of content) {
-      flattened.push(...normalizeTextInput(item));
+      flattened.push(...normalizeTextInput<TToolIO>(item));
     }
     return flattened;
   }
 
   if (typeof content === "string") {
-    return [textPart(content)];
+    return [textPart<TToolIO>(content)];
   }
 
   if (typeof content === "number" || typeof content === "boolean") {
-    return [textPart(String(content))];
+    return [textPart<TToolIO>(String(content))];
   }
 
   if (isPromptPart(content)) {

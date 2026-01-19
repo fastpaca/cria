@@ -9,6 +9,7 @@ import type {
   ModelProvider,
   PromptRole,
   PromptScope,
+  ProviderToolIO,
   ScopeChildren,
   StrategyInput,
 } from "../types";
@@ -28,11 +29,11 @@ export interface StoredSummary {
  */
 export interface SummarizerContext {
   /** The subtree being summarized */
-  target: PromptScope;
+  target: PromptScope<ProviderToolIO>;
   /** Previous summary to build upon (null if first summary) */
   existingSummary: string | null;
   /** Provider in scope, if any */
-  provider?: ModelProvider<unknown>;
+  provider?: ModelProvider<unknown, ProviderToolIO>;
 }
 
 /**
@@ -46,7 +47,7 @@ export type Summarizer = (ctx: SummarizerContext) => MaybePromise<string>;
  */
 async function defaultSummarizer(
   ctx: SummarizerContext,
-  provider: ModelProvider<unknown>
+  provider: ModelProvider<unknown, ProviderToolIO>
 ): Promise<string> {
   const summaryPrompt = await PromptBuilder.create()
     .system(
@@ -70,7 +71,7 @@ async function defaultSummarizer(
   return provider.completion(rendered);
 }
 
-interface SummaryProps {
+interface SummaryProps<TToolIO extends ProviderToolIO = ProviderToolIO> {
   /** Unique identifier for this summary in the store */
   id: string;
   /** Storage adapter for persisting summaries */
@@ -85,20 +86,20 @@ interface SummaryProps {
   /** Role for the summary message. Default: "system" */
   role?: PromptRole;
   /** Content to potentially summarize */
-  children?: ScopeChildren;
+  children?: ScopeChildren<TToolIO>;
 }
 
 /**
  * A scope that summarizes its content when the prompt needs to shrink.
  */
-export function Summary({
+export function Summary<TToolIO extends ProviderToolIO>({
   id,
   store,
   summarize,
   priority = 0,
   role = "system",
   children = [],
-}: SummaryProps): PromptScope {
+}: SummaryProps<TToolIO>): PromptScope<TToolIO> {
   return createScope(children, {
     priority,
     strategy: async (input: StrategyInput) => {

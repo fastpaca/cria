@@ -8,6 +8,7 @@ import type {
   PromptPart,
   PromptRole,
   PromptScope,
+  ProviderToolIO,
   ScopeChildren,
   Strategy,
 } from "../types";
@@ -15,10 +16,10 @@ import type {
 /**
  * Create a scope node with optional priority, strategy, and id.
  */
-export function createScope(
-  children: ScopeChildren,
+export function createScope<TToolIO extends ProviderToolIO>(
+  children: ScopeChildren<TToolIO>,
   opts?: { priority?: number; strategy?: Strategy; id?: string }
-): PromptScope {
+): PromptScope<TToolIO> {
   return {
     kind: "scope",
     priority: opts?.priority ?? 0,
@@ -31,11 +32,11 @@ export function createScope(
 /**
  * Create a message node with role and children.
  */
-export function createMessage(
+export function createMessage<TToolIO extends ProviderToolIO>(
   role: PromptRole,
-  children: MessageChildren,
+  children: MessageChildren<TToolIO>,
   id?: string
-): PromptMessageNode {
+): PromptMessageNode<TToolIO> {
   return {
     kind: "message",
     role,
@@ -84,11 +85,11 @@ export function createOmitStrategy(): Strategy {
 /**
  * Format examples into a text prompt part.
  */
-export function formatExamples(
+export function formatExamples<TToolIO extends ProviderToolIO>(
   title: string,
   items: readonly string[],
   separator = "\n\n"
-): PromptPart {
+): PromptPart<TToolIO> {
   const body = items.length === 0 ? "" : items.join(separator);
   const text = title ? `${title}\n${body}` : body;
   return { type: "text", text };

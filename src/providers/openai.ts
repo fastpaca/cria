@@ -5,14 +5,22 @@ import type {
 } from "openai/resources/chat/completions";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { z } from "zod";
-import { countText, safeStringify } from "../renderers/shared";
+import { countText } from "../renderers/shared";
 import type { PromptLayout, PromptMessage, ToolCallPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
+export interface OpenAiToolIO {
+  callInput: string;
+  resultOutput: string;
+}
+
 export class OpenAIChatRenderer extends PromptRenderer<
-  ChatCompletionMessageParam[]
+  ChatCompletionMessageParam[],
+  OpenAiToolIO
 > {
-  override render(layout: PromptLayout): ChatCompletionMessageParam[] {
+  override render(
+    layout: PromptLayout<OpenAiToolIO>
+  ): ChatCompletionMessageParam[] {
     return layout.map((m): ChatCompletionMessageParam => {
       if (m.role === "system") {
         return { role: "system", content: m.text };
@@ -31,7 +39,7 @@ export class OpenAIChatRenderer extends PromptRenderer<
           result.tool_calls = m.toolCalls.map((tc) => ({
             id: tc.toolCallId,
             type: "function",
-            function: { name: tc.toolName, arguments: safeStringify(tc.input) },
+            function: { name: tc.toolName, arguments: tc.input },
           }));
         }
         return result;
@@ -39,22 +47,23 @@ export class OpenAIChatRenderer extends PromptRenderer<
       return {
         role: "tool",
         tool_call_id: m.toolCallId,
-        content: safeStringify(m.output),
+        content: m.output,
       };
     });
   }
 
   override historyToLayout(
     messages: ChatCompletionMessageParam[]
-  ): PromptLayout {
+  ): PromptLayout<OpenAiToolIO> {
     return parseChatHistory(messages);
   }
 }
 
 export class OpenAIResponsesRenderer extends PromptRenderer<
-  ResponseInputItem[]
+  ResponseInputItem[],
+  OpenAiToolIO
 > {
-  override render(layout: PromptLayout): ResponseInputItem[] {
+  override render(layout: PromptLayout<OpenAiToolIO>): ResponseInputItem[] {
     let idx = 0;
     return layout.flatMap((m) => {
       if (m.role === "tool") {
@@ -62,7 +71,7 @@ export class OpenAIResponsesRenderer extends PromptRenderer<
           {
             type: "function_call_output" as const,
             call_id: m.toolCallId,
-            output: safeStringify(m.output),
+            output: m.output,
           },
         ];
       }
@@ -88,7 +97,7 @@ export class OpenAIResponsesRenderer extends PromptRenderer<
             type: "function_call",
             call_id: tc.toolCallId,
             name: tc.toolName,
-            arguments: safeStringify(tc.input),
+            arguments: tc.input,
           });
         }
       }
@@ -97,7 +106,9 @@ export class OpenAIResponsesRenderer extends PromptRenderer<
     });
   }
 
-  override historyToLayout(items: ResponseInputItem[]): PromptLayout {
+  override historyToLayout(
+    items: ResponseInputItem[]
+  ): PromptLayout<OpenAiToolIO> {
     return parseResponsesHistory(items);
   }
 }
@@ -137,14 +148,6 @@ function countResponseItemTokens(item: ResponseInputItem): number {
   return 0;
 }
 
-function parseJsonOrString(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
 function extractText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -174,7 +177,7 @@ function extractText(value: unknown): string {
 
 function parseChatHistory(
   messages: ChatCompletionMessageParam[]
-): PromptLayout {
+): PromptLayout<OpenAiToolIO> {
   const toolNameById = new Map<string, string>();
   return messages.flatMap((message) => parseChatMessage(message, toolNameById));
 }
@@ -182,7 +185,7 @@ function parseChatHistory(
 function parseChatMessage(
   message: ChatCompletionMessageParam,
   toolNameById: Map<string, string>
-): PromptMessage[] {
+): PromptMessage<OpenAiToolIO>[] {
   if (message.role === "system" || message.role === "developer") {
     return [{ role: "system", text: extractText(message.content) }];
   }
@@ -204,9 +207,12 @@ function parseChatMessage(
 function parseChatAssistantMessage(
   message: Extract<ChatCompletionMessageParam, { role: "assistant" }>,
   toolNameById: Map<string, string>
-): PromptMessage {
+): PromptMessage<OpenAiToolIO> {
   const toolCalls = extractChatToolCalls(message, toolNameById);
-  const assistant: Extract<PromptMessage, { role: "assistant" }> = {
+  const assistant: Extract<
+    PromptMessage<OpenAiToolIO>,
+    { role: "assistant" }
+  > = {
     role: "assistant",
     text: extractText(message.content),
   };
@@ -219,7 +225,7 @@ function parseChatAssistantMessage(
 function extractChatToolCalls(
   message: Extract<ChatCompletionMessageParam, { role: "assistant" }>,
   toolNameById: Map<string, string>
-): ToolCallPart[] {
+): ToolCallPart<OpenAiToolIO>[] {
   const calls =
     "tool_calls" in message && Array.isArray(message.tool_calls)
       ? message.tool_calls
@@ -231,7 +237,7 @@ function extractChatToolCalls(
       type: "tool-call",
       toolCallId: call.id,
       toolName: call.function.name,
-      input: parseJsonOrString(call.function.arguments),
+      input: call.function.arguments,
     };
   });
 }
@@ -239,27 +245,29 @@ function extractChatToolCalls(
 function parseChatToolMessage(
   message: Extract<ChatCompletionMessageParam, { role: "tool" }>,
   toolNameById: Map<string, string>
-): PromptMessage {
+): PromptMessage<OpenAiToolIO> {
   return {
     role: "tool",
     toolCallId: message.tool_call_id,
     toolName: toolNameById.get(message.tool_call_id) ?? "",
-    output: parseJsonOrString(extractText(message.content)),
+    output: extractText(message.content),
   };
 }
 
 function parseChatFunctionMessage(
   message: Extract<ChatCompletionMessageParam, { role: "function" }>
-): PromptMessage {
+): PromptMessage<OpenAiToolIO> {
   return {
     role: "tool",
     toolCallId: message.name,
     toolName: message.name,
-    output: parseJsonOrString(extractText(message.content)),
+    output: extractText(message.content),
   };
 }
 
-function parseResponsesHistory(items: ResponseInputItem[]): PromptLayout {
+function parseResponsesHistory(
+  items: ResponseInputItem[]
+): PromptLayout<OpenAiToolIO> {
   const toolNameById = new Map<string, string>();
   return items.flatMap((item) => parseResponseItem(item, toolNameById));
 }
@@ -267,7 +275,7 @@ function parseResponsesHistory(items: ResponseInputItem[]): PromptLayout {
 function parseResponseItem(
   item: ResponseInputItem,
   toolNameById: Map<string, string>
-): PromptMessage[] {
+): PromptMessage<OpenAiToolIO>[] {
   if ("role" in item && typeof item.role === "string") {
     return parseResponseRoleMessage(item);
   }
@@ -285,7 +293,7 @@ function parseResponseItem(
 
 function parseResponseRoleMessage(
   item: Extract<ResponseInputItem, { role: string }>
-): PromptMessage[] {
+): PromptMessage<OpenAiToolIO>[] {
   const role = item.role;
   if (role === "assistant") {
     return [{ role: "assistant", text: extractText(item.content) }];
@@ -298,7 +306,7 @@ function parseResponseRoleMessage(
 
 function parseResponseReasoningMessage(
   item: Extract<ResponseInputItem, { type: "reasoning" }>
-): PromptMessage[] {
+): PromptMessage<OpenAiToolIO>[] {
   const summary = Array.isArray(item.summary)
     ? item.summary
         .map((s) => (typeof s.text === "string" ? s.text : ""))
@@ -319,7 +327,7 @@ function parseResponseReasoningMessage(
 function parseResponseToolCall(
   item: Extract<ResponseInputItem, { type: "function_call" }>,
   toolNameById: Map<string, string>
-): PromptMessage {
+): PromptMessage<OpenAiToolIO> {
   toolNameById.set(item.call_id, item.name);
   return {
     role: "assistant",
@@ -329,7 +337,7 @@ function parseResponseToolCall(
         type: "tool-call",
         toolCallId: item.call_id,
         toolName: item.name,
-        input: parseJsonOrString(item.arguments),
+        input: item.arguments,
       },
     ],
   };
@@ -338,17 +346,18 @@ function parseResponseToolCall(
 function parseResponseToolResult(
   item: Extract<ResponseInputItem, { type: "function_call_output" }>,
   toolNameById: Map<string, string>
-): PromptMessage {
+): PromptMessage<OpenAiToolIO> {
   return {
     role: "tool",
     toolCallId: item.call_id,
     toolName: toolNameById.get(item.call_id) ?? "",
-    output: parseJsonOrString(item.output),
+    output: item.output,
   };
 }
 
 export class OpenAIChatProvider extends ModelProvider<
-  ChatCompletionMessageParam[]
+  ChatCompletionMessageParam[],
+  OpenAiToolIO
 > {
   readonly renderer = new OpenAIChatRenderer();
   private readonly client: OpenAI;
@@ -386,7 +395,8 @@ export class OpenAIChatProvider extends ModelProvider<
 }
 
 export class OpenAIResponsesProvider extends ModelProvider<
-  ResponseInputItem[]
+  ResponseInputItem[],
+  OpenAiToolIO
 > {
   readonly renderer = new OpenAIResponsesRenderer();
   private readonly client: OpenAI;

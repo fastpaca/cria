@@ -3,10 +3,10 @@ import { cria } from "../dsl";
 import { render } from "../render";
 import type { PromptMessageNode, PromptRenderer } from "../types";
 import { ModelProvider } from "../types";
-import { AnthropicRenderer } from "./anthropic";
+import { AnthropicRenderer, type AnthropicToolIO } from "./anthropic";
 
-class RenderOnlyProvider<T> extends ModelProvider<T> {
-  readonly renderer: PromptRenderer<T>;
+class RenderOnlyProvider<T> extends ModelProvider<T, AnthropicToolIO> {
+  readonly renderer: PromptRenderer<T, AnthropicToolIO>;
 
   constructor(renderer: PromptRenderer<T>) {
     super();
@@ -34,8 +34,8 @@ const provider = new RenderOnlyProvider(new AnthropicRenderer());
  */
 function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",
-  children: PromptMessageNode["children"]
-): PromptMessageNode {
+  children: PromptMessageNode<AnthropicToolIO>["children"]
+): PromptMessageNode<AnthropicToolIO> {
   return { kind: "message", role, children };
 }
 
@@ -110,7 +110,7 @@ test("anthropic: renders tool results in user messages", async () => {
     messageWithParts("tool", [
       {
         type: "tool-result",
-        output: { temperature: 20 },
+        output: '{"temperature":20}',
         toolCallId: "call_123",
         toolName: "getWeather",
       },
@@ -162,7 +162,7 @@ test("anthropic: full conversation with tool use", async () => {
     messageWithParts("tool", [
       {
         type: "tool-result",
-        output: { temp: 18 },
+        output: '{"temp":18}',
         toolCallId: "call_1",
         toolName: "getWeather",
       },

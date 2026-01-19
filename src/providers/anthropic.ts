@@ -3,9 +3,11 @@ import type {
   ContentBlockParam,
   MessageParam,
   Model,
+  ToolResultBlockParam,
+  ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { z } from "zod";
-import { countText, safeStringify } from "../renderers/shared";
+import { countText } from "../renderers/shared";
 import type { PromptLayout, PromptMessage, ToolCallPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
@@ -14,8 +16,18 @@ export interface AnthropicRenderResult {
   messages: MessageParam[];
 }
 
-export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
-  override render(layout: PromptLayout): AnthropicRenderResult {
+export interface AnthropicToolIO {
+  callInput: ToolUseBlockParam["input"];
+  resultOutput: ToolResultBlockParam["content"];
+}
+
+export class AnthropicRenderer extends PromptRenderer<
+  AnthropicRenderResult,
+  AnthropicToolIO
+> {
+  override render(
+    layout: PromptLayout<AnthropicToolIO>
+  ): AnthropicRenderResult {
     const messages: MessageParam[] = [];
     let system = "";
 
@@ -32,7 +44,9 @@ export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
     return system ? { system, messages } : { messages };
   }
 
-  override historyToLayout(rendered: AnthropicRenderResult): PromptLayout {
+  override historyToLayout(
+    rendered: AnthropicRenderResult
+  ): PromptLayout<AnthropicToolIO> {
     return parseAnthropicHistory(rendered);
   }
 }
@@ -43,20 +57,23 @@ interface RenderedAnthropicMessage {
 }
 
 function renderAnthropicMessage(
-  message: PromptMessage
+  message: PromptMessage<AnthropicToolIO>
 ): RenderedAnthropicMessage {
   if (message.role === "system") {
     return { systemText: (message as { text: string }).text };
   }
 
   if (message.role === "tool") {
-    const toolMessage = message as Extract<PromptMessage, { role: "tool" }>;
+    const toolMessage = message as Extract<
+      PromptMessage<AnthropicToolIO>,
+      { role: "tool" }
+    >;
     return { message: renderToolResultMessage(toolMessage) };
   }
 
   if (message.role === "assistant") {
     const assistantMessage = message as Extract<
-      PromptMessage,
+      PromptMessage<AnthropicToolIO>,
       { role: "assistant" }
     >;
     const rendered = renderAssistantMessage(assistantMessage);
@@ -76,7 +93,7 @@ function renderUserMessage(text: string): MessageParam | undefined {
 }
 
 function renderAssistantMessage(
-  message: Extract<PromptMessage, { role: "assistant" }>
+  message: Extract<PromptMessage<AnthropicToolIO>, { role: "assistant" }>
 ): MessageParam | undefined {
   const content = buildContent(
     message.text,
@@ -91,22 +108,23 @@ function renderAssistantMessage(
 }
 
 function renderToolResultMessage(
-  message: Extract<PromptMessage, { role: "tool" }>
+  message: Extract<PromptMessage<AnthropicToolIO>, { role: "tool" }>
 ): MessageParam {
+  const block: ToolResultBlockParam = {
+    type: "tool_result",
+    tool_use_id: message.toolCallId,
+    ...(message.output !== undefined ? { content: message.output } : {}),
+  };
   return {
     role: "user",
-    content: [
-      {
-        type: "tool_result",
-        tool_use_id: message.toolCallId,
-        content: safeStringify(message.output),
-      },
-    ],
+    content: [block],
   };
 }
 
-function parseAnthropicHistory(rendered: AnthropicRenderResult): PromptLayout {
-  const layout: PromptMessage[] = [];
+function parseAnthropicHistory(
+  rendered: AnthropicRenderResult
+): PromptLayout<AnthropicToolIO> {
+  const layout: PromptMessage<AnthropicToolIO>[] = [];
   const toolNameById = new Map<string, string>();
 
   if (rendered.system) {
@@ -123,7 +141,7 @@ function parseAnthropicHistory(rendered: AnthropicRenderResult): PromptLayout {
 function parseAnthropicMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
-): PromptMessage[] {
+): PromptMessage<AnthropicToolIO>[] {
   if (message.role === "assistant") {
     return [parseAnthropicAssistantMessage(message, toolNameById)];
   }
@@ -136,7 +154,7 @@ function parseAnthropicMessage(
 function parseAnthropicAssistantMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
-): PromptMessage {
+): PromptMessage<AnthropicToolIO> {
   if (message.role !== "assistant") {
     throw new Error("Expected an assistant message.");
   }
@@ -149,7 +167,10 @@ function parseAnthropicAssistantMessage(
     message.content,
     toolNameById
   );
-  const assistant: Extract<PromptMessage, { role: "assistant" }> = {
+  const assistant: Extract<
+    PromptMessage<AnthropicToolIO>,
+    { role: "assistant" }
+  > = {
     role: "assistant",
     text,
   };
@@ -162,9 +183,9 @@ function parseAnthropicAssistantMessage(
 function collectAnthropicAssistantParts(
   blocks: ContentBlockParam[],
   toolNameById: Map<string, string>
-): { text: string; toolCalls: ToolCallPart[] } {
+): { text: string; toolCalls: ToolCallPart<AnthropicToolIO>[] } {
   let text = "";
-  const toolCalls: ToolCallPart[] = [];
+  const toolCalls: ToolCallPart<AnthropicToolIO>[] = [];
 
   for (const block of blocks) {
     if (block.type === "text") {
@@ -188,7 +209,7 @@ function collectAnthropicAssistantParts(
 function parseAnthropicUserMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
-): PromptMessage[] {
+): PromptMessage<AnthropicToolIO>[] {
   if (message.role !== "user") {
     throw new Error("Expected a user message.");
   }
@@ -203,8 +224,8 @@ function parseAnthropicUserMessage(
 function parseAnthropicUserBlocks(
   blocks: ContentBlockParam[],
   toolNameById: Map<string, string>
-): PromptMessage[] {
-  const messages: PromptMessage[] = [];
+): PromptMessage<AnthropicToolIO>[] {
+  const messages: PromptMessage<AnthropicToolIO>[] = [];
   let text = "";
 
   for (const block of blocks) {
@@ -243,9 +264,7 @@ function appendSystemText(current: string, next: string): string {
 function buildContent(
   text: string,
   reasoning: string | undefined,
-  toolCalls:
-    | readonly { toolCallId: string; toolName: string; input: unknown }[]
-    | undefined,
+  toolCalls: readonly ToolCallPart<AnthropicToolIO>[] | undefined,
   includeToolCalls: boolean
 ): ContentBlockParam[] {
   const content: ContentBlockParam[] = [];
@@ -273,12 +292,19 @@ function buildContent(
   return content;
 }
 
+const serializeToolInput = (input: ToolUseBlockParam["input"]): string => {
+  if (typeof input === "string") {
+    return input;
+  }
+  return JSON.stringify(input) ?? "";
+};
+
 function countContentBlockTokens(b: ContentBlockParam): number {
   if (b.type === "text") {
     return countText(b.text);
   }
   if (b.type === "tool_use") {
-    return countText(b.name + safeStringify(b.input));
+    return countText(b.name + serializeToolInput(b.input));
   }
   if (b.type === "tool_result") {
     const c = b.content;
@@ -308,7 +334,10 @@ const extractText = (content: Anthropic.Messages.ContentBlock[]) =>
     .map((b) => b.text)
     .join("");
 
-export class AnthropicProvider extends ModelProvider<AnthropicRenderResult> {
+export class AnthropicProvider extends ModelProvider<
+  AnthropicRenderResult,
+  AnthropicToolIO
+> {
   readonly renderer = new AnthropicRenderer();
   private readonly client: Anthropic;
   private readonly model: Model;
