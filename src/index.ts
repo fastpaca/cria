@@ -75,10 +75,8 @@ export type {
   PromptChild,
   PromptChildren,
   PromptElement,
-  PromptKind,
   PromptLayout,
   PromptMessage,
-  PromptNodeKind,
   PromptPart,
   PromptRole,
   ReasoningElement,
@@ -93,10 +91,5 @@ export type {
 export {
   FitError,
   ModelProvider,
-  PromptChildrenSchema,
-  PromptChildSchema,
-  PromptElementSchema,
-  PromptKindSchema,
   PromptRenderer,
-  PromptRoleSchema,
 } from "./types";

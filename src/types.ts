@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 
 /**
  * Message role used by semantic `kind: "message"` regions.
@@ -6,12 +6,7 @@ import { z } from "zod";
  * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool),
  * while still allowing custom roles for bespoke targets.
  */
-export const PromptRoleSchema = z
-  .string()
-  .describe(
-    'Message role used by semantic `kind: "message"` regions (system/user/assistant/tool/custom).'
-  );
-export type PromptRole = z.infer<typeof PromptRoleSchema>;
+export type PromptRole = string;
 
 /**
  * A model provider that can generate completions.
@@ -59,60 +54,15 @@ export interface CriaContext {
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
- * Semantic variants for a region node.
- *
- * Cria’s IR is “Regions all the way down” (like a DOM tree). `PromptKindSchema`
- * defines how we recognize prompt parts so renderers can emit structured targets
- * without parsing strings.
- */
-const PromptKindNoneSchema = z.object({ kind: z.undefined().optional() });
-const PromptKindMessageSchema = z.object({
-  kind: z.literal("message"),
-  role: PromptRoleSchema,
-});
-const PromptKindToolCallSchema = z.object({
-  kind: z.literal("tool-call"),
-  toolCallId: z.string(),
-  toolName: z.string(),
-  input: z.unknown(),
-});
-const PromptKindToolResultSchema = z.object({
-  kind: z.literal("tool-result"),
-  toolCallId: z.string(),
-  toolName: z.string(),
-  output: z.unknown(),
-});
-const PromptKindReasoningSchema = z.object({
-  kind: z.literal("reasoning"),
-  text: z.string(),
-});
-
-export const PromptKindSchema = z.union([
-  PromptKindNoneSchema,
-  PromptKindMessageSchema,
-  PromptKindToolCallSchema,
-  PromptKindToolResultSchema,
-  PromptKindReasoningSchema,
-]);
-
-export type PromptKind = z.infer<typeof PromptKindSchema>;
-export type PromptNodeKind = PromptKind["kind"];
-
-/**
  * The core IR node type. All Cria components return a `PromptElement`.
  *
  * **Everything is a Region** (think: a DOM `<div>`): `priority`, `strategy`, and
  * `children` make up the structural prompt tree.
  *
- * If you attach a semantic `kind` (via `PromptKind`), the node becomes a recognized
+ * If you attach a semantic `kind`, the node becomes a recognized
  * prompt part (message/tool-call/tool-result/reasoning) and renderers can emit
  * structured targets without parsing strings.
- *
- * `PromptElementSchema` is the single source of truth for validation and type inference.
  */
-const strategyValidator = (value: unknown): value is Strategy =>
-  typeof value === "function";
-
 export interface PromptElementBase {
   priority: number;
   strategy?: Strategy | undefined;
@@ -145,67 +95,6 @@ export type ReasoningElement = Extract<PromptElement, { kind: "reasoning" }>;
 
 export type PromptChild = string | PromptElement;
 export type PromptChildren = PromptChild[];
-
-const PromptBaseSchema = z
-  .object({
-    priority: z.number(),
-    strategy: z.custom<Strategy>(strategyValidator).optional(),
-    id: z.string().optional(),
-    context: z.custom<CriaContext>().optional(),
-  })
-  .strict();
-
-export const PromptElementSchema: z.ZodType<PromptElement> = z.lazy(() =>
-  z.union([
-    PromptBaseSchema.extend({
-      kind: z.undefined().optional(),
-      children: z.array(
-        z.union([z.string(), z.lazy(() => PromptElementSchema)])
-      ),
-    }),
-    PromptBaseSchema.extend({
-      kind: z.literal("message"),
-      role: PromptRoleSchema,
-      children: z.array(
-        z.union([z.string(), z.lazy(() => PromptElementSchema)])
-      ),
-    }),
-    PromptBaseSchema.extend({
-      kind: z.literal("tool-call"),
-      toolCallId: z.string(),
-      toolName: z.string(),
-      input: z.unknown(),
-      children: z.array(
-        z.union([z.string(), z.lazy(() => PromptElementSchema)])
-      ),
-    }),
-    PromptBaseSchema.extend({
-      kind: z.literal("tool-result"),
-      toolCallId: z.string(),
-      toolName: z.string(),
-      output: z.unknown(),
-      children: z.array(
-        z.union([z.string(), z.lazy(() => PromptElementSchema)])
-      ),
-    }),
-    PromptBaseSchema.extend({
-      kind: z.literal("reasoning"),
-      text: z.string(),
-      children: z.array(
-        z.union([z.string(), z.lazy(() => PromptElementSchema)])
-      ),
-    }),
-  ])
-) as z.ZodType<PromptElement>;
-
-export const PromptChildSchema: z.ZodType<PromptChild> = z.union([
-  z.string(),
-  z.lazy(() => PromptElementSchema),
-]) as z.ZodType<PromptChild>;
-
-export const PromptChildrenSchema: z.ZodType<PromptChildren> = z.array(
-  PromptChildSchema
-) as z.ZodType<PromptChildren>;
 
 /**
  * Design: PromptTree (parts + children) -> PromptLayout (parts only, message-bounded)
