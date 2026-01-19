@@ -1,8 +1,13 @@
 import type { Attributes, Span, Tracer } from "@opentelemetry/api";
 import { describe, expect, test } from "vitest";
-import { Message, Omit, Scope } from "../components";
 import { render } from "../index";
 import { createTestProvider } from "../testing/plaintext";
+import type {
+  PromptMessageNode,
+  PromptPart,
+  PromptScope,
+  Strategy,
+} from "../types";
 import { createOtelRenderHooks } from "./otel";
 
 class StubSpan implements Span {
@@ -16,7 +21,7 @@ class StubSpan implements Span {
     this.name = name;
   }
 
-  spanContext(): any {
+  spanContext(): ReturnType<Span["spanContext"]> {
     return { traceId: "trace", spanId: "span", traceFlags: 1 };
   }
   setAttribute(key: string, value: unknown): this {
@@ -36,7 +41,7 @@ class StubSpan implements Span {
   addLinks(): this {
     return this;
   }
-  setStatus(status: any): this {
+  setStatus(status: { code: number; message?: string }): this {
     this.status = status;
     return this;
   }
@@ -49,7 +54,7 @@ class StubSpan implements Span {
   isRecording(): boolean {
     return true;
   }
-  recordException(exception: any): this {
+  recordException(exception: unknown): this {
     this.exceptions.push(exception);
     return this;
   }
@@ -79,24 +84,47 @@ const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
 const FIT_ERROR = /Cannot fit prompt/;
 
-const text = (value: string) => ({ type: "text", text: value }) as const;
+const text = (value: string): PromptPart => ({ type: "text", text: value });
+
+function rootScope(
+  ...children: (PromptMessageNode | PromptScope)[]
+): PromptScope {
+  return {
+    kind: "scope",
+    priority: 0,
+    children,
+  };
+}
+
+function userMessage(value: string): PromptMessageNode {
+  return {
+    kind: "message",
+    role: "user",
+    children: [text(value)],
+  };
+}
+
+function omitScope(
+  children: (PromptMessageNode | PromptScope)[],
+  opts: { priority: number }
+): PromptScope {
+  const strategy: Strategy = () => null;
+  return {
+    kind: "scope",
+    priority: opts.priority,
+    children,
+    strategy,
+  };
+}
 
 describe("createOtelRenderHooks", () => {
   test("emits spans for fit lifecycle", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Scope({
-      priority: 0,
-      children: [
-        Message({ messageRole: "user", children: [text("A")] }),
-        Omit({
-          priority: 1,
-          children: [
-            Message({ messageRole: "user", children: [text("BBBB")] }),
-          ],
-        }),
-      ],
-    });
+    const element = rootScope(
+      userMessage("A"),
+      omitScope([userMessage("BBBB")], { priority: 1 })
+    );
 
     await render(element, { provider, budget: tokensFor("A"), hooks });
 
@@ -116,12 +144,7 @@ describe("createOtelRenderHooks", () => {
   test("records errors on fit failure", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Scope({
-      priority: 0,
-      children: [
-        Message({ messageRole: "user", children: [text("Too long")] }),
-      ],
-    });
+    const element = rootScope(userMessage("Too long"));
 
     await expect(
       render(element, {
@@ -144,10 +167,7 @@ describe("createOtelRenderHooks", () => {
     } as unknown as Tracer;
 
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Scope({
-      priority: 0,
-      children: [Message({ messageRole: "user", children: [text("Hello")] })],
-    });
+    const element = rootScope(userMessage("Hello"));
 
     await expect(
       render(element, {

@@ -16,14 +16,17 @@
  * @packageDocumentation
  */
 
+// DSL - primary API
 export type {
+  BuilderChild,
+  Prompt,
   ResultFormatter,
+  ScopeContent,
   StoredSummary,
   Summarizer,
   SummarizerContext,
-} from "./components";
-// DSL
-export type { BuilderChild, Prompt, ScopeContent, TextInput } from "./dsl";
+  TextInput,
+} from "./dsl";
 export {
   BuilderBase,
   c,
@@ -33,6 +36,7 @@ export {
   PromptBuilder,
   prompt,
 } from "./dsl";
+
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,
@@ -74,8 +78,4 @@ export type {
   ToolCallPart,
   ToolResultPart,
 } from "./types";
-export {
-  FitError,
-  ModelProvider,
-  PromptRenderer,
-} from "./types";
+export { FitError, ModelProvider, PromptRenderer } from "./types";

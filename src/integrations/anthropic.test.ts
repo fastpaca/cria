@@ -1,7 +1,12 @@
 import { expect, test } from "vitest";
-import { Message, Reasoning, Scope, ToolCall, ToolResult } from "../components";
 import { render } from "../render";
-import { ModelProvider, type PromptRenderer } from "../types";
+import type {
+  PromptMessageNode,
+  PromptPart,
+  PromptRenderer,
+  PromptScope,
+} from "../types";
+import { ModelProvider } from "../types";
 import { AnthropicRenderer } from "./anthropic";
 
 class RenderOnlyProvider<T> extends ModelProvider<T> {
@@ -27,19 +32,34 @@ class RenderOnlyProvider<T> extends ModelProvider<T> {
 
 const provider = new RenderOnlyProvider(new AnthropicRenderer());
 
-const text = (value: string) => ({ type: "text", text: value }) as const;
+const text = (value: string): PromptPart => ({ type: "text", text: value });
+
+function rootScope(
+  ...children: (PromptMessageNode | PromptScope)[]
+): PromptScope {
+  return {
+    kind: "scope",
+    priority: 0,
+    children,
+  };
+}
+
+function message(
+  role: "user" | "assistant" | "system" | "tool",
+  children: PromptPart[]
+): PromptMessageNode {
+  return {
+    kind: "message",
+    role,
+    children,
+  };
+}
 
 test("anthropic: extracts system message separately", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({
-        messageRole: "system",
-        children: [text("You are a helpful assistant.")],
-      }),
-      Message({ messageRole: "user", children: [text("Hello!")] }),
-    ],
-  });
+  const prompt = rootScope(
+    message("system", [text("You are a helpful assistant.")]),
+    message("user", [text("Hello!")])
+  );
 
   const result = await render(prompt, { provider });
 
@@ -50,13 +70,10 @@ test("anthropic: extracts system message separately", async () => {
 });
 
 test("anthropic: renders user and assistant messages", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({ messageRole: "user", children: [text("Hello!")] }),
-      Message({ messageRole: "assistant", children: [text("Hi there!")] }),
-    ],
-  });
+  const prompt = rootScope(
+    message("user", [text("Hello!")]),
+    message("assistant", [text("Hi there!")])
+  );
 
   const result = await render(prompt, { provider });
 
@@ -69,21 +86,16 @@ test("anthropic: renders user and assistant messages", async () => {
 });
 
 test("anthropic: renders tool calls as tool_use blocks", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({
-        messageRole: "assistant",
-        children: [
-          ToolCall({
-            input: { city: "Paris" },
-            toolCallId: "call_123",
-            toolName: "getWeather",
-          }),
-        ],
-      }),
-    ],
-  });
+  const prompt = rootScope(
+    message("assistant", [
+      {
+        type: "tool-call",
+        input: { city: "Paris" },
+        toolCallId: "call_123",
+        toolName: "getWeather",
+      },
+    ])
+  );
 
   const result = await render(prompt, { provider });
 
@@ -105,31 +117,24 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
 });
 
 test("anthropic: renders tool results in user messages", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({
-        messageRole: "assistant",
-        children: [
-          ToolCall({
-            input: { city: "Paris" },
-            toolCallId: "call_123",
-            toolName: "getWeather",
-          }),
-        ],
-      }),
-      Message({
-        messageRole: "tool",
-        children: [
-          ToolResult({
-            output: { temperature: 20 },
-            toolCallId: "call_123",
-            toolName: "getWeather",
-          }),
-        ],
-      }),
-    ],
-  });
+  const prompt = rootScope(
+    message("assistant", [
+      {
+        type: "tool-call",
+        input: { city: "Paris" },
+        toolCallId: "call_123",
+        toolName: "getWeather",
+      },
+    ]),
+    message("tool", [
+      {
+        type: "tool-result",
+        output: { temperature: 20 },
+        toolCallId: "call_123",
+        toolName: "getWeather",
+      },
+    ])
+  );
 
   const result = await render(prompt, { provider });
 
@@ -161,44 +166,28 @@ test("anthropic: renders tool results in user messages", async () => {
 });
 
 test("anthropic: full conversation with tool use", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({
-        messageRole: "system",
-        children: [text("You are a weather assistant.")],
-      }),
-      Message({
-        messageRole: "user",
-        children: [text("What's the weather in Paris?")],
-      }),
-      Message({
-        messageRole: "assistant",
-        children: [
-          text("Let me check."),
-          ToolCall({
-            input: { city: "Paris" },
-            toolCallId: "call_1",
-            toolName: "getWeather",
-          }),
-        ],
-      }),
-      Message({
-        messageRole: "tool",
-        children: [
-          ToolResult({
-            output: { temp: 18 },
-            toolCallId: "call_1",
-            toolName: "getWeather",
-          }),
-        ],
-      }),
-      Message({
-        messageRole: "assistant",
-        children: [text("The temperature in Paris is 18°C.")],
-      }),
-    ],
-  });
+  const prompt = rootScope(
+    message("system", [text("You are a weather assistant.")]),
+    message("user", [text("What's the weather in Paris?")]),
+    message("assistant", [
+      text("Let me check."),
+      {
+        type: "tool-call",
+        input: { city: "Paris" },
+        toolCallId: "call_1",
+        toolName: "getWeather",
+      },
+    ]),
+    message("tool", [
+      {
+        type: "tool-result",
+        output: { temp: 18 },
+        toolCallId: "call_1",
+        toolName: "getWeather",
+      },
+    ]),
+    message("assistant", [text("The temperature in Paris is 18°C.")])
+  );
 
   const result = await render(prompt, { provider });
 
@@ -245,18 +234,12 @@ test("anthropic: full conversation with tool use", async () => {
 });
 
 test("anthropic: includes reasoning as text with thinking tags", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({
-        messageRole: "assistant",
-        children: [
-          Reasoning({ text: "Let me think about this..." }),
-          text("The answer is 4."),
-        ],
-      }),
-    ],
-  });
+  const prompt = rootScope(
+    message("assistant", [
+      { type: "reasoning", text: "Let me think about this..." },
+      text("The answer is 4."),
+    ])
+  );
 
   const result = await render(prompt, { provider });
 

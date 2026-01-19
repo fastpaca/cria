@@ -1,47 +1,11 @@
 /**
- * Fluent DSL for building prompts.
- *
- * @example
- * ```typescript
- * import { cria } from "@fastpaca/cria";
- *
- * const prompt = await cria
- *   .prompt()
- *   .system("You are a helpful assistant.")
- *   .user("What is the capital of France?")
- *   .render({ budget: 4000, provider });
- * ```
- *
- * @packageDocumentation
+ * Fluent builders for constructing prompts.
  */
 
-import type { ResultFormatter, StoredSummary, Summarizer } from "./components";
-import {
-  Examples,
-  Message,
-  Omit,
-  Scope,
-  Summary,
-  Truncate,
-  VectorSearch,
-} from "./components";
-import type { KVMemory, VectorMemory } from "./memory";
-import type { RenderOptions } from "./render";
-import { assertValidMessageScope, render as renderPrompt } from "./render";
-import {
-  normalizeTextInput,
-  type TextInput as TemplateTextInput,
-  c as templateC,
-} from "./templating";
-
-// Re-export for public API
-// biome-ignore lint/performance/noBarrelFile: dsl.ts is the primary module, not a barrel file
-export { c, type TextInput } from "./templating";
-
-// Aliases for internal use
-const c = templateC;
-type TextInput = TemplateTextInput;
-
+import type { KVMemory, VectorMemory } from "../memory";
+import type { RenderOptions } from "../render";
+import { assertValidMessageScope, render as renderPrompt } from "../render";
+import { normalizeTextInput, type TextInput } from "../templating";
 import type {
   CriaContext,
   ModelProvider,
@@ -51,8 +15,22 @@ import type {
   PromptScope,
   PromptTree,
   ToolResultPart,
-} from "./types";
+} from "../types";
+import {
+  createMessage,
+  createOmitStrategy,
+  createScope,
+  createTruncateStrategy,
+  formatExamples,
+} from "./strategies";
+import type { StoredSummary, Summarizer } from "./summary";
+import { Summary } from "./summary";
+import type { ResultFormatter } from "./vector-search";
+import { VectorSearch } from "./vector-search";
 
+/**
+ * Content that can be passed to scope-level operations like truncate/omit.
+ */
 export type ScopeContent =
   | PromptNode
   | PromptBuilder
@@ -198,13 +176,9 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
   examples(
     title: string,
     items: string[],
-    opts?: { id?: string }
+    _opts?: { id?: string }
   ): MessageBuilder {
-    const element = Examples({
-      title,
-      children: items,
-      ...(opts?.id ? { id: opts.id } : {}),
-    });
+    const element = formatExamples(title, items);
     return this.addChild(element);
   }
 
@@ -253,15 +227,11 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     }
 
     const inner = fn(this.create([], this.context));
-    const element = createPromptNode(
-      () => inner.buildChildren(),
-      (children) =>
-        Scope({
-          priority: 0,
-          children,
-          ...(opts?.id ? { id: opts.id } : {}),
-        })
-    );
+    const element = inner
+      .buildChildren()
+      .then((children) =>
+        createScope(children, opts?.id ? { id: opts.id } : undefined)
+      );
 
     return this.addChild(element);
   }
@@ -278,20 +248,12 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
       id?: string;
     }
   ): PromptBuilder {
-    const node = createPromptNode(
-      () => resolveScopeContent(content),
-      (children) => {
-        const props: Parameters<typeof Truncate>[0] = {
-          children,
-          budget: opts.budget,
-          ...(opts.from ? { from: opts.from } : {}),
-          ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-          ...(opts.id ? { id: opts.id } : {}),
-        };
-        return Truncate({
-          ...props,
-        });
-      }
+    const node = resolveScopeContent(content).then((children) =>
+      createScope(children, {
+        ...(opts.priority !== undefined && { priority: opts.priority }),
+        strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
+        ...(opts.id && { id: opts.id }),
+      })
     );
 
     return this.addChild(node);
@@ -304,16 +266,12 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     content: ScopeContent,
     opts?: { priority?: number; id?: string }
   ): PromptBuilder {
-    const node = createPromptNode(
-      () => resolveScopeContent(content),
-      (children) => {
-        const props: Parameters<typeof Omit>[0] = {
-          children,
-          ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
-          ...(opts?.id ? { id: opts.id } : {}),
-        };
-        return Omit(props);
-      }
+    const node = resolveScopeContent(content).then((children) =>
+      createScope(children, {
+        ...(opts?.priority !== undefined && { priority: opts.priority }),
+        strategy: createOmitStrategy(),
+        ...(opts?.id && { id: opts.id }),
+      })
     );
 
     return this.addChild(node);
@@ -341,9 +299,8 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     const context: CriaContext = { provider: modelProvider };
     const inner = fn(this.create([], context));
 
-    const element = createPromptNode(
-      () => inner.buildChildren(),
-      (children) => ({
+    const element = inner.buildChildren().then(
+      (children): PromptScope => ({
         kind: "scope",
         priority: 0,
         children,
@@ -391,18 +348,14 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
       priority?: number;
     }
   ): PromptBuilder {
-    const element = createPromptNode(
-      () => resolveScopeContent(content),
-      (children) => {
-        const props: Parameters<typeof Summary>[0] = {
-          id: opts.id,
-          store: opts.store,
-          children,
-          ...(opts.summarize ? { summarize: opts.summarize } : {}),
-          ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-        };
-        return Summary(props);
-      }
+    const element = resolveScopeContent(content).then((children) =>
+      Summary({
+        id: opts.id,
+        store: opts.store,
+        children,
+        ...(opts.summarize ? { summarize: opts.summarize } : {}),
+        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+      })
     );
 
     return this.addChild(element);
@@ -453,13 +406,8 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     opts?: { id?: string }
   ): PromptBuilder {
     const children = Array.isArray(result) ? [...result] : [result];
-    return this.addChild(
-      Message({
-        messageRole: "tool",
-        children,
-        ...(opts?.id ? { id: opts.id } : {}),
-      })
-    );
+    const element = createMessage("tool", children, opts?.id);
+    return this.addChild(element);
   }
 
   /**
@@ -508,72 +456,25 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
     opts?: { id?: string }
   ): PromptBuilder {
-    const element = createPromptNode(
-      () =>
-        typeof content === "function"
-          ? content(new MessageBuilder([], this.context)).buildChildren()
-          : normalizeTextInput(content),
-      (children) =>
-        Message({
-          messageRole: role,
-          children,
-          ...(opts?.id ? { id: opts.id } : {}),
-        })
+    const childrenPromise =
+      typeof content === "function"
+        ? content(new MessageBuilder([], this.context)).buildChildren()
+        : Promise.resolve(normalizeTextInput(content));
+
+    const element = childrenPromise.then((children) =>
+      createMessage(role, children, opts?.id)
     );
 
     return this.addChild(element);
   }
 }
 
+/**
+ * Prompt type alias for external use.
+ */
 export type Prompt = PromptBuilder;
 
-/**
- * Namespace for building prompts as code.
- *
- * @example
- * ```typescript
- * import { cria } from "@fastpaca/cria";
- *
- * const prompt = cria
- *   .prompt()
- *   .system("You are helpful.")
- *   .user("Hello!")
- *   .build();
- * ```
- */
-export const cria = {
-  prompt: () => PromptBuilder.create(),
-  c,
-  merge: (...builders: PromptBuilder[]) => {
-    const [first, ...rest] = builders;
-    if (!first) {
-      return PromptBuilder.create();
-    }
-    return first.merge(...rest);
-  },
-} as const;
-
-/**
- * Standalone function to create a new prompt builder.
- */
-export const prompt = () => PromptBuilder.create();
-
-/**
- * Merge multiple builders into one (zod-like merge).
- */
-export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
-  cria.merge(...builders);
-
-function createPromptNode<TChildren>(
-  buildChildren: () => Promise<TChildren> | TChildren,
-  buildElement: (children: TChildren) => PromptNode
-): Promise<PromptNode> {
-  const result = buildChildren();
-  if (result instanceof Promise) {
-    return result.then((children) => buildElement(children));
-  }
-  return Promise.resolve(buildElement(result));
-}
+// Resolution functions (colocated with builders)
 
 function textPart(value: string): PromptPart {
   return { type: "text", text: value };

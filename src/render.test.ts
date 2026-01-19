@@ -1,9 +1,13 @@
 import { expect, test } from "vitest";
-import { Message, Omit, Scope, Truncate } from "./components";
 import { render } from "./index";
 import type { FitErrorEvent } from "./render";
 import { createTestProvider } from "./testing/plaintext";
-import type { PromptNode, PromptPart } from "./types";
+import type {
+  PromptMessageNode,
+  PromptPart,
+  PromptScope,
+  Strategy,
+} from "./types";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
@@ -12,14 +16,69 @@ const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 
 const text = (value: string): PromptPart => ({ type: "text", text: value });
 
-const rootScope = (...children: PromptNode[]) =>
-  Scope({ priority: 0, children });
+function rootScope(
+  ...children: (PromptMessageNode | PromptScope)[]
+): PromptScope {
+  return {
+    kind: "scope",
+    priority: 0,
+    children,
+  };
+}
 
-const userMessage = (value: string) =>
-  Message({ messageRole: "user", children: [text(value)] });
+function userMessage(value: string): PromptMessageNode {
+  return {
+    kind: "message",
+    role: "user",
+    children: [text(value)],
+  };
+}
 
-const assistantMessage = (value: string) =>
-  Message({ messageRole: "assistant", children: [text(value)] });
+function assistantMessage(value: string): PromptMessageNode {
+  return {
+    kind: "message",
+    role: "assistant",
+    children: [text(value)],
+  };
+}
+
+function omitScope(
+  children: (PromptMessageNode | PromptScope)[],
+  opts: { priority: number; id?: string }
+): PromptScope {
+  const strategy: Strategy = () => null;
+  return {
+    kind: "scope",
+    priority: opts.priority,
+    children,
+    strategy,
+    ...(opts.id && { id: opts.id }),
+  };
+}
+
+function truncateScope(
+  children: (PromptMessageNode | PromptScope)[],
+  opts: { budget: number; priority: number }
+): PromptScope {
+  const strategy: Strategy = (input) => {
+    const { children: currentChildren } = input.target;
+    if (currentChildren.length === 0) {
+      return null;
+    }
+    const dropCount = Math.max(1, Math.floor(input.totalTokens / opts.budget));
+    const nextChildren = currentChildren.slice(dropCount);
+    if (nextChildren.length === 0) {
+      return null;
+    }
+    return { ...input.target, children: nextChildren };
+  };
+  return {
+    kind: "scope",
+    priority: opts.priority,
+    children,
+    strategy,
+  };
+}
 
 test("render: basic text output", async () => {
   const element = rootScope(userMessage("Hello, world!"));
@@ -32,9 +91,9 @@ test("render: basic text output", async () => {
 
 test("render: nested scopes", async () => {
   const element = rootScope(
-    Scope({ priority: 0, children: [userMessage("Start ")] }),
-    Scope({ priority: 0, children: [userMessage("Middle")] }),
-    Scope({ priority: 0, children: [userMessage(" End")] })
+    { kind: "scope", priority: 0, children: [userMessage("Start ")] },
+    { kind: "scope", priority: 0, children: [userMessage("Middle")] },
+    { kind: "scope", priority: 0, children: [userMessage(" End")] }
   );
   const result = await render(element, {
     provider,
@@ -46,9 +105,8 @@ test("render: nested scopes", async () => {
 test("render: omit removes scope when over budget", async () => {
   const element = rootScope(
     userMessage("Important "),
-    Omit({
+    omitScope([userMessage("Less important content that should be removed")], {
       priority: 1,
-      children: [userMessage("Less important content that should be removed")],
     }),
     userMessage("Also important")
   );
@@ -73,10 +131,9 @@ test("render: omit removes scope when over budget", async () => {
 test("render: truncate reduces content", async () => {
   const element = rootScope(
     userMessage("Head "),
-    Truncate({
+    truncateScope([userMessage("Alpha "), userMessage("Beta")], {
       budget: 4,
       priority: 1,
-      children: [userMessage("Alpha "), userMessage("Beta")],
     })
   );
 
@@ -90,9 +147,9 @@ test("render: truncate reduces content", async () => {
 
 test("render: priority ordering - lower priority removed first", async () => {
   const element = rootScope(
-    Scope({ priority: 0, children: [userMessage("Critical")] }),
-    Omit({ priority: 1, children: [userMessage("Medium importance")] }),
-    Omit({ priority: 2, children: [userMessage("Low importance")] })
+    { kind: "scope", priority: 0, children: [userMessage("Critical")] },
+    omitScope([userMessage("Medium importance")], { priority: 1 }),
+    omitScope([userMessage("Low importance")], { priority: 2 })
   );
 
   const result = await render(element, {
@@ -118,8 +175,8 @@ test("render: throws FitError when cannot fit", async () => {
 
 test("render: multiple strategies at same priority applied together", async () => {
   const element = rootScope(
-    Omit({ id: "a", priority: 1, children: [userMessage("AAA")] }),
-    Omit({ id: "b", priority: 1, children: [userMessage("BBB")] })
+    omitScope([userMessage("AAA")], { id: "a", priority: 1 }),
+    omitScope([userMessage("BBB")], { id: "b", priority: 1 })
   );
 
   const result = await render(element, { provider, budget: 0 });
@@ -130,7 +187,7 @@ test("render: hooks fire in expected order", async () => {
   const calls: string[] = [];
   const element = rootScope(
     userMessage("A"),
-    Omit({ priority: 1, children: [userMessage("BBBB")] })
+    omitScope([userMessage("BBBB")], { priority: 1 })
   );
 
   const result = await render(element, {
@@ -179,7 +236,7 @@ test("render: onFitError fires before FitError throws", async () => {
 test("render: hook errors bubble (sync error)", async () => {
   const element = rootScope(
     userMessage("A"),
-    Omit({ priority: 1, children: [userMessage("BBBB")] })
+    omitScope([userMessage("BBBB")], { priority: 1 })
   );
 
   await expect(
@@ -198,7 +255,7 @@ test("render: hook errors bubble (sync error)", async () => {
 test("render: hook errors bubble (async error)", async () => {
   const element = rootScope(
     userMessage("A"),
-    Omit({ priority: 1, children: [userMessage("BBBB")] })
+    omitScope([userMessage("BBBB")], { priority: 1 })
   );
 
   await expect(
@@ -216,16 +273,14 @@ test("render: hook errors bubble (async error)", async () => {
 });
 
 test("render: assistant message fields map to output", async () => {
-  const element = rootScope(
-    assistantMessage("Hello "),
-    Message({
-      messageRole: "assistant",
-      children: [
-        { type: "reasoning", text: "Thinking" },
-        { type: "tool-call", toolCallId: "c1", toolName: "calc", input: 1 },
-      ],
-    })
-  );
+  const element = rootScope(assistantMessage("Hello "), {
+    kind: "message",
+    role: "assistant",
+    children: [
+      { type: "reasoning", text: "Thinking" },
+      { type: "tool-call", toolCallId: "c1", toolName: "calc", input: 1 },
+    ],
+  });
 
   const result = await render(element, {
     provider,

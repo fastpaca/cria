@@ -1,16 +1,25 @@
+/**
+ * Summary strategy for progressively summarizing conversation history.
+ */
+
 import type { KVMemory } from "../memory";
 import { render } from "../render";
 import type {
   MaybePromise,
   ModelProvider,
   PromptNode,
-  PromptPart,
   PromptRole,
   PromptScope,
   ScopeChildren,
   Strategy,
   StrategyInput,
 } from "../types";
+import { createMessage, createScope } from "./strategies";
+
+/** Helper to create a simple text message */
+function textMessage(role: PromptRole, text: string): PromptNode {
+  return createMessage(role, [{ type: "text", text }]);
+}
 
 /**
  * Stored summary data persisted across renders.
@@ -90,13 +99,10 @@ function createSummaryStrategy({
       content: newSummary,
     });
 
-    return {
-      kind: "scope",
-      priority: target.priority,
-      children: [
-        createMessage(role, `[Summary of earlier conversation]\n${newSummary}`),
-      ],
-    };
+    return createScope(
+      [textMessage(role, `[Summary of earlier conversation]\n${newSummary}`)],
+      { priority: target.priority }
+    );
   };
 }
 
@@ -129,12 +135,10 @@ export function Summary({
   role = "system",
   children = [],
 }: SummaryProps): PromptScope {
-  return {
-    kind: "scope",
+  return createScope(children, {
     priority,
     strategy: createSummaryStrategy({ id, store, summarize, role }),
-    children,
-  };
+  });
 }
 
 const SUMMARY_SYSTEM_PROMPT =
@@ -148,41 +152,22 @@ function buildSummaryPrompt(
   target: PromptScope,
   existingSummary: string | null
 ): PromptScope {
-  const children: PromptNode[] = [
-    createMessage("system", SUMMARY_SYSTEM_PROMPT),
-  ];
+  const children: PromptNode[] = [textMessage("system", SUMMARY_SYSTEM_PROMPT)];
 
   if (existingSummary) {
     children.push(
-      createMessage("assistant", `Current summary:\n${existingSummary}`)
+      textMessage("assistant", `Current summary:\n${existingSummary}`)
     );
   }
 
-  children.push({
-    kind: "scope",
-    priority: 0,
-    children: [...target.children],
-  });
+  children.push(createScope([...target.children]));
 
   children.push(
-    createMessage(
+    textMessage(
       "user",
       existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST
     )
   );
 
-  return {
-    kind: "scope",
-    priority: 0,
-    children,
-  };
-}
-
-function createMessage(role: PromptRole, text: string): PromptNode {
-  const part: PromptPart = { type: "text", text };
-  return {
-    kind: "message",
-    role,
-    children: [part],
-  };
+  return createScope(children);
 }

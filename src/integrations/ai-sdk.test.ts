@@ -1,7 +1,12 @@
 import { expect, test } from "vitest";
-import { Message, Scope, ToolCall, ToolResult } from "../components";
 import { render } from "../render";
-import { ModelProvider, type PromptRenderer } from "../types";
+import type {
+  PromptMessageNode,
+  PromptPart,
+  PromptRenderer,
+  PromptScope,
+} from "../types";
+import { ModelProvider } from "../types";
 import { AiSdkRenderer } from "./ai-sdk";
 
 class RenderOnlyProvider<T> extends ModelProvider<T> {
@@ -27,39 +32,50 @@ class RenderOnlyProvider<T> extends ModelProvider<T> {
 
 const provider = new RenderOnlyProvider(new AiSdkRenderer());
 
-const text = (value: string) => ({ type: "text", text: value }) as const;
+const text = (value: string): PromptPart => ({ type: "text", text: value });
+
+function rootScope(
+  ...children: (PromptMessageNode | PromptScope)[]
+): PromptScope {
+  return {
+    kind: "scope",
+    priority: 0,
+    children,
+  };
+}
+
+function message(
+  role: "user" | "assistant" | "system" | "tool",
+  children: PromptPart[]
+): PromptMessageNode {
+  return {
+    kind: "message",
+    role,
+    children,
+  };
+}
 
 test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result)", async () => {
-  const prompt = Scope({
-    priority: 0,
-    children: [
-      Message({
-        messageRole: "user",
-        children: [text("hi")],
-      }),
-      Message({
-        messageRole: "assistant",
-        children: [
-          text("checking weather"),
-          ToolCall({
-            toolCallId: "w1",
-            toolName: "getWeather",
-            input: { city: "Paris" },
-          }),
-        ],
-      }),
-      Message({
-        messageRole: "tool",
-        children: [
-          ToolResult({
-            toolCallId: "w1",
-            toolName: "getWeather",
-            output: { type: "json", value: { tempC: 10 } },
-          }),
-        ],
-      }),
-    ],
-  });
+  const prompt = rootScope(
+    message("user", [text("hi")]),
+    message("assistant", [
+      text("checking weather"),
+      {
+        type: "tool-call",
+        toolCallId: "w1",
+        toolName: "getWeather",
+        input: { city: "Paris" },
+      },
+    ]),
+    message("tool", [
+      {
+        type: "tool-result",
+        toolCallId: "w1",
+        toolName: "getWeather",
+        output: { type: "json", value: { tempC: 10 } },
+      },
+    ])
+  );
 
   const modelMessages = await render(prompt, { provider });
 

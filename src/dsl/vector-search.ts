@@ -1,9 +1,14 @@
+/**
+ * VectorSearch async component for RAG-style retrieval.
+ */
+
 import type {
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
 } from "../memory";
 import type { PromptPart, PromptRole, PromptScope } from "../types";
+import { createMessage, createScope } from "./strategies";
 
 /** Simple message shape for query extraction. */
 interface Message {
@@ -165,16 +170,8 @@ export async function VectorSearch<T = unknown>({
   const results = await store.search(finalQuery, searchOptions);
   const content = formatResults(results);
 
-  return {
-    kind: "scope",
+  return createScope([createMessage(role, [{ type: "text", text: content }])], {
     priority,
     ...(id && { id }),
-    children: [
-      {
-        kind: "message",
-        role,
-        children: [{ type: "text", text: content }],
-      },
-    ],
-  };
+  });
 }
