@@ -15,36 +15,29 @@
  * @packageDocumentation
  */
 
-// biome-ignore lint/performance/noBarrelFile: dsl/index.ts is the primary DSL module entry point, not a barrel file
-export { c, type TextInput } from "../templating";
 // Re-export types
 export type {
   BuilderChild,
   Prompt,
   ScopeContent,
 } from "./builder";
+// biome-ignore lint/performance/noBarrelFile: dsl/index.ts is the primary DSL module entry point, not a barrel file
 export {
   BuilderBase,
   MessageBuilder,
   PromptBuilder,
 } from "./builder";
-
 // Re-export summary types
 export type {
   StoredSummary,
   Summarizer,
   SummarizerContext,
 } from "./summary";
+export { c, type TextInput } from "./templating";
 
 // Re-export vector search types
 export type { ResultFormatter } from "./vector-search";
 
-// Import for namespace
-import {
-  normalizeTextInput,
-  type TextInput,
-  c as templateC,
-} from "../templating";
 import type {
   PromptMessageNode,
   PromptRole,
@@ -53,6 +46,12 @@ import type {
 } from "../types";
 import { PromptBuilder } from "./builder";
 import { createMessage, createScope } from "./strategies";
+// Import for namespace
+import {
+  normalizeTextInput,
+  type TextInput,
+  c as templateC,
+} from "./templating";
 
 /** Create a standalone message node */
 function message(role: PromptRole, content: TextInput): PromptMessageNode {

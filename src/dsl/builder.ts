@@ -5,12 +5,6 @@
 import type { KVMemory, VectorMemory } from "../memory";
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
-import {
-  isPromptPart,
-  normalizeTextInput,
-  type TextInput,
-  textPart,
-} from "../templating";
 import type {
   CriaContext,
   ModelProvider,
@@ -30,6 +24,12 @@ import {
 } from "./strategies";
 import type { StoredSummary, Summarizer } from "./summary";
 import { Summary } from "./summary";
+import {
+  isPromptPart,
+  normalizeTextInput,
+  type TextInput,
+  textPart,
+} from "./templating";
 import type { ResultFormatter } from "./vector-search";
 import { VectorSearch } from "./vector-search";
 

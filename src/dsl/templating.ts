@@ -4,7 +4,7 @@
  * @packageDocumentation
  */
 
-import type { PromptPart } from "./types";
+import type { PromptPart } from "../types";
 
 export type TextValue =
   | PromptPart
