@@ -276,6 +276,20 @@ describe("PromptBuilder", () => {
     });
   });
 
+  describe("provider binding", () => {
+    test("merge rejects builders with different providers", () => {
+      const providerA = createTestProvider({ includeRolePrefix: true });
+      const providerB = createTestProvider({ includeRolePrefix: true });
+
+      const a = cria.prompt(providerA).system("A");
+      const b = cria.prompt(providerB).user("B");
+
+      expect(() => a.merge(b)).toThrow(
+        "Cannot merge builders with different contexts/providers"
+      );
+    });
+  });
+
   describe("summary helper", () => {
     test("summary uses custom summarizer when over budget", async () => {
       const store = new InMemoryStore<StoredSummary>();
