@@ -525,6 +525,21 @@ export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
  * @param values - Interpolated values (strings, numbers, booleans, PromptElements, arrays, etc.)
  * @returns Array of prompt children (strings and PromptElements)
  *
+ * This function allows you to use prompt elements naturally inside template strings.
+ *
+ * @example
+ * ```typescript
+ * import { c, cria } from "@fastpaca/cria";
+ *
+ * const system_primer = cria.prompt().system("You are a helpful assistant.");
+ * const prompt = cria.prompt()
+ *  .system(c`
+ *   ${system_primer}
+ *   You work on support tickets. You always start conversations with "Hello, how can I help you today?"
+ *   and end with "Thank you for contacting us. Have a great day!"`)
+ *  .build();
+ * ```
+ *
  * @example
  * ```typescript
  * import { c } from "@fastpaca/cria";
