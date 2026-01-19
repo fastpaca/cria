@@ -1,44 +1,38 @@
 import type {
+  MessageChildren,
   MessageElement,
-  PromptChild,
-  PromptChildren,
-  PromptElement,
   PromptPart,
   PromptRole,
+  PromptScope,
+  ScopeChildren,
   Strategy,
 } from "../types";
 
-interface RegionProps {
+interface ScopeProps {
   /** Lower number = higher importance. Default: 0 (highest priority) */
   priority?: number;
-  /** Optional strategy to apply when this region needs to shrink */
+  /** Optional strategy to apply when this scope needs to shrink */
   strategy?: Strategy;
   /** Stable identifier for caching/debugging */
   id?: string;
-  /** Content of this region */
-  children?: PromptChildren;
+  /** Content of this scope */
+  children?: ScopeChildren;
 }
 
 /**
  * The fundamental building block of Cria prompts—think of it as `<div>`.
  *
- * Regions define sections of your prompt with a priority level. During fitting,
- * regions with higher priority numbers (less important) are reduced first.
- *
- * @example
- * ```tsx
- * <Region priority={0}>You are a helpful assistant.</Region>
- * <Region priority={2}>{documents}</Region>
- * <Region priority={1}>{userMessage}</Region>
- * ```
+ * Scopes define sections of your prompt with a priority level. During fitting,
+ * scopes with higher priority numbers (less important) are reduced first.
  */
-export function Region({
+export function Scope({
   priority = 0,
   strategy,
   id,
   children = [],
-}: RegionProps): PromptElement {
+}: ScopeProps): PromptScope {
   return {
+    kind: "scope",
     priority,
     children,
     ...(strategy && { strategy }),
@@ -46,63 +40,36 @@ export function Region({
   };
 }
 
-interface SemanticRegionProps {
-  /** Lower number = higher importance. Default: 0 (highest priority) */
-  priority?: number;
-  /** Optional strategy to apply when this region needs to shrink */
-  strategy?: Strategy;
+interface MessageProps {
+  /** The message role (user, assistant, system, etc.) */
+  messageRole: PromptRole;
+  children?: MessageChildren;
   /** Stable identifier for caching/debugging */
   id?: string;
 }
 
-interface MessageProps extends SemanticRegionProps {
-  /** The message role (user, assistant, system, etc.) */
-  messageRole: PromptRole;
-  children?: PromptChildren;
-}
-
 export function Message({
   messageRole,
-  priority = 0,
-  strategy,
   id,
   children = [],
 }: MessageProps): MessageElement {
   return {
     kind: "message",
     role: messageRole,
-    priority,
     children,
-    ...(strategy && { strategy }),
     ...(id && { id }),
   };
 }
 
-interface ReasoningProps extends SemanticRegionProps {
+interface ReasoningProps {
   text: string;
 }
 
-export function Reasoning({
-  text,
-  priority = 0,
-  strategy,
-  id,
-}: ReasoningProps): PromptChild {
-  const part: PromptPart = { type: "reasoning", text };
-  // If no metadata needed, return part directly
-  if (priority === 0 && !strategy && !id) {
-    return part;
-  }
-  // Otherwise wrap in a region
-  return {
-    priority,
-    children: [part],
-    ...(strategy && { strategy }),
-    ...(id && { id }),
-  };
+export function Reasoning({ text }: ReasoningProps): PromptPart {
+  return { type: "reasoning", text };
 }
 
-interface ToolCallProps extends SemanticRegionProps {
+interface ToolCallProps {
   toolCallId: string;
   toolName: string;
   input: unknown;
@@ -112,30 +79,16 @@ export function ToolCall({
   toolCallId,
   toolName,
   input,
-  priority = 0,
-  strategy,
-  id,
-}: ToolCallProps): PromptChild {
-  const part: PromptPart = {
+}: ToolCallProps): PromptPart {
+  return {
     type: "tool-call",
     toolCallId,
     toolName,
     input,
   };
-  // If no metadata needed, return part directly
-  if (priority === 0 && !strategy && !id) {
-    return part;
-  }
-  // Otherwise wrap in a region
-  return {
-    priority,
-    children: [part],
-    ...(strategy && { strategy }),
-    ...(id && { id }),
-  };
 }
 
-interface ToolResultProps extends SemanticRegionProps {
+interface ToolResultProps {
   toolCallId: string;
   toolName: string;
   output: unknown;
@@ -145,26 +98,12 @@ export function ToolResult({
   toolCallId,
   toolName,
   output,
-  priority = 0,
-  strategy,
-  id,
-}: ToolResultProps): PromptChild {
-  const part: PromptPart = {
+}: ToolResultProps): PromptPart {
+  return {
     type: "tool-result",
     toolCallId,
     toolName,
     output,
-  };
-  // If no metadata needed, return part directly
-  if (priority === 0 && !strategy && !id) {
-    return part;
-  }
-  // Otherwise wrap in a region
-  return {
-    priority,
-    children: [part],
-    ...(strategy && { strategy }),
-    ...(id && { id }),
   };
 }
 
@@ -178,21 +117,11 @@ interface TruncateProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content to truncate */
-  children?: PromptChildren;
+  children?: ScopeChildren;
 }
 
 /**
- * A region that truncates by dropping child components from one end.
- *
- * When the overall prompt exceeds budget, Truncate regions progressively
- * remove components from the specified direction until the prompt fits.
- *
- * @example
- * ```tsx
- * <Truncate budget={20000} priority={2}>
- *   {conversationHistory}
- * </Truncate>
- * ```
+ * A scope that truncates by dropping child components from one end.
  */
 export function Truncate({
   budget,
@@ -200,7 +129,7 @@ export function Truncate({
   priority = 0,
   id,
   children = [],
-}: TruncateProps): PromptElement {
+}: TruncateProps): PromptScope {
   const strategy: Strategy = (input) => {
     const { children: currentChildren } = input.target;
     if (currentChildren.length === 0) {
@@ -225,6 +154,7 @@ export function Truncate({
   };
 
   return {
+    kind: "scope",
     priority,
     children,
     strategy,
@@ -238,30 +168,21 @@ interface OmitProps {
   /** Stable identifier for caching/debugging */
   id?: string;
   /** Content that may be omitted */
-  children?: PromptChildren;
+  children?: ScopeChildren;
 }
 
 /**
- * A region that is entirely removed when the prompt needs to shrink.
- *
- * Use Omit for "nice to have" content that can be dropped entirely if needed.
- * When the prompt exceeds budget, Omit regions are removed (lowest priority first).
- *
- * @example
- * ```tsx
- * <Omit priority={3}>
- *   {optionalExamples}
- * </Omit>
- * ```
+ * A scope that is entirely removed when the prompt needs to shrink.
  */
 export function Omit({
   priority = 0,
   id,
   children = [],
-}: OmitProps): PromptElement {
+}: OmitProps): PromptScope {
   const strategy: Strategy = () => null;
 
   return {
+    kind: "scope",
     priority,
     children,
     strategy,
@@ -272,28 +193,24 @@ export function Omit({
 interface LastProps {
   /** Number of children to keep */
   N: number;
-  /** Priority for this region. Default: 0 */
+  /** Priority for this scope. Default: 0 */
   priority?: number;
   /** Children to filter */
-  children?: PromptChildren;
+  children?: ScopeChildren;
 }
 
 /**
  * Keeps only the last N children.
- *
- * @example
- * ```tsx
- * <Last N={50}>{messages}</Last>
- * ```
  */
 export function Last({
   N,
   priority = 0,
   children = [],
-}: LastProps): PromptElement {
+}: LastProps): PromptScope {
   const lastN = children.slice(-N);
 
   return {
+    kind: "scope",
     priority,
     children: lastN,
   };
@@ -307,78 +224,57 @@ export { VectorSearch } from "./vector-search";
 /**
  * Intersperse a separator between elements of an array.
  */
-function intersperse<T>(items: readonly T[], separator: T): T[] {
+function intersperse(items: readonly string[], separator: string): string {
   if (items.length === 0) {
-    return [];
+    return "";
   }
-  return items.flatMap((item, i) => (i === 0 ? [item] : [separator, item]));
+  return items
+    .map((item, i) => (i === 0 ? item : `${separator}${item}`))
+    .join("");
 }
 
 interface SeparatorProps {
   value?: string;
-  priority?: number;
-  id?: string;
-  children?: PromptChildren;
+  children?: string[];
 }
 
 export function Separator({
   value = "\n",
-  priority = 0,
-  id,
   children = [],
-}: SeparatorProps): PromptElement {
+}: SeparatorProps): PromptPart {
   return {
-    priority,
-    children: intersperse(children, value),
-    ...(id && { id }),
+    type: "text",
+    text: intersperse(children, value),
   };
 }
 
 interface ExamplesProps {
   title?: string;
   separator?: string;
-  priority?: number;
   id?: string;
-  children?: PromptChildren;
+  children?: string[];
 }
 
 export function Examples({
   title = "Examples:",
   separator = "\n\n",
-  priority = 2,
-  id,
   children = [],
-}: ExamplesProps): PromptElement {
-  const withSeparators = intersperse(children, separator);
-
-  const prefixed: PromptChildren = title
-    ? [`${title}\n`, ...withSeparators]
-    : withSeparators;
-
-  return {
-    priority,
-    children: prefixed,
-    ...(id && { id }),
-  };
+}: ExamplesProps): PromptPart {
+  const body = intersperse(children, separator);
+  const text = title ? `${title}\n${body}` : body;
+  return { type: "text", text };
 }
 
 interface CodeBlockProps {
   code: string;
   language?: string;
-  priority?: number;
   id?: string;
 }
 
-export function CodeBlock({
-  code,
-  language,
-  priority = 0,
-  id,
-}: CodeBlockProps): PromptElement {
+export function CodeBlock({ code, language }: CodeBlockProps): PromptPart {
   const fenced = `\`\`\`${language ?? ""}\n${code}\n\`\`\`\n`;
   return {
-    priority,
-    children: [fenced],
-    ...(id && { id }),
+    type: "text",
+    text: fenced,
   };
 }

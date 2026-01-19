@@ -5,7 +5,7 @@ import { c, cria, PromptBuilder, prompt } from "./dsl";
 import { InMemoryStore } from "./memory";
 import { render } from "./render";
 import { createTestProvider } from "./testing/plaintext";
-import type { PromptElement } from "./types";
+import type { PromptNode } from "./types";
 
 const provider = createTestProvider({
   includeRolePrefix: true,
@@ -30,7 +30,7 @@ describe("PromptBuilder", () => {
       expect(builder).toBeInstanceOf(PromptBuilder);
     });
 
-    test("builds empty region", async () => {
+    test("builds empty scope", async () => {
       const element = await cria.prompt().build();
       const result = await render(element, { provider, budget: tokensFor("") });
       expect(result).toBe("");
@@ -104,11 +104,9 @@ describe("PromptBuilder", () => {
       );
     });
 
-    test("message callbacks support nested content", async () => {
+    test("message callbacks support appended content", async () => {
       const result = await renderBuilder(
-        cria
-          .prompt()
-          .user((m) => m.append(c`Hello `).scope((s) => s.append("World")))
+        cria.prompt().user((m) => m.append(c`Hello `).append("World"))
       );
 
       expect(result).toBe("user: Hello World");
@@ -116,16 +114,17 @@ describe("PromptBuilder", () => {
   });
 
   describe("strategies", () => {
-    test("truncate() creates truncatable content", async () => {
+    test("truncate() shrinks scoped messages", async () => {
       const chunk = "x".repeat(50);
       const element = await cria
         .prompt()
-        .user((m) =>
-          m.truncate([chunk, chunk, chunk], { budget: 2, priority: 1 })
-        )
+        .truncate(cria.prompt().user(chunk).user(chunk).user(chunk), {
+          budget: 2,
+          priority: 1,
+        })
         .build();
 
-      const full = `user: ${chunk}${chunk}${chunk}`;
+      const full = `user: ${chunk}\n\nuser: ${chunk}\n\nuser: ${chunk}`;
       const result = await render(element, {
         provider,
         budget: Math.max(0, tokensFor(full) - 1),
@@ -134,12 +133,11 @@ describe("PromptBuilder", () => {
       expect(result.length).toBeLessThan(full.length);
     });
 
-    test("omit() creates omittable content", async () => {
+    test("omit() drops scoped messages", async () => {
       const element = await cria
         .prompt()
-        .system((m) =>
-          m.append("Required.").omit(" Optional content", { priority: 2 })
-        )
+        .system("Required.")
+        .omit(cria.prompt().system("Optional content"), { priority: 2 })
         .build();
 
       const result = await render(element, {
@@ -151,24 +149,25 @@ describe("PromptBuilder", () => {
   });
 
   describe("scopes", () => {
-    test("scope() creates nested region", async () => {
+    test("scope() creates nested scope", async () => {
       const result = await renderBuilder(
         cria.prompt().scope((s) => s.system("Nested content"))
       );
       expect(result).toBe("system: Nested content");
     });
 
-    test("named scope sets id", () => {
-      const elementPromise = cria
+    test("named scope sets id", async () => {
+      const element = await cria
         .prompt()
         .scope((s) => s.system("Content"), { id: "my-section" })
         .build();
 
-      return elementPromise.then((element) => {
-        expect(element.children).toHaveLength(1);
-        const section = element.children[0] as PromptElement;
+      expect(element.children).toHaveLength(1);
+      const section = element.children[0] as PromptNode;
+      expect(section.kind).toBe("scope");
+      if (section.kind === "scope") {
         expect(section.id).toBe("my-section");
-      });
+      }
     });
 
     test("nested scopes work", async () => {
@@ -197,12 +196,11 @@ describe("PromptBuilder", () => {
       expect(result).toBe("user: Examples:\nOne\n\nTwo\n\nThree");
     });
 
-    test("raw() adds arbitrary element", async () => {
-      const custom: PromptElement = {
+    test("raw() adds arbitrary node", async () => {
+      const custom: PromptNode = {
         kind: "message",
         role: "user",
-        priority: 0,
-        children: ["Custom content"],
+        children: [{ type: "text", text: "Custom content" }],
       };
 
       const element = await cria.prompt().raw(custom).build();
@@ -263,14 +261,15 @@ describe("PromptBuilder", () => {
       const store = new InMemoryStore<StoredSummary>();
       const summarizer = () => "S";
 
-      const builder = cria.prompt().user((m) =>
-        m.summary("x".repeat(200), {
+      const builder = cria
+        .prompt()
+        .summary(cria.prompt().user("x".repeat(200)), {
           id: "conv-summary",
           store,
           summarize: summarizer,
           priority: 1,
-        })
-      );
+          role: "user",
+        });
 
       const summaryOutput = "user: [Summary of earlier conversation]\nS";
       const fullOutput = `user: ${"x".repeat(200)}`;
@@ -288,23 +287,10 @@ describe("PromptBuilder", () => {
   });
 
   describe("content types", () => {
-    test("truncate accepts string content", async () => {
-      const element = await cria
-        .prompt()
-        .user((m) => m.truncate("string content", { budget: 100 }))
-        .build();
-
-      const result = await render(element, {
-        provider,
-        budget: tokensFor("user: string content"),
-      });
-      expect(result).toBe("user: string content");
-    });
-
-    test("truncate accepts PromptElement content", async () => {
+    test("truncate accepts Message node content", async () => {
       const inner = Message({
         messageRole: "user",
-        children: ["element content"],
+        children: [{ type: "text", text: "element content" }],
       });
       const element = await cria
         .prompt()

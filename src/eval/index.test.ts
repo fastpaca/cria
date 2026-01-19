@@ -1,7 +1,7 @@
 import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
-import { c } from "../dsl";
+import { c, cria } from "../dsl";
 import { createPlainTextRenderer } from "../testing/plaintext";
 import { ModelProvider } from "../types";
 import { createJudge } from "./index";
@@ -51,17 +51,7 @@ describe("judge", () => {
       object: { score: 0.9, reasoning: "Great" },
     });
 
-    const prompt = {
-      priority: 0,
-      children: [
-        {
-          kind: "message" as const,
-          role: "user",
-          priority: 0,
-          children: ["Hi"],
-        },
-      ],
-    };
+    const prompt = await cria.prompt().user("Hi").build();
 
     const judge = createJudge({ target, evaluator });
     await expect(judge(prompt).toPass(c`Be friendly`)).resolves.toBeUndefined();
@@ -73,17 +63,7 @@ describe("judge", () => {
       object: { score: 0.3, reasoning: "Not helpful" },
     });
 
-    const prompt = {
-      priority: 0,
-      children: [
-        {
-          kind: "message" as const,
-          role: "user",
-          priority: 0,
-          children: ["Help me"],
-        },
-      ],
-    };
+    const prompt = await cria.prompt().user("Help me").build();
 
     const judge = createJudge({ target, evaluator, threshold: 0.8 });
     await expect(judge(prompt).toPass(c`Be helpful`)).rejects.toThrow(
@@ -105,17 +85,7 @@ describe("judge", () => {
       }
     })();
 
-    const prompt = {
-      priority: 0,
-      children: [
-        {
-          kind: "message" as const,
-          role: "user",
-          priority: 0,
-          children: ["Test"],
-        },
-      ],
-    };
+    const prompt = await cria.prompt().user("Test").build();
 
     const judge = createJudge({ target, evaluator });
     await judge(prompt).toPass(c`Check for politeness`);

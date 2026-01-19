@@ -1,7 +1,7 @@
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
 import { safeStringify } from "../renderers/shared";
-import type { PromptLayout } from "../types";
+import type { PromptLayout, PromptMessage } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 const encoder = getEncoding("cl100k_base");
@@ -23,34 +23,53 @@ export class PlainTextRenderer extends PromptRenderer<string> {
   }
 
   render(layout: PromptLayout): string {
-    const messages: string[] = [];
-
-    for (const message of layout.messages) {
-      const content = message.parts
-        .map((part) => {
-          switch (part.type) {
-            case "text":
-            case "reasoning":
-              return part.text;
-            case "tool-call":
-              return `[tool-call:${part.toolName}]${safeStringify(part.input)}`;
-            case "tool-result":
-              return `[tool-result:${part.toolName}]${safeStringify(part.output)}`;
-            default:
-              return "";
-          }
-        })
-        .join("");
-
-      const formatted = this.includeRolePrefix
-        ? `${message.role}: ${content}`
-        : content;
-
-      messages.push(formatted);
-    }
+    const messages = layout.map((message) =>
+      formatPlaintextMessage(message, this.includeRolePrefix)
+    );
 
     return messages.join(this.joinMessagesWith);
   }
+}
+
+function formatPlaintextMessage(
+  message: PromptMessage,
+  includeRolePrefix: boolean
+): string {
+  const content = renderPlaintextContent(message);
+  if (includeRolePrefix) {
+    return `${message.role}: ${content}`;
+  }
+  return content;
+}
+
+function renderPlaintextContent(message: PromptMessage): string {
+  if (message.role === "tool") {
+    return `[tool-result:${message.toolName}]${safeStringify(message.output)}`;
+  }
+
+  if (message.role === "assistant") {
+    return renderAssistantContent(message);
+  }
+
+  return message.text;
+}
+
+function renderAssistantContent(
+  message: Extract<PromptMessage, { role: "assistant" }>
+): string {
+  let content = "";
+  if (message.text) {
+    content += message.text;
+  }
+  if (message.reasoning) {
+    content += message.reasoning;
+  }
+  if (message.toolCalls) {
+    for (const call of message.toolCalls) {
+      content += `[tool-call:${call.toolName}]${safeStringify(call.input)}`;
+    }
+  }
+  return content;
 }
 
 export class PlainTextProvider extends ModelProvider<string> {

@@ -20,7 +20,7 @@ import {
   Examples,
   Message,
   Omit,
-  Region,
+  Scope,
   Summary,
   Truncate,
   VectorSearch,
@@ -31,36 +31,36 @@ import { assertValidMessageScope, render as renderPrompt } from "./render";
 import type {
   CriaContext,
   ModelProvider,
-  PromptChild,
-  PromptChildren,
-  PromptElement,
+  PromptNode,
   PromptPart,
   PromptRole,
+  PromptScope,
+  PromptTree,
   ToolResultElement,
 } from "./types";
 
-type TextValue = PromptChild | boolean | number | null | undefined;
+type TextValue = PromptPart | boolean | number | string | null | undefined;
 
 export type TextInput = TextValue | readonly TextInput[];
 
 export type ScopeContent =
-  | TextInput
+  | PromptNode
   | PromptBuilder
-  | Promise<PromptElement>
-  | Promise<string>;
+  | Promise<PromptNode>
+  | readonly ScopeContent[];
 
 /**
  * Children can include promises (async components like VectorSearch).
  * These are resolved when `.build()` resolves the tree.
  */
 export type BuilderChild =
-  | PromptElement
+  | PromptNode
   | PromptPart
   | PromptBuilder
   | string
-  | Promise<PromptElement>
-  | Promise<PromptPart>
-  | Promise<string>;
+  | number
+  | boolean
+  | Promise<PromptNode | PromptPart | string | number | boolean>;
 
 type RenderResult<TOptions extends RenderOptions> = TOptions extends {
   provider: ModelProvider<infer TOutput>;
@@ -72,7 +72,6 @@ const TEMPLATE_INDENT_RE = /^[ \t]*/;
 
 /**
  * Shared fluent API for prompt-level and message-level builders.
- * Keeps component helpers available inside nested scopes.
  */
 export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
   protected readonly children: BuilderChild[];
@@ -90,81 +89,6 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     children: BuilderChild[],
     context: CriaContext | undefined
   ): TBuilder;
-  protected abstract allowsTextChildren(): boolean;
-
-  scope(fn: (builder: TBuilder) => TBuilder, opts?: { id?: string }): TBuilder {
-    if (typeof fn !== "function") {
-      throw new Error(
-        `scope() requires a callback function. Received: ${typeof fn}`
-      );
-    }
-
-    const inner = fn(this.create([], this.context));
-    const element = createPromptElement(
-      () => inner.buildChildren(),
-      (children) =>
-        Region({
-          priority: 0,
-          children,
-          ...(opts?.id ? { id: opts.id } : {}),
-        })
-    );
-
-    return this.addChild(element);
-  }
-
-  /**
-   * Add content that will be truncated when over budget.
-   */
-  truncate(
-    content: ScopeContent,
-    opts: {
-      budget: number;
-      from?: "start" | "end";
-      priority?: number;
-      id?: string;
-    }
-  ): TBuilder {
-    const node = createPromptElement(
-      () => resolveContentChildren(content, this.allowsTextChildren()),
-      (children) => {
-        const props: Parameters<typeof Truncate>[0] = {
-          children,
-          budget: opts.budget,
-          ...(opts.from ? { from: opts.from } : {}),
-          ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-          ...(opts.id ? { id: opts.id } : {}),
-        };
-        return Truncate({
-          ...props,
-        });
-      }
-    );
-
-    return this.addChild(node);
-  }
-
-  /**
-   * Add content that will be entirely removed when over budget.
-   */
-  omit(
-    content: ScopeContent,
-    opts?: { priority?: number; id?: string }
-  ): TBuilder {
-    const node = createPromptElement(
-      () => resolveContentChildren(content, this.allowsTextChildren()),
-      (children) => {
-        const props: Parameters<typeof Omit>[0] = {
-          children,
-          ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
-          ...(opts?.id ? { id: opts.id } : {}),
-        };
-        return Omit(props);
-      }
-    );
-
-    return this.addChild(node);
-  }
 
   /**
    * Merge another builder's contents into this one (zod-like merge).
@@ -200,6 +124,193 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     return this.create(mergedChildren, nextContext);
   }
 
+  protected addChild(child: BuilderChild): TBuilder {
+    return this.create([...this.children, child], this.context);
+  }
+
+  protected addChildren(children: readonly BuilderChild[]): TBuilder {
+    return this.create([...this.children, ...children], this.context);
+  }
+}
+
+export class MessageBuilder extends BuilderBase<MessageBuilder> {
+  constructor(
+    children: BuilderChild[] = [],
+    context: CriaContext | undefined = undefined
+  ) {
+    super(children, context);
+  }
+
+  protected create(
+    children: BuilderChild[],
+    context: CriaContext | undefined
+  ): MessageBuilder {
+    return new MessageBuilder(children, context);
+  }
+
+  append(content: TextInput): MessageBuilder {
+    const normalized = normalizeTextInput(content);
+    return this.addChildren(normalized);
+  }
+
+  /**
+   * Add vector search results as message content (async, resolved at render time).
+   */
+  vectorSearch<T = unknown>(opts: {
+    store: VectorMemory<T>;
+    query: string;
+    limit?: number;
+    threshold?: number;
+    formatter?: ResultFormatter<T>;
+  }): MessageBuilder {
+    const props: Parameters<typeof VectorSearch<T>>[0] = {
+      store: opts.store,
+      query: opts.query,
+      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.threshold !== undefined ? { threshold: opts.threshold } : {}),
+      ...(opts.formatter ? { formatResults: opts.formatter } : {}),
+    };
+    const asyncPart = VectorSearch<T>(props).then((scope) => {
+      const message = scope.children[0];
+      if (!message || message.kind !== "message") {
+        throw new Error("VectorSearch did not return a message node.");
+      }
+      const part = message.children[0];
+      if (!part || part.type !== "text") {
+        throw new Error("VectorSearch did not return a text part.");
+      }
+      return part;
+    });
+    return this.addChild(asyncPart);
+  }
+
+  /**
+   * Add a formatted list of examples.
+   */
+  examples(
+    title: string,
+    items: string[],
+    opts?: { id?: string }
+  ): MessageBuilder {
+    const element = Examples({
+      title,
+      children: items,
+      ...(opts?.id ? { id: opts.id } : {}),
+    });
+    return this.addChild(element);
+  }
+
+  async buildChildren(): Promise<PromptPart[]> {
+    return await resolveMessageChildren(this.children);
+  }
+}
+
+/**
+ * Fluent builder for constructing prompt trees.
+ *
+ * Every method returns a new immutable builder instance; large chains will copy
+ * child arrays, so keep prompts reasonably sized.
+ * Call `.build()` to get the final `PromptTree`.
+ */
+export class PromptBuilder extends BuilderBase<PromptBuilder> {
+  private constructor(
+    children: BuilderChild[] = [],
+    context: CriaContext | undefined = undefined
+  ) {
+    super(children, context);
+  }
+
+  /**
+   * Create a new empty prompt builder.
+   */
+  static create(): PromptBuilder {
+    return new PromptBuilder();
+  }
+
+  protected create(
+    children: BuilderChild[],
+    context: CriaContext | undefined
+  ): PromptBuilder {
+    return new PromptBuilder(children, context);
+  }
+
+  scope(
+    fn: (builder: PromptBuilder) => PromptBuilder,
+    opts?: { id?: string }
+  ): PromptBuilder {
+    if (typeof fn !== "function") {
+      throw new Error(
+        `scope() requires a callback function. Received: ${typeof fn}`
+      );
+    }
+
+    const inner = fn(this.create([], this.context));
+    const element = createPromptNode(
+      () => inner.buildChildren(),
+      (children) =>
+        Scope({
+          priority: 0,
+          children,
+          ...(opts?.id ? { id: opts.id } : {}),
+        })
+    );
+
+    return this.addChild(element);
+  }
+
+  /**
+   * Add content that will be truncated when over budget.
+   */
+  truncate(
+    content: ScopeContent,
+    opts: {
+      budget: number;
+      from?: "start" | "end";
+      priority?: number;
+      id?: string;
+    }
+  ): PromptBuilder {
+    const node = createPromptNode(
+      () => resolveScopeContent(content),
+      (children) => {
+        const props: Parameters<typeof Truncate>[0] = {
+          children,
+          budget: opts.budget,
+          ...(opts.from ? { from: opts.from } : {}),
+          ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
+          ...(opts.id ? { id: opts.id } : {}),
+        };
+        return Truncate({
+          ...props,
+        });
+      }
+    );
+
+    return this.addChild(node);
+  }
+
+  /**
+   * Add content that will be entirely removed when over budget.
+   */
+  omit(
+    content: ScopeContent,
+    opts?: { priority?: number; id?: string }
+  ): PromptBuilder {
+    const node = createPromptNode(
+      () => resolveScopeContent(content),
+      (children) => {
+        const props: Parameters<typeof Omit>[0] = {
+          children,
+          ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+          ...(opts?.id ? { id: opts.id } : {}),
+        };
+        return Omit(props);
+      }
+    );
+
+    return this.addChild(node);
+  }
+
   /**
    * Create a provider scope for AI-powered operations like Summary.
    *
@@ -217,14 +328,15 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
    */
   provider(
     modelProvider: ModelProvider<unknown>,
-    fn: (builder: TBuilder) => TBuilder
-  ): TBuilder {
+    fn: (builder: PromptBuilder) => PromptBuilder
+  ): PromptBuilder {
     const context: CriaContext = { provider: modelProvider };
     const inner = fn(this.create([], context));
 
-    const element = createPromptElement(
+    const element = createPromptNode(
       () => inner.buildChildren(),
       (children) => ({
+        kind: "scope",
         priority: 0,
         children,
         context,
@@ -245,7 +357,7 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
     formatter?: ResultFormatter<T>;
     priority?: number;
     id?: string;
-  }): TBuilder {
+  }): PromptBuilder {
     const props: Parameters<typeof VectorSearch<T>>[0] = {
       store: opts.store,
       query: opts.query,
@@ -270,9 +382,9 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
       summarize?: Summarizer;
       priority?: number;
     }
-  ): TBuilder {
-    const element = createPromptElement(
-      () => resolveContentChildren(content, this.allowsTextChildren()),
+  ): PromptBuilder {
+    const element = createPromptNode(
+      () => resolveScopeContent(content),
       (children) => {
         const props: Parameters<typeof Summary>[0] = {
           id: opts.id,
@@ -289,105 +401,10 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
   }
 
   /**
-   * Add a formatted list of examples.
+   * Add a raw PromptNode (escape hatch for advanced usage).
    */
-  examples(
-    title: string,
-    items: (string | PromptElement)[],
-    opts?: { priority?: number; id?: string }
-  ): TBuilder {
-    return this.addChild(
-      Examples({
-        title,
-        children: items,
-        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
-        ...(opts?.id ? { id: opts.id } : {}),
-      })
-    );
-  }
-
-  /**
-   * Add a raw PromptElement (escape hatch for advanced usage).
-   */
-  raw(element: PromptElement | Promise<PromptElement>): TBuilder {
+  raw(element: PromptNode | Promise<PromptNode>): PromptBuilder {
     return this.addChild(element);
-  }
-
-  async buildChildren(): Promise<PromptChildren> {
-    return await resolveBuilderChildren(
-      this.children,
-      this.allowsTextChildren()
-    );
-  }
-
-  protected addChild(child: BuilderChild): TBuilder {
-    return this.create([...this.children, child], this.context);
-  }
-
-  protected addChildren(children: readonly BuilderChild[]): TBuilder {
-    return this.create([...this.children, ...children], this.context);
-  }
-}
-
-export class MessageBuilder extends BuilderBase<MessageBuilder> {
-  constructor(
-    children: BuilderChild[] = [],
-    context: CriaContext | undefined = undefined
-  ) {
-    super(children, context);
-  }
-
-  protected allowsTextChildren(): boolean {
-    return true;
-  }
-
-  protected create(
-    children: BuilderChild[],
-    context: CriaContext | undefined
-  ): MessageBuilder {
-    return new MessageBuilder(children, context);
-  }
-
-  append(content: ScopeContent): MessageBuilder {
-    if (content instanceof PromptBuilder || content instanceof Promise) {
-      return this.addChild(content);
-    }
-    const normalized = normalizeTextInput(content);
-    return this.addChildren(normalized);
-  }
-}
-
-/**
- * Fluent builder for constructing prompt trees.
- *
- * Every method returns a new immutable builder instance; large chains will copy
- * child arrays, so keep prompts reasonably sized.
- * Call `.build()` to get the final `PromptElement`.
- */
-export class PromptBuilder extends BuilderBase<PromptBuilder> {
-  private constructor(
-    children: BuilderChild[] = [],
-    context: CriaContext | undefined = undefined
-  ) {
-    super(children, context);
-  }
-
-  protected allowsTextChildren(): boolean {
-    return false;
-  }
-
-  /**
-   * Create a new empty prompt builder.
-   */
-  static create(): PromptBuilder {
-    return new PromptBuilder();
-  }
-
-  protected create(
-    children: BuilderChild[],
-    context: CriaContext | undefined
-  ): PromptBuilder {
-    return new PromptBuilder(children, context);
   }
 
   /**
@@ -395,7 +412,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    */
   system(
     content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
-    opts?: { priority?: number; id?: string }
+    opts?: { id?: string }
   ): PromptBuilder {
     return this.addMessage("system", content, opts);
   }
@@ -405,7 +422,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    */
   user(
     content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
-    opts?: { priority?: number; id?: string }
+    opts?: { id?: string }
   ): PromptBuilder {
     return this.addMessage("user", content, opts);
   }
@@ -415,7 +432,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    */
   assistant(
     content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
-    opts?: { priority?: number; id?: string }
+    opts?: { id?: string }
   ): PromptBuilder {
     return this.addMessage("assistant", content, opts);
   }
@@ -425,14 +442,13 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    */
   tool(
     result: ToolResultElement | readonly ToolResultElement[],
-    opts?: { priority?: number; id?: string }
+    opts?: { id?: string }
   ): PromptBuilder {
     const children = Array.isArray(result) ? [...result] : [result];
     return this.addChild(
       Message({
         messageRole: "tool",
         children,
-        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
         ...(opts?.id ? { id: opts.id } : {}),
       })
     );
@@ -444,20 +460,25 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   message(
     role: PromptRole,
     content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
-    opts?: { priority?: number; id?: string }
+    opts?: { id?: string }
   ): PromptBuilder {
     return this.addMessage(role, content, opts);
   }
 
+  async buildChildren(): Promise<PromptNode[]> {
+    return await resolveScopeChildren(this.children);
+  }
+
   /**
-   * Build the final PromptElement tree.
+   * Build the final PromptTree.
    */
-  async build(): Promise<PromptElement> {
-    const element = Region({
+  async build(): Promise<PromptTree> {
+    const element: PromptScope = {
+      kind: "scope",
       priority: 0,
       children: await this.buildChildren(),
       ...(this.context && { context: this.context }),
-    });
+    };
     // Enforce message boundaries at build time so invalid trees fail early.
     assertValidMessageScope(element);
     return element;
@@ -477,10 +498,9 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   private addMessage(
     role: PromptRole,
     content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
-    opts?: { priority?: number; id?: string }
+    opts?: { id?: string }
   ): PromptBuilder {
-    const priority = opts?.priority;
-    const element = createPromptElement(
+    const element = createPromptNode(
       () =>
         typeof content === "function"
           ? content(new MessageBuilder([], this.context)).buildChildren()
@@ -489,7 +509,6 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
         Message({
           messageRole: role,
           children,
-          ...(priority !== undefined ? { priority } : {}),
           ...(opts?.id ? { id: opts.id } : {}),
         })
     );
@@ -544,53 +563,22 @@ export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
  * common leading whitespace. Useful for writing multi-line prompt content with clean formatting.
  *
  * @param strings - Template string segments
- * @param values - Interpolated values (strings, numbers, booleans, PromptElements, arrays, etc.)
- * @returns Array of prompt children (strings and PromptElements)
+ * @param values - Interpolated values (strings, numbers, booleans, PromptParts, arrays, etc.)
+ * @returns Array of message parts
  *
- * This function allows you to use prompt elements naturally inside template strings.
- *
- * @example
- * ```typescript
- * import { c, cria } from "@fastpaca/cria";
- *
- * const system_primer = cria.prompt().system("You are a helpful assistant.");
- * const prompt = cria.prompt()
- *  .system(c`
- *   ${system_primer}
- *   You work on support tickets. You always start conversations with "Hello, how can I help you today?"
- *   and end with "Thank you for contacting us. Have a great day!"`)
- *  .build();
- * ```
- *
- * @example
- * ```typescript
- * import { c } from "@fastpaca/cria";
- *
- * const children = c`
- *   System: You are a helpful assistant.
- *   User: ${userMessage}
- *   Assistant: ${assistantResponse}
- * `;
- * ```
- *
- * @example
- * ```typescript
- * const name = "Alice";
- * const age = 30;
- * const children = c`Name: ${name}, Age: ${age}`;
- * ```
+ * This function allows you to use prompt parts naturally inside template strings.
  */
 export function c(
   strings: TemplateStringsArray,
   ...values: readonly TextInput[]
-): PromptChildren {
+): readonly PromptPart[] {
   const normalizedStrings = normalizeTemplateStrings(strings);
-  const children: PromptChildren = [];
+  const children: PromptPart[] = [];
 
   for (let index = 0; index < normalizedStrings.length; index += 1) {
     const segment = normalizedStrings[index];
     if (segment !== undefined && segment.length > 0) {
-      children.push(segment);
+      children.push({ type: "text", text: segment });
     }
 
     if (index < values.length) {
@@ -604,10 +592,10 @@ export function c(
   return children;
 }
 
-function createPromptElement(
-  buildChildren: () => Promise<PromptChildren> | PromptChildren,
-  buildElement: (children: PromptChildren) => PromptElement
-): Promise<PromptElement> {
+function createPromptNode<TChildren>(
+  buildChildren: () => Promise<TChildren> | TChildren,
+  buildElement: (children: TChildren) => PromptNode
+): Promise<PromptNode> {
   const result = buildChildren();
   if (result instanceof Promise) {
     return result.then((children) => buildElement(children));
@@ -615,14 +603,18 @@ function createPromptElement(
   return Promise.resolve(buildElement(result));
 }
 
-// Normalize text-like inputs into prompt children.
-function normalizeTextInput(content?: TextInput): PromptChildren {
+function textPart(value: string): PromptPart {
+  return { type: "text", text: value };
+}
+
+// Normalize text-like inputs into prompt parts.
+function normalizeTextInput(content?: TextInput): PromptPart[] {
   if (content === null || content === undefined) {
     return [];
   }
 
   if (Array.isArray(content)) {
-    const flattened: PromptChildren = [];
+    const flattened: PromptPart[] = [];
     for (const item of content) {
       flattened.push(...normalizeTextInput(item));
     }
@@ -630,15 +622,18 @@ function normalizeTextInput(content?: TextInput): PromptChildren {
   }
 
   if (typeof content === "string") {
-    return [content];
+    return [textPart(content)];
   }
 
   if (typeof content === "number" || typeof content === "boolean") {
-    return [String(content)];
+    return [textPart(String(content))];
   }
 
-  // At this point, content must be PromptElement (PromptChild minus string/number/boolean)
-  return [content as PromptChild];
+  if (isPromptPart(content)) {
+    return [content];
+  }
+
+  throw new Error("Message content must be text or message parts.");
 }
 
 function normalizeTemplateStrings(
@@ -680,65 +675,126 @@ function normalizeTemplateStrings(
   );
 }
 
-// Utility to recursively build and expand / resolve children
-async function resolveBuilderChildren(
-  children: BuilderChild | readonly BuilderChild[],
-  allowText: boolean
-): Promise<PromptChildren> {
+function isPromptNode(value: unknown): value is PromptNode {
+  return typeof value === "object" && value !== null && "kind" in value;
+}
+
+function isPromptPart(value: unknown): value is PromptPart {
+  return typeof value === "object" && value !== null && "type" in value;
+}
+
+async function resolveMessageChildren(
+  children: BuilderChild | readonly BuilderChild[]
+): Promise<PromptPart[]> {
   const list = Array.isArray(children) ? children : [children];
   const resolved = await Promise.all(
-    list.map((child) => resolveBuilderChild(child, allowText))
+    list.map((child) => resolveBuilderChild(child, "message"))
   );
 
   return resolved.flat();
 }
 
-async function resolveContentChildren(
-  content: ScopeContent,
-  allowText: boolean
-): Promise<PromptChildren> {
-  if (content instanceof PromptBuilder || content instanceof Promise) {
-    return await resolveBuilderChildren(content, allowText);
+async function resolveScopeChildren(
+  children: BuilderChild | readonly BuilderChild[]
+): Promise<PromptNode[]> {
+  const list = Array.isArray(children) ? children : [children];
+  const resolved = await Promise.all(
+    list.map((child) => resolveBuilderChild(child, "scope"))
+  );
+
+  return resolved.flat();
+}
+
+async function resolveScopeContent(
+  content: ScopeContent
+): Promise<PromptNode[]> {
+  if (content instanceof PromptBuilder) {
+    return [await content.build()];
   }
 
-  const normalized = normalizeTextInput(content);
-  if (!allowText) {
-    for (const child of normalized) {
-      if (typeof child === "string") {
-        throw new Error("Text nodes are only allowed inside messages.");
-      }
-    }
+  if (content instanceof Promise) {
+    const value = await content;
+    return await resolveScopeContent(value as ScopeContent);
   }
-  return normalized;
+
+  if (Array.isArray(content)) {
+    const resolved = await Promise.all(content.map(resolveScopeContent));
+    return resolved.flat();
+  }
+
+  if (isPromptNode(content)) {
+    return [content];
+  }
+
+  throw new Error("Scope content must be prompt nodes or prompt builders.");
 }
 
 async function resolveBuilderChild(
   child: BuilderChild,
-  allowText: boolean
-): Promise<PromptChildren> {
-  if (typeof child === "string") {
-    return ensureTextChild(child, allowText);
+  target: "message" | "scope"
+): Promise<PromptPart[] | PromptNode[]> {
+  const resolved = await resolveBuilderChildPromise(child);
+
+  if (target === "message") {
+    return resolveMessageChild(resolved);
   }
 
+  return await resolveScopeChild(resolved);
+}
+
+async function resolveBuilderChildPromise(
+  child: BuilderChild
+): Promise<BuilderChild> {
   if (child instanceof Promise) {
-    const value = await child;
-    if (typeof value === "string") {
-      return ensureTextChild(value, allowText);
-    }
-    return [value];
+    return await child;
+  }
+  return child;
+}
+
+function resolveMessageChild(child: BuilderChild): PromptPart[] {
+  if (child instanceof PromptBuilder) {
+    throw new Error("Prompt builders cannot be nested inside messages.");
   }
 
+  if (typeof child === "string") {
+    return [textPart(child)];
+  }
+
+  if (typeof child === "number" || typeof child === "boolean") {
+    return [textPart(String(child))];
+  }
+
+  if (isPromptPart(child)) {
+    return [child];
+  }
+
+  if (isPromptNode(child)) {
+    throw new Error("Prompt nodes are not allowed inside messages.");
+  }
+
+  throw new Error("Unsupported child type.");
+}
+
+async function resolveScopeChild(child: BuilderChild): Promise<PromptNode[]> {
   if (child instanceof PromptBuilder) {
     return [await child.build()];
   }
 
-  return [child];
-}
-
-function ensureTextChild(value: string, allowText: boolean): PromptChildren {
-  if (!allowText) {
+  if (typeof child === "string" || typeof child === "number") {
     throw new Error("Text nodes are only allowed inside messages.");
   }
 
-  return [value];
+  if (typeof child === "boolean") {
+    throw new Error("Text nodes are only allowed inside messages.");
+  }
+
+  if (isPromptPart(child)) {
+    throw new Error("Message parts are only allowed inside messages.");
+  }
+
+  if (isPromptNode(child)) {
+    return [child];
+  }
+
+  throw new Error("Unsupported child type.");
 }

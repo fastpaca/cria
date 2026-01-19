@@ -3,7 +3,7 @@ import { generateObject, generateText } from "ai";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
 import { safeStringify } from "../renderers/shared";
-import type { PromptLayout, PromptPart } from "../types";
+import type { PromptLayout, PromptMessage, PromptPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 const encoder = getEncoding("cl100k_base");
@@ -11,35 +11,70 @@ const countText = (text: string): number => encoder.encode(text).length;
 
 export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
   render(layout: PromptLayout): ModelMessage[] {
-    return layout.messages.map((m) => {
-      if (m.role === "system") {
-        return { role: "system", content: textFrom(m.parts) };
-      }
-      if (m.role === "user") {
-        return { role: "user", content: textFrom(m.parts) };
-      }
-      if (m.role === "assistant") {
-        return { role: "assistant", content: m.parts } as ModelMessage;
-      }
-      // tool
-      const p = m.parts[0] as ToolResultPart;
-      return { role: "tool", content: [{ ...p, output: coerce(p.output) }] };
-    });
+    return layout.map(renderModelMessage);
   }
 }
 
-const textFrom = (parts: readonly PromptPart[]) =>
-  parts
-    .filter((p) => p.type === "text")
-    .map((p) => p.text)
-    .join("");
+const coerce = (output: unknown): ToolResultPart["output"] => {
+  if (typeof output === "string") {
+    return { type: "text", value: output };
+  }
 
-const coerce = (output: unknown): ToolResultPart["output"] =>
-  typeof output === "string"
-    ? { type: "text", value: output }
-    : hasOutputShape(output)
-      ? output
-      : { type: "text", value: safeStringify(output) };
+  if (hasOutputShape(output)) {
+    return output;
+  }
+
+  return { type: "text", value: safeStringify(output) };
+};
+
+function renderModelMessage(message: PromptMessage): ModelMessage {
+  if (message.role === "tool") {
+    return renderToolMessage(message);
+  }
+
+  if (message.role === "assistant") {
+    return renderAssistantMessage(message);
+  }
+
+  return { role: message.role as ModelMessage["role"], content: message.text };
+}
+
+function renderToolMessage(
+  message: Extract<PromptMessage, { role: "tool" }>
+): ModelMessage {
+  return {
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolCallId: message.toolCallId,
+        toolName: message.toolName,
+        output: coerce(message.output),
+      },
+    ],
+  };
+}
+
+function renderAssistantMessage(
+  message: Extract<PromptMessage, { role: "assistant" }>
+): ModelMessage {
+  const parts: PromptPart[] = [];
+  if (message.text) {
+    parts.push({ type: "text", text: message.text });
+  }
+  if (message.reasoning) {
+    parts.push({ type: "reasoning", text: message.reasoning });
+  }
+  if (message.toolCalls) {
+    parts.push(...message.toolCalls);
+  }
+
+  if (parts.length === 1 && parts[0]?.type === "text") {
+    return { role: "assistant", content: parts[0].text };
+  }
+
+  return { role: "assistant", content: parts } as ModelMessage;
+}
 
 const hasOutputShape = (v: unknown): v is ToolResultPart["output"] =>
   typeof v === "object" &&

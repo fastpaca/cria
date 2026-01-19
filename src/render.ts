@@ -3,12 +3,14 @@ import {
   FitError,
   type MaybePromise,
   type ModelProvider,
-  type PromptChild,
-  type PromptElement,
   type PromptLayout,
+  type PromptMessage,
   type PromptNode,
-  type PromptPart,
+  type PromptScope,
+  type PromptTree,
   type StrategyInput,
+  type ToolCallPart,
+  type ToolResultPart,
 } from "./types";
 
 export interface RenderOptions<TRendered = unknown> {
@@ -24,7 +26,7 @@ export interface RenderOptions<TRendered = unknown> {
 }
 
 export interface FitStartEvent {
-  element: PromptElement;
+  element: PromptTree;
   budget: number;
   totalTokens: number;
 }
@@ -36,14 +38,14 @@ export interface FitIterationEvent {
 }
 
 export interface StrategyAppliedEvent {
-  target: PromptElement;
-  result: PromptElement | null;
+  target: PromptScope;
+  result: PromptScope | null;
   priority: number;
   iteration: number;
 }
 
 export interface FitCompleteEvent {
-  result: PromptElement | null;
+  result: PromptScope | null;
   iterations: number;
   totalTokens: number;
 }
@@ -64,7 +66,7 @@ export interface RenderHooks {
 }
 
 export async function render<TRendered>(
-  element: MaybePromise<PromptElement>,
+  element: MaybePromise<PromptTree>,
   options: RenderOptions<TRendered>
 ): Promise<TRendered> {
   // Data flow: PromptTree -> PromptLayout (flatten) -> provider.renderer -> provider.countTokens.
@@ -89,14 +91,14 @@ export async function render<TRendered>(
   );
 
   if (!fitted) {
-    return renderOutput({ priority: 0, children: [] }, provider);
+    return renderOutput({ kind: "scope", priority: 0, children: [] }, provider);
   }
 
   return renderOutput(fitted, provider);
 }
 
 function renderOutput<TRendered>(
-  root: PromptElement,
+  root: PromptTree,
   provider: ModelProvider<TRendered>
 ): TRendered {
   // Prompt tree composition is resolved before rendering; renderers only see layout.
@@ -105,7 +107,7 @@ function renderOutput<TRendered>(
 }
 
 function renderAndCount<TRendered>(
-  root: PromptElement,
+  root: PromptTree,
   provider: ModelProvider<TRendered>
 ): { output: TRendered; tokens: number } {
   // Tree -> layout -> renderer output, then provider-owned token counting.
@@ -115,128 +117,132 @@ function renderAndCount<TRendered>(
   return { output, tokens };
 }
 
-export function assertValidMessageScope(root: PromptElement): void {
+export function assertValidMessageScope(root: PromptTree): void {
   // Enforce layout invariants by reusing the layout pass.
   layoutPrompt(root);
 }
 
-function layoutPrompt(root: PromptElement): PromptLayout {
-  // Flatten tree to message-bounded layout; hierarchy becomes message -> parts.
+function layoutPrompt(root: PromptTree): PromptLayout {
+  // Flatten tree to a list of opinionated messages.
   // Traversal order is depth-first, left-to-right so layout is deterministic.
-  const messages: PromptLayout["messages"] = [];
+  const messages: PromptMessage[] = [];
 
-  const assertPartAllowedInRole = (
-    role: PromptLayout["messages"][number]["role"],
-    part: PromptPart
-  ): void => {
-    if (role === "tool") {
-      if (part.type !== "tool-result") {
-        throw new Error("Tool messages can only contain tool results.");
-      }
+  const walk = (node: PromptNode): void => {
+    if (node.kind === "message") {
+      messages.push(buildMessage(node));
       return;
     }
 
+    for (const child of node.children) {
+      walk(child);
+    }
+  };
+
+  walk(root);
+
+  return messages;
+}
+
+function buildMessage(
+  node: Extract<PromptNode, { kind: "message" }>
+): PromptMessage {
+  if (node.role === "tool") {
+    return buildToolMessage(node.children);
+  }
+
+  if (node.role === "assistant") {
+    return buildAssistantMessage(node.children);
+  }
+
+  return buildTextMessage(node.role, node.children);
+}
+
+function buildToolMessage(children: readonly PromptPart[]): PromptMessage {
+  if (children.length !== 1 || children[0]?.type !== "tool-result") {
+    throw new Error("Tool messages must contain exactly one tool result.");
+  }
+  const result = children[0] as ToolResultPart;
+  return {
+    role: "tool",
+    toolCallId: result.toolCallId,
+    toolName: result.toolName,
+    output: result.output,
+  };
+}
+
+function buildAssistantMessage(children: readonly PromptPart[]): PromptMessage {
+  const { text, reasoning, toolCalls } = collectAssistantParts(children);
+
+  const message: PromptMessage = { role: "assistant", text };
+  if (reasoning.length > 0) {
+    message.reasoning = reasoning;
+  }
+  if (toolCalls.length > 0) {
+    message.toolCalls = toolCalls;
+  }
+  return message;
+}
+
+function collectAssistantParts(children: readonly PromptPart[]): {
+  text: string;
+  reasoning: string;
+  toolCalls: ToolCallPart[];
+} {
+  let text = "";
+  let reasoning = "";
+  const toolCalls: ToolCallPart[] = [];
+
+  for (const part of children) {
+    if (part.type === "text") {
+      text += part.text;
+      continue;
+    }
+    if (part.type === "reasoning") {
+      reasoning += part.text;
+      continue;
+    }
+    if (part.type === "tool-call") {
+      toolCalls.push(part);
+      continue;
+    }
     if (part.type === "tool-result") {
       throw new Error("Tool results must be inside a tool message.");
     }
+  }
 
-    if (part.type === "tool-call" && role !== "assistant") {
-      throw new Error("Tool calls must be inside an assistant message.");
-    }
+  return { text, reasoning, toolCalls };
+}
 
-    if (part.type === "reasoning" && role !== "assistant") {
-      throw new Error("Reasoning must be inside an assistant message.");
-    }
-  };
+function buildTextMessage(
+  role: PromptMessage["role"],
+  children: readonly PromptPart[]
+): PromptMessage {
+  const text = collectTextParts(children);
 
-  const assertToolMessageParts = (
-    message: PromptLayout["messages"][number]
-  ) => {
-    if (message.role !== "tool") {
-      return;
-    }
+  if (role === "system") {
+    return { role: "system", text };
+  }
 
-    if (
-      message.parts.length !== 1 ||
-      message.parts[0]?.type !== "tool-result"
-    ) {
-      throw new Error("Tool messages must contain exactly one tool result.");
-    }
-  };
+  if (role === "user") {
+    return { role: "user", text };
+  }
 
-  const walkChildren = (
-    children: PromptChild[],
-    current: PromptLayout["messages"][number] | null
-  ): void => {
-    for (const child of children) {
-      walk(child, current);
-    }
-  };
+  return { role, text };
+}
 
-  const pushPart = (
-    current: PromptLayout["messages"][number] | null,
-    part: PromptPart
-  ): void => {
-    if (!current) {
+function collectTextParts(children: readonly PromptPart[]): string {
+  let text = "";
+  for (const part of children) {
+    if (part.type !== "text") {
       throw new Error(
-        part.type === "text"
-          ? "Text nodes must be inside a message."
-          : "Semantic nodes must be inside a message."
+        "Only assistant messages may contain reasoning or tool calls."
       );
     }
-    assertPartAllowedInRole(current.role, part);
-    current.parts.push(part);
-  };
-
-  const pushTextPart = (
-    current: PromptLayout["messages"][number] | null,
-    text: string
-  ): void => {
-    pushPart(current, { type: "text", text });
-  };
-
-  const handleMessageNode = (
-    node: Extract<PromptNode, { kind: "message" }>,
-    current: PromptLayout["messages"][number] | null
-  ): void => {
-    if (current) {
-      throw new Error("Nested message boundaries are not allowed.");
-    }
-    const message = { role: node.role, parts: [] as PromptPart[] };
-    messages.push(message);
-    walkChildren(node.children, message);
-    assertToolMessageParts(message);
-  };
-
-  const walk = (
-    node: PromptChild,
-    current: PromptLayout["messages"][number] | null
-  ): void => {
-    if (typeof node === "string") {
-      pushTextPart(current, node);
-      return;
-    }
-
-    // Check if it's a PromptPart (has 'type' property)
-    if ("type" in node) {
-      pushPart(current, node);
-      return;
-    }
-
-    // It's a PromptNode
-    if ("kind" in node && node.kind === "message") {
-      handleMessageNode(node, current);
-      return;
-    }
-
-    // Regular region node - walk children
-    walkChildren(node.children, current);
-  };
-
-  walk(root, null);
-
-  return { messages };
+    text += part.text;
+  }
+  return text;
 }
+
 async function safeInvoke<T>(
   handler: ((event: T) => MaybePromise<void>) | undefined,
   event: T
@@ -249,7 +255,7 @@ async function safeInvoke<T>(
 }
 
 function resolveProvider<TRendered>(
-  element: PromptElement,
+  element: PromptTree,
   override?: ModelProvider<TRendered>
 ): ModelProvider<TRendered> {
   const providers = collectProviders(element);
@@ -277,23 +283,20 @@ function resolveProvider<TRendered>(
   return provider as ModelProvider<TRendered>;
 }
 
-function collectProviders(element: PromptElement): ModelProvider<unknown>[] {
+function collectProviders(element: PromptNode): ModelProvider<unknown>[] {
   const found: ModelProvider<unknown>[] = [];
 
-  const visit = (node: PromptElement): void => {
+  const visit = (node: PromptNode): void => {
+    if (node.kind === "message") {
+      return;
+    }
+
     const provider = node.context?.provider;
     if (provider && !found.includes(provider)) {
       found.push(provider);
     }
 
     for (const child of node.children) {
-      if (typeof child === "string") {
-        continue;
-      }
-      // PromptPart has no context, skip
-      if ("type" in child) {
-        continue;
-      }
       visit(child);
     }
   };
@@ -303,15 +306,15 @@ function collectProviders(element: PromptElement): ModelProvider<unknown>[] {
 }
 
 async function fitToBudget<TRendered>(
-  element: PromptElement,
+  element: PromptTree,
   budget: number,
   provider: ModelProvider<TRendered>,
   hooks: RenderHooks | undefined,
   baseContext: CriaContext
-): Promise<PromptElement | null> {
+): Promise<PromptScope | null> {
   // Fit loop is render-driven: render+count, then apply the lowest-importance
   // strategy, re-render, and repeat until we fit or cannot reduce further.
-  let current: PromptElement | null = element;
+  let current: PromptScope | null = element;
   let iteration = 0;
   let totalTokens = renderAndCount(element, provider).tokens;
 
@@ -379,6 +382,9 @@ async function fitToBudget<TRendered>(
       throw error;
     }
 
+    if (applied.element && applied.element.kind !== "scope") {
+      throw new Error("Root scope was replaced by a message node.");
+    }
     current = applied.element;
 
     const nextTokens = current ? renderAndCount(current, provider).tokens : 0;
@@ -411,17 +417,14 @@ async function fitToBudget<TRendered>(
   return current;
 }
 
-function findLowestImportancePriority(element: PromptElement): number | null {
-  let maxPriority: number | null = element.strategy ? element.priority : null;
+function findLowestImportancePriority(node: PromptNode): number | null {
+  if (node.kind === "message") {
+    return null;
+  }
 
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
-    }
-    // PromptPart has no priority/strategy, skip
-    if ("type" in child) {
-      continue;
-    }
+  let maxPriority: number | null = node.strategy ? node.priority : null;
+
+  for (const child of node.children) {
     const childMax = findLowestImportancePriority(child);
     maxPriority = maxNullable(maxPriority, childMax);
   }
@@ -442,13 +445,17 @@ function maxNullable(a: number | null, b: number | null): number | null {
 type BaseContext = Omit<StrategyInput, "target" | "context">;
 
 async function applyStrategiesAtPriority(
-  element: PromptElement,
+  element: PromptNode,
   priority: number,
   baseCtx: BaseContext,
   inheritedContext: CriaContext,
   hooks: RenderHooks | undefined,
   iteration: number
-): Promise<{ element: PromptElement | null; applied: boolean }> {
+): Promise<{ element: PromptNode | null; applied: boolean }> {
+  if (element.kind === "message") {
+    return { element, applied: false };
+  }
+
   // Bottom-up: rewrite children first so nested strategies get first crack.
   // Element context overrides inherited context.
   const mergedContext: CriaContext = element.context
@@ -456,20 +463,9 @@ async function applyStrategiesAtPriority(
     : inheritedContext;
 
   let childrenChanged = false;
-  const nextChildren: typeof element.children = [];
+  const nextChildren: PromptNode[] = [];
 
   for (const child of element.children) {
-    if (typeof child === "string") {
-      nextChildren.push(child);
-      continue;
-    }
-
-    // PromptPart has no strategy, pass through unchanged
-    if ("type" in child) {
-      nextChildren.push(child);
-      continue;
-    }
-
     const applied = await applyStrategiesAtPriority(
       child,
       priority,
@@ -489,7 +485,7 @@ async function applyStrategiesAtPriority(
   }
 
   const nextElement = childrenChanged
-    ? ({ ...element, children: nextChildren } as PromptElement)
+    ? ({ ...element, children: nextChildren } as PromptScope)
     : element;
 
   if (nextElement.strategy && nextElement.priority === priority) {

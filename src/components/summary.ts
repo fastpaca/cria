@@ -3,9 +3,11 @@ import { render } from "../render";
 import type {
   MaybePromise,
   ModelProvider,
-  PromptChildren,
-  PromptElement,
+  PromptNode,
+  PromptPart,
   PromptRole,
+  PromptScope,
+  ScopeChildren,
   Strategy,
   StrategyInput,
 } from "../types";
@@ -23,7 +25,7 @@ export interface StoredSummary {
  */
 export interface SummarizerContext {
   /** The subtree being summarized */
-  target: PromptElement;
+  target: PromptScope;
   /** Previous summary to build upon (null if first summary) */
   existingSummary: string | null;
   /** Provider in scope, if any */
@@ -53,12 +55,14 @@ interface SummaryStrategyOptions {
   id: string;
   store: KVMemory<StoredSummary>;
   summarize?: Summarizer | undefined;
+  role: PromptRole;
 }
 
 function createSummaryStrategy({
   id,
   store,
   summarize,
+  role,
 }: SummaryStrategyOptions): Strategy {
   return async (input: StrategyInput) => {
     const { target, context } = input;
@@ -86,10 +90,12 @@ function createSummaryStrategy({
       content: newSummary,
     });
 
-    // Summary never creates a message boundary; wrap it in a message if needed.
     return {
+      kind: "scope",
       priority: target.priority,
-      children: [`[Summary of earlier conversation]\n${newSummary}`],
+      children: [
+        createMessage(role, `[Summary of earlier conversation]\n${newSummary}`),
+      ],
     };
   };
 }
@@ -104,72 +110,29 @@ interface SummaryProps {
    * If omitted, uses the ModelProvider from render options with a default prompt.
    */
   summarize?: Summarizer;
-  /** Priority for this region (higher number = reduced first). Default: 0 */
+  /** Priority for this scope (higher number = reduced first). Default: 0 */
   priority?: number;
+  /** Role for the summary message. Default: "system" */
+  role?: PromptRole;
   /** Content to potentially summarize */
-  children?: PromptChildren;
+  children?: ScopeChildren;
 }
 
 /**
- * A region that summarizes its content when the prompt needs to shrink.
- *
- * When the overall prompt exceeds budget and this region is selected for
- * reduction (based on priority), the summarizer is called and the result
- * replaces the original content.
- *
- * If no `summarize` function is provided, the component will use the
- * `ModelProvider` from an ancestor provider scope with a default
- * summarization prompt.
- *
- * @example Using a custom summarizer
- * ```tsx
- * import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
- *
- * const store = new InMemoryStore<StoredSummary>();
- *
- * <Summary
- *   id="conv-history"
- *   store={store}
- *   summarize={async ({ target, existingSummary }) => {
- *     const plainText = target.children
- *       .map((child) => (typeof child === "string" ? child : ""))
- *       .join("");
- *     return callAI(`Summarize, building on: ${existingSummary}\n\n${plainText}`);
- *   }}
- *   priority={2}
- * >
- *   {conversationHistory}
- * </Summary>
- * ```
- *
- * @example Using a provider scope (DSL)
- * ```ts
- * import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
- * import { createProvider } from "@fastpaca/cria/ai-sdk";
- * import { openai } from "@ai-sdk/openai";
- *
- * const store = new InMemoryStore<StoredSummary>();
- * const provider = createProvider(openai("gpt-4o"));
- *
- * const prompt = cria
- *   .prompt()
- *   .provider(provider, (p) =>
- *     p.summary(conversationHistory, { id: "conv-history", store, priority: 2 })
- *   );
- *
- * const result = await prompt.render({ budget: 4000, provider });
- * ```
+ * A scope that summarizes its content when the prompt needs to shrink.
  */
 export function Summary({
   id,
   store,
   summarize,
   priority = 0,
+  role = "system",
   children = [],
-}: SummaryProps): PromptElement {
+}: SummaryProps): PromptScope {
   return {
+    kind: "scope",
     priority,
-    strategy: createSummaryStrategy({ id, store, summarize }),
+    strategy: createSummaryStrategy({ id, store, summarize, role }),
     children,
   };
 }
@@ -182,74 +145,44 @@ const SUMMARY_UPDATE_REQUEST =
   "Update the summary based on the previous summary and the conversation above.";
 
 function buildSummaryPrompt(
-  target: PromptElement,
+  target: PromptScope,
   existingSummary: string | null
-): PromptElement {
-  const children: PromptChildren = [
-    createMessage("system", [SUMMARY_SYSTEM_PROMPT]),
+): PromptScope {
+  const children: PromptNode[] = [
+    createMessage("system", SUMMARY_SYSTEM_PROMPT),
   ];
 
   if (existingSummary) {
     children.push(
-      createMessage("assistant", [`Current summary:\n${existingSummary}`])
+      createMessage("assistant", `Current summary:\n${existingSummary}`)
     );
   }
 
-  if (containsMessageNodes(target)) {
-    children.push({
-      priority: 0,
-      children: [...target.children],
-    });
-    children.push(
-      createMessage("user", [
-        existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST,
-      ])
-    );
-  } else {
-    const userChildren: PromptChildren = [
-      "Conversation:\n",
-      ...target.children,
-      "\n\n",
-      existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST,
-    ];
-    children.push(createMessage("user", userChildren));
-  }
+  children.push({
+    kind: "scope",
+    priority: 0,
+    children: [...target.children],
+  });
+
+  children.push(
+    createMessage(
+      "user",
+      existingSummary ? SUMMARY_UPDATE_REQUEST : SUMMARY_REQUEST
+    )
+  );
 
   return {
+    kind: "scope",
     priority: 0,
     children,
   };
 }
 
-function createMessage(
-  role: PromptRole,
-  children: PromptChildren
-): PromptElement {
+function createMessage(role: PromptRole, text: string): PromptNode {
+  const part: PromptPart = { type: "text", text };
   return {
     kind: "message",
     role,
-    priority: 0,
-    children,
+    children: [part],
   };
-}
-
-function containsMessageNodes(element: PromptElement): boolean {
-  if ("kind" in element && element.kind === "message") {
-    return true;
-  }
-
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
-    }
-    // PromptPart has no children, skip
-    if ("type" in child) {
-      continue;
-    }
-    if (containsMessageNodes(child)) {
-      return true;
-    }
-  }
-
-  return false;
 }

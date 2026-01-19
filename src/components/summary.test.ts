@@ -9,9 +9,18 @@ import {
   Summary,
 } from "../index";
 import { createTestProvider } from "../testing/plaintext";
+import type { PromptPart, PromptScope } from "../types";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
+
+const textPart = (value: string): PromptPart => ({ type: "text", text: value });
+
+const rootScope = (children: PromptScope["children"]): PromptScope => ({
+  kind: "scope",
+  priority: 0,
+  children,
+});
 
 test("Summary: triggers summarization when over budget", async () => {
   const store = new InMemoryStore<StoredSummary>();
@@ -24,18 +33,21 @@ test("Summary: triggers summarization when over budget", async () => {
 
   const longContent = "A".repeat(200);
 
-  const element = Message({
-    messageRole: "assistant",
-    children: [
-      Summary({
-        id: "test-1",
-        priority: 1,
-        store,
-        summarize,
-        children: [longContent],
-      }),
-    ],
-  });
+  const element = rootScope([
+    Summary({
+      id: "test-1",
+      priority: 1,
+      store,
+      summarize,
+      role: "assistant",
+      children: [
+        Message({
+          messageRole: "assistant",
+          children: [textPart(longContent)],
+        }),
+      ],
+    }),
+  ]);
 
   const result = await render(element, {
     provider,
@@ -51,18 +63,21 @@ test("Summary: stores summary in store", async () => {
 
   const summarize = () => "This is the summary";
 
-  const element = Message({
-    messageRole: "assistant",
-    children: [
-      Summary({
-        id: "test-2",
-        priority: 1,
-        store,
-        summarize,
-        children: ["Long content ".repeat(50)],
-      }),
-    ],
-  });
+  const element = rootScope([
+    Summary({
+      id: "test-2",
+      priority: 1,
+      store,
+      summarize,
+      role: "assistant",
+      children: [
+        Message({
+          messageRole: "assistant",
+          children: [textPart("Long content ".repeat(50))],
+        }),
+      ],
+    }),
+  ]);
 
   const output = await render(element, {
     provider,
@@ -91,18 +106,21 @@ test("Summary: passes existing summary to summarizer", async () => {
     return "Updated summary";
   };
 
-  const element = Message({
-    messageRole: "assistant",
-    children: [
-      Summary({
-        id: "test-3",
-        priority: 1,
-        store,
-        summarize,
-        children: ["Content ".repeat(100)],
-      }),
-    ],
-  });
+  const element = rootScope([
+    Summary({
+      id: "test-3",
+      priority: 1,
+      store,
+      summarize,
+      role: "assistant",
+      children: [
+        Message({
+          messageRole: "assistant",
+          children: [textPart("Content ".repeat(100))],
+        }),
+      ],
+    }),
+  ]);
 
   const output = await render(element, {
     provider,
@@ -122,18 +140,21 @@ test("Summary: does not trigger when under budget", async () => {
     return "Summary";
   };
 
-  const element = Message({
-    messageRole: "assistant",
-    children: [
-      Summary({
-        id: "test-4",
-        priority: 1,
-        store,
-        summarize,
-        children: ["Short"],
-      }),
-    ],
-  });
+  const element = rootScope([
+    Summary({
+      id: "test-4",
+      priority: 1,
+      store,
+      summarize,
+      role: "assistant",
+      children: [
+        Message({
+          messageRole: "assistant",
+          children: [textPart("Short")],
+        }),
+      ],
+    }),
+  ]);
 
   const output = await render(element, {
     provider,
@@ -145,12 +166,15 @@ test("Summary: does not trigger when under budget", async () => {
 });
 
 test("Last: keeps only last N children", async () => {
-  const messages = ["First", "Second", "Third", "Fourth", "Fifth"];
+  const messages = ["First", "Second", "Third", "Fourth", "Fifth"].map(
+    (value) =>
+      Message({
+        messageRole: "user",
+        children: [textPart(value)],
+      })
+  );
 
-  const element = Message({
-    messageRole: "user",
-    children: [Last({ N: 2, children: messages })],
-  });
+  const element = rootScope([Last({ N: 2, children: messages })]);
 
   const result = await render(element, {
     provider,
@@ -161,12 +185,14 @@ test("Last: keeps only last N children", async () => {
 });
 
 test("Last: handles N larger than children count", async () => {
-  const messages = ["One", "Two"];
+  const messages = ["One", "Two"].map((value) =>
+    Message({
+      messageRole: "user",
+      children: [textPart(value)],
+    })
+  );
 
-  const element = Message({
-    messageRole: "user",
-    children: [Last({ N: 10, children: messages })],
-  });
+  const element = rootScope([Last({ N: 10, children: messages })]);
 
   const result = await render(element, {
     provider,
@@ -189,19 +215,24 @@ test("Summary + Last: typical usage pattern", async () => {
     "Message 5: Final message",
   ];
 
-  const element = Message({
-    messageRole: "assistant",
-    children: [
-      Summary({
-        id: "conv",
-        priority: 2,
-        store,
-        summarize,
-        children: messages.slice(0, -2),
-      }),
-      Last({ N: 2, children: messages }),
-    ],
-  });
+  const messageNodes = messages.map((value) =>
+    Message({
+      messageRole: "assistant",
+      children: [textPart(value)],
+    })
+  );
+
+  const element = rootScope([
+    Summary({
+      id: "conv",
+      priority: 2,
+      store,
+      summarize,
+      role: "assistant",
+      children: messageNodes.slice(0, -2),
+    }),
+    Last({ N: 2, children: messageNodes }),
+  ]);
 
   const result = await render(element, {
     provider,

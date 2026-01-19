@@ -7,14 +7,11 @@ import type {
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
 import { safeStringify } from "../renderers/shared";
-import type { PromptLayout, PromptPart } from "../types";
+import type { PromptLayout, PromptMessage } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
-
-type ToolCall = Extract<PromptPart, { type: "tool-call" }>;
-type ToolResult = Extract<PromptPart, { type: "tool-result" }>;
 
 export interface AnthropicRenderResult {
   system?: string;
@@ -26,29 +23,13 @@ export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
     const messages: MessageParam[] = [];
     let system = "";
 
-    for (const m of layout.messages) {
-      if (m.role === "system") {
-        const text = textFrom(m.parts);
-        if (text) system = system ? `${system}\n\n${text}` : text;
-      } else if (m.role === "user") {
-        const content = buildContent(m.parts, false);
-        if (content.length) messages.push({ role: "user", content });
-      } else if (m.role === "assistant") {
-        const content = buildContent(m.parts, true);
-        if (content.length) messages.push({ role: "assistant", content });
-      } else {
-        // tool
-        const p = m.parts[0] as ToolResult;
-        messages.push({
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: p.toolCallId,
-              content: safeStringify(p.output),
-            },
-          ],
-        });
+    for (const message of layout) {
+      const rendered = renderAnthropicMessage(message);
+      if (rendered.systemText) {
+        system = appendSystemText(system, rendered.systemText);
+      }
+      if (rendered.message) {
+        messages.push(rendered.message);
       }
     }
 
@@ -56,25 +37,95 @@ export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
   }
 }
 
+interface RenderedAnthropicMessage {
+  systemText?: string;
+  message?: MessageParam;
+}
+
+function renderAnthropicMessage(
+  message: PromptMessage
+): RenderedAnthropicMessage {
+  if (message.role === "system") {
+    return { systemText: message.text };
+  }
+
+  if (message.role === "tool") {
+    return { message: renderToolResultMessage(message) };
+  }
+
+  if (message.role === "assistant") {
+    return { message: renderAssistantMessage(message) };
+  }
+
+  return { message: renderUserMessage(message.text) };
+}
+
+function renderUserMessage(text: string): MessageParam | undefined {
+  const content = buildContent(text, undefined, undefined, false);
+  if (content.length === 0) {
+    return undefined;
+  }
+  return { role: "user", content };
+}
+
+function renderAssistantMessage(
+  message: Extract<PromptMessage, { role: "assistant" }>
+): MessageParam | undefined {
+  const content = buildContent(
+    message.text,
+    message.reasoning,
+    message.toolCalls,
+    true
+  );
+  if (content.length === 0) {
+    return undefined;
+  }
+  return { role: "assistant", content };
+}
+
+function renderToolResultMessage(
+  message: Extract<PromptMessage, { role: "tool" }>
+): MessageParam {
+  return {
+    role: "user",
+    content: [
+      {
+        type: "tool_result",
+        tool_use_id: message.toolCallId,
+        content: safeStringify(message.output),
+      },
+    ],
+  };
+}
+
+function appendSystemText(current: string, next: string): string {
+  if (!next) {
+    return current;
+  }
+  return current ? `${current}\n\n${next}` : next;
+}
+
 function buildContent(
-  parts: readonly PromptPart[],
+  text: string,
+  reasoning: string | undefined,
+  toolCalls:
+    | readonly { toolCallId: string; toolName: string; input: unknown }[]
+    | undefined,
   includeToolCalls: boolean
 ): ContentBlockParam[] {
   const content: ContentBlockParam[] = [];
-  let buf = "";
-  const flush = () => {
-    if (buf) {
-      content.push({ type: "text", text: buf });
-      buf = "";
-    }
-  };
-  for (const p of parts) {
-    if (p.type === "text") buf += p.text;
-    else if (p.type === "reasoning")
-      buf += `<thinking>\n${p.text}\n</thinking>`;
-    else if (p.type === "tool-call" && includeToolCalls) {
-      flush();
-      const tc = p as ToolCall;
+  let textBlock = text;
+
+  if (reasoning) {
+    textBlock += `<thinking>\n${reasoning}\n</thinking>`;
+  }
+
+  if (textBlock) {
+    content.push({ type: "text", text: textBlock });
+  }
+
+  if (includeToolCalls && toolCalls) {
+    for (const tc of toolCalls) {
       content.push({
         type: "tool_use",
         id: tc.toolCallId,
@@ -83,37 +134,36 @@ function buildContent(
       });
     }
   }
-  flush();
+
   return content;
 }
 
-const textFrom = (parts: readonly PromptPart[]) => {
-  let r = "";
-  for (const p of parts) {
-    if (p.type === "text") r += p.text;
-    else if (p.type === "reasoning")
-      r += `<thinking>\n${p.text}\n</thinking>\n`;
-  }
-  return r;
-};
-
 function countContentBlockTokens(b: ContentBlockParam): number {
-  if (b.type === "text") return countText(b.text);
-  if (b.type === "tool_use") return countText(b.name + safeStringify(b.input));
+  if (b.type === "text") {
+    return countText(b.text);
+  }
+  if (b.type === "tool_use") {
+    return countText(b.name + safeStringify(b.input));
+  }
   if (b.type === "tool_result") {
     const c = b.content;
-    if (typeof c === "string") return countText(c);
-    if (Array.isArray(c))
+    if (typeof c === "string") {
+      return countText(c);
+    }
+    if (Array.isArray(c)) {
       return c.reduce(
         (n, e) => n + (e.type === "text" ? countText(e.text) : 0),
         0
       );
+    }
   }
   return 0;
 }
 
 function countAnthropicMessageTokens(msg: MessageParam): number {
-  if (typeof msg.content === "string") return countText(msg.content);
+  if (typeof msg.content === "string") {
+    return countText(msg.content);
+  }
   return msg.content.reduce((n, b) => n + countContentBlockTokens(b), 0);
 }
 

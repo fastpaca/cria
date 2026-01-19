@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { VectorMemory, VectorSearchResult } from "../memory";
-import type { PromptElement } from "../types";
+import type { PromptPart } from "../types";
 import { VectorSearch } from "./vector-search";
 
 // Mock data for testing
@@ -57,23 +57,9 @@ function createMockStore<T>(results: VectorSearchResult<T>[]) {
   };
 }
 
-const PLAIN_TEXT_REGEX = /plain text/;
+const PLAIN_TEXT_REGEX = /text parts/;
 
-describe("VectorSearch", () => {
-  it("uses children as the query and renders results", async () => {
-    const { store, getLastQuery, getLastOptions } =
-      createMockStore(mockResults);
-
-    const element = await VectorSearch({
-      store,
-      limit: 2,
-      children: ["Find docs about RAG"],
-    });
-
-    expect(getLastQuery()).toBe("Find docs about RAG");
-    expect(getLastOptions()).toEqual({ limit: 2 });
-    expect(element.children[0]).toBe(
-      `[1] (score: 0.950)
+const expectedResults = `[1] (score: 0.950)
 {
   "title": "First Document",
   "content": "This is the first document."
@@ -83,8 +69,28 @@ describe("VectorSearch", () => {
 {
   "title": "Second Document",
   "content": "This is the second document."
-}`
-    );
+}`;
+
+describe("VectorSearch", () => {
+  it("uses children as the query and renders results", async () => {
+    const { store, getLastQuery, getLastOptions } =
+      createMockStore(mockResults);
+
+    const element = await VectorSearch({
+      store,
+      limit: 2,
+      children: [{ type: "text", text: "Find docs about RAG" }],
+    });
+
+    expect(getLastQuery()).toBe("Find docs about RAG");
+    expect(getLastOptions()).toEqual({ limit: 2 });
+    expect(element.children[0]?.kind).toBe("message");
+    const message = element.children[0];
+    if (message?.kind === "message") {
+      const part = message.children[0] as PromptPart | undefined;
+      expect(part?.type).toBe("text");
+      expect(part && "text" in part ? part.text : "").toBe(expectedResults);
+    }
   });
 
   it("derives query from the last user message by default", async () => {
@@ -97,19 +103,11 @@ describe("VectorSearch", () => {
     const element = await VectorSearch({ store, messages });
 
     expect(getLastQuery()).toBe("What is RAG?");
-    expect(element.children[0]).toBe(
-      `[1] (score: 0.950)
-{
-  "title": "First Document",
-  "content": "This is the first document."
-}
-
-[2] (score: 0.820)
-{
-  "title": "Second Document",
-  "content": "This is the second document."
-}`
-    );
+    const message = element.children[0];
+    if (message?.kind === "message") {
+      expect(message.children[0]?.type).toBe("text");
+      expect(message.children[0]?.text).toBe(expectedResults);
+    }
   });
 
   it("uses a custom extractor when provided", async () => {
@@ -126,19 +124,10 @@ describe("VectorSearch", () => {
     });
 
     expect(getLastQuery()).toBe("custom-query");
-    expect(element.children[0]).toBe(
-      `[1] (score: 0.950)
-{
-  "title": "First Document",
-  "content": "This is the first document."
-}
-
-[2] (score: 0.820)
-{
-  "title": "Second Document",
-  "content": "This is the second document."
-}`
-    );
+    const message = element.children[0];
+    if (message?.kind === "message") {
+      expect(message.children[0]?.text).toBe(expectedResults);
+    }
   });
 
   it("handles empty results without throwing", async () => {
@@ -149,7 +138,12 @@ describe("VectorSearch", () => {
       query: "nothing here",
     });
 
-    expect(element.children[0]).toBe("Vector search returned no results.");
+    const message = element.children[0];
+    if (message?.kind === "message") {
+      expect(message.children[0]?.text).toBe(
+        "Vector search returned no results."
+      );
+    }
   });
 
   it("throws when no query is available", async () => {
@@ -167,17 +161,21 @@ describe("VectorSearch", () => {
       formatResults: (results) => `Found ${results.length} results`,
     });
 
-    expect(element.children[0]).toBe("Found 2 results");
+    const message = element.children[0];
+    if (message?.kind === "message") {
+      expect(message.children[0]?.text).toBe("Found 2 results");
+    }
   });
 
   it("rejects non-text children", async () => {
     const { store } = createMockStore(mockResults);
-    const badChild = { priority: 0, children: [] } as PromptElement;
 
     await expect(
       VectorSearch({
         store,
-        children: [badChild],
+        children: [
+          { type: "tool-call", toolCallId: "t1", toolName: "tool", input: {} },
+        ],
       })
     ).rejects.toThrow(PLAIN_TEXT_REGEX);
   });

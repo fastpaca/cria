@@ -1,6 +1,6 @@
 import type { Attributes, Span, Tracer } from "@opentelemetry/api";
 import { describe, expect, test } from "vitest";
-import { Message, Omit, render } from "../index";
+import { Message, Omit, render, Scope } from "../index";
 import { createTestProvider } from "../testing/plaintext";
 import { createOtelRenderHooks } from "./otel";
 
@@ -78,13 +78,23 @@ const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
 const FIT_ERROR = /Cannot fit prompt/;
 
+const text = (value: string) => ({ type: "text", text: value }) as const;
+
 describe("createOtelRenderHooks", () => {
   test("emits spans for fit lifecycle", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Message({
-      messageRole: "user",
-      children: ["A", Omit({ priority: 1, children: ["BBBB"] })],
+    const element = Scope({
+      priority: 0,
+      children: [
+        Message({ messageRole: "user", children: [text("A")] }),
+        Omit({
+          priority: 1,
+          children: [
+            Message({ messageRole: "user", children: [text("BBBB")] }),
+          ],
+        }),
+      ],
     });
 
     await render(element, { provider, budget: tokensFor("A"), hooks });
@@ -105,7 +115,12 @@ describe("createOtelRenderHooks", () => {
   test("records errors on fit failure", async () => {
     const tracer = new StubTracer();
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Message({ messageRole: "user", children: ["Too long"] });
+    const element = Scope({
+      priority: 0,
+      children: [
+        Message({ messageRole: "user", children: [text("Too long")] }),
+      ],
+    });
 
     await expect(
       render(element, {
@@ -128,7 +143,10 @@ describe("createOtelRenderHooks", () => {
     } as unknown as Tracer;
 
     const hooks = createOtelRenderHooks({ tracer });
-    const element = Message({ messageRole: "user", children: ["Hello"] });
+    const element = Scope({
+      priority: 0,
+      children: [Message({ messageRole: "user", children: [text("Hello")] })],
+    });
 
     await expect(
       render(element, {

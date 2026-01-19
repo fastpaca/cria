@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { Message, Region, ToolCall, ToolResult } from "../components";
+import { Message, Scope, ToolCall, ToolResult } from "../components";
 import { render } from "../render";
 import { ModelProvider, type PromptRenderer } from "../types";
 import { AiSdkRenderer } from "./ai-sdk";
@@ -27,18 +27,20 @@ class RenderOnlyProvider<T> extends ModelProvider<T> {
 
 const provider = new RenderOnlyProvider(new AiSdkRenderer());
 
+const text = (value: string) => ({ type: "text", text: value }) as const;
+
 test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result)", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "user",
-        children: ["hi"],
+        children: [text("hi")],
       }),
       Message({
         messageRole: "assistant",
         children: [
-          "checking weather",
+          text("checking weather"),
           ToolCall({
             toolCallId: "w1",
             toolName: "getWeather",

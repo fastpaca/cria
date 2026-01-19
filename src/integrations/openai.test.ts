@@ -1,11 +1,5 @@
 import { expect, test } from "vitest";
-import {
-  Message,
-  Reasoning,
-  Region,
-  ToolCall,
-  ToolResult,
-} from "../components";
+import { Message, Reasoning, Scope, ToolCall, ToolResult } from "../components";
 import { render } from "../render";
 import { ModelProvider, type PromptRenderer } from "../types";
 import { OpenAIChatRenderer, OpenAIResponsesRenderer } from "./openai";
@@ -35,13 +29,15 @@ const chatProvider = new RenderOnlyProvider(new OpenAIChatRenderer());
 
 const responsesProvider = new RenderOnlyProvider(new OpenAIResponsesRenderer());
 
+const text = (value: string) => ({ type: "text", text: value }) as const;
+
 test("chatCompletions: renders system message", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "system",
-        children: ["You are a helpful assistant."],
+        children: [text("You are a helpful assistant.")],
       }),
     ],
   });
@@ -58,13 +54,13 @@ test("chatCompletions: renders system message", async () => {
 });
 
 test("chatCompletions: renders user and assistant messages", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
-      Message({ messageRole: "user", children: ["Hello!"] }),
+      Message({ messageRole: "user", children: [text("Hello!")] }),
       Message({
         messageRole: "assistant",
-        children: ["Hi there! How can I help?"],
+        children: [text("Hi there! How can I help?")],
       }),
     ],
   });
@@ -82,16 +78,15 @@ test("chatCompletions: renders user and assistant messages", async () => {
 });
 
 test("chatCompletions: renders tool calls on assistant message", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "assistant",
         children: [
-          "Let me check the weather.",
+          text("Let me check the weather."),
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -122,7 +117,7 @@ test("chatCompletions: renders tool calls on assistant message", async () => {
 });
 
 test("chatCompletions: renders tool results as separate tool messages", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
@@ -130,7 +125,6 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
         children: [
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -141,7 +135,6 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
         children: [
           ToolResult({
             output: { temperature: 20 },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -176,23 +169,22 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
 });
 
 test("chatCompletions: full conversation flow", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "system",
-        children: ["You are a weather assistant."],
+        children: [text("You are a weather assistant.")],
       }),
       Message({
         messageRole: "user",
-        children: ["What's the weather in Paris?"],
+        children: [text("What's the weather in Paris?")],
       }),
       Message({
         messageRole: "assistant",
         children: [
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_1",
             toolName: "getWeather",
           }),
@@ -203,7 +195,6 @@ test("chatCompletions: full conversation flow", async () => {
         children: [
           ToolResult({
             output: { temp: 18, condition: "sunny" },
-            priority: 1,
             toolCallId: "call_1",
             toolName: "getWeather",
           }),
@@ -211,7 +202,9 @@ test("chatCompletions: full conversation flow", async () => {
       }),
       Message({
         messageRole: "assistant",
-        children: ["The weather in Paris is sunny with a temperature of 18°C."],
+        children: [
+          text("The weather in Paris is sunny with a temperature of 18°C."),
+        ],
       }),
     ],
   });
@@ -255,14 +248,14 @@ test("chatCompletions: full conversation flow", async () => {
 });
 
 test("responses: renders messages as EasyInputMessage", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "system",
-        children: ["You are a helpful assistant."],
+        children: [text("You are a helpful assistant.")],
       }),
-      Message({ messageRole: "user", children: ["Hello!"] }),
+      Message({ messageRole: "user", children: [text("Hello!")] }),
     ],
   });
 
@@ -277,7 +270,7 @@ test("responses: renders messages as EasyInputMessage", async () => {
 });
 
 test("responses: renders tool calls as function_call items", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
@@ -285,7 +278,6 @@ test("responses: renders tool calls as function_call items", async () => {
         children: [
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -309,7 +301,7 @@ test("responses: renders tool calls as function_call items", async () => {
 });
 
 test("responses: renders tool results as function_call_output items", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
@@ -317,7 +309,6 @@ test("responses: renders tool results as function_call_output items", async () =
         children: [
           ToolResult({
             output: { temperature: 20 },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -340,18 +331,12 @@ test("responses: renders tool results as function_call_output items", async () =
 });
 
 test("responses: renders reasoning as native reasoning item", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "assistant",
-        children: [
-          Reasoning({
-            id: "r1",
-            priority: 1,
-            text: "Let me think about this...",
-          }),
-        ],
+        children: [Reasoning({ text: "Let me think about this..." })],
       }),
     ],
   });
@@ -369,23 +354,21 @@ test("responses: renders reasoning as native reasoning item", async () => {
   ]);
 });
 
-test("responses: preserves reasoning inside messages and keeps ordering", async () => {
-  const prompt = Region({
+test("responses: emits text before reasoning and tool calls", async () => {
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
-        id: "assistant-1",
         messageRole: "assistant",
         children: [
-          "Before",
-          Reasoning({ priority: 1, text: "thinking..." }),
+          text("Before"),
+          Reasoning({ text: "thinking..." }),
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
-          "After",
+          text("After"),
         ],
       }),
     ],
@@ -396,7 +379,7 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
   });
 
   expect(input).toEqual([
-    { role: "assistant", content: "Before" },
+    { role: "assistant", content: "BeforeAfter" },
     {
       id: "reasoning_0",
       type: "reasoning",
@@ -408,30 +391,29 @@ test("responses: preserves reasoning inside messages and keeps ordering", async 
       name: "getWeather",
       arguments: '{"city":"Paris"}',
     },
-    { role: "assistant", content: "After" },
   ]);
 });
 
 test("responses: full conversation with reasoning", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "system",
-        children: ["You are a helpful assistant."],
+        children: [text("You are a helpful assistant.")],
       }),
-      Message({ messageRole: "user", children: ["What is 2+2?"] }),
+      Message({
+        messageRole: "user",
+        children: [text("What is 2+2?")],
+      }),
       Message({
         messageRole: "assistant",
-        children: [
-          Reasoning({
-            id: "r-global",
-            priority: 1,
-            text: "This is basic arithmetic.",
-          }),
-        ],
+        children: [Reasoning({ text: "This is basic arithmetic." })],
       }),
-      Message({ messageRole: "assistant", children: ["The answer is 4."] }),
+      Message({
+        messageRole: "assistant",
+        children: [text("The answer is 4.")],
+      }),
     ],
   });
 

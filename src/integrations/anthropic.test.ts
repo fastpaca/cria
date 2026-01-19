@@ -1,11 +1,5 @@
 import { expect, test } from "vitest";
-import {
-  Message,
-  Reasoning,
-  Region,
-  ToolCall,
-  ToolResult,
-} from "../components";
+import { Message, Reasoning, Scope, ToolCall, ToolResult } from "../components";
 import { render } from "../render";
 import { ModelProvider, type PromptRenderer } from "../types";
 import { AnthropicRenderer } from "./anthropic";
@@ -33,15 +27,17 @@ class RenderOnlyProvider<T> extends ModelProvider<T> {
 
 const provider = new RenderOnlyProvider(new AnthropicRenderer());
 
+const text = (value: string) => ({ type: "text", text: value }) as const;
+
 test("anthropic: extracts system message separately", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "system",
-        children: ["You are a helpful assistant."],
+        children: [text("You are a helpful assistant.")],
       }),
-      Message({ messageRole: "user", children: ["Hello!"] }),
+      Message({ messageRole: "user", children: [text("Hello!")] }),
     ],
   });
 
@@ -54,11 +50,11 @@ test("anthropic: extracts system message separately", async () => {
 });
 
 test("anthropic: renders user and assistant messages", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
-      Message({ messageRole: "user", children: ["Hello!"] }),
-      Message({ messageRole: "assistant", children: ["Hi there!"] }),
+      Message({ messageRole: "user", children: [text("Hello!")] }),
+      Message({ messageRole: "assistant", children: [text("Hi there!")] }),
     ],
   });
 
@@ -73,7 +69,7 @@ test("anthropic: renders user and assistant messages", async () => {
 });
 
 test("anthropic: renders tool calls as tool_use blocks", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
@@ -81,7 +77,6 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
         children: [
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -110,7 +105,7 @@ test("anthropic: renders tool calls as tool_use blocks", async () => {
 });
 
 test("anthropic: renders tool results in user messages", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
@@ -118,7 +113,6 @@ test("anthropic: renders tool results in user messages", async () => {
         children: [
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -129,7 +123,6 @@ test("anthropic: renders tool results in user messages", async () => {
         children: [
           ToolResult({
             output: { temperature: 20 },
-            priority: 1,
             toolCallId: "call_123",
             toolName: "getWeather",
           }),
@@ -168,24 +161,23 @@ test("anthropic: renders tool results in user messages", async () => {
 });
 
 test("anthropic: full conversation with tool use", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "system",
-        children: ["You are a weather assistant."],
+        children: [text("You are a weather assistant.")],
       }),
       Message({
         messageRole: "user",
-        children: ["What's the weather in Paris?"],
+        children: [text("What's the weather in Paris?")],
       }),
       Message({
         messageRole: "assistant",
         children: [
-          "Let me check.",
+          text("Let me check."),
           ToolCall({
             input: { city: "Paris" },
-            priority: 1,
             toolCallId: "call_1",
             toolName: "getWeather",
           }),
@@ -196,7 +188,6 @@ test("anthropic: full conversation with tool use", async () => {
         children: [
           ToolResult({
             output: { temp: 18 },
-            priority: 1,
             toolCallId: "call_1",
             toolName: "getWeather",
           }),
@@ -204,7 +195,7 @@ test("anthropic: full conversation with tool use", async () => {
       }),
       Message({
         messageRole: "assistant",
-        children: ["The temperature in Paris is 18°C."],
+        children: [text("The temperature in Paris is 18°C.")],
       }),
     ],
   });
@@ -254,14 +245,14 @@ test("anthropic: full conversation with tool use", async () => {
 });
 
 test("anthropic: includes reasoning as text with thinking tags", async () => {
-  const prompt = Region({
+  const prompt = Scope({
     priority: 0,
     children: [
       Message({
         messageRole: "assistant",
         children: [
-          Reasoning({ priority: 1, text: "Let me think about this..." }),
-          "The answer is 4.",
+          Reasoning({ text: "Let me think about this..." }),
+          text("The answer is 4."),
         ],
       }),
     ],
@@ -276,7 +267,7 @@ test("anthropic: includes reasoning as text with thinking tags", async () => {
         content: [
           {
             type: "text",
-            text: "<thinking>\nLet me think about this...\n</thinking>The answer is 4.",
+            text: "The answer is 4.<thinking>\nLet me think about this...\n</thinking>",
           },
         ],
       },

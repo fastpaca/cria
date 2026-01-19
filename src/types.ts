@@ -1,12 +1,13 @@
 import type { z } from "zod";
 
 /**
- * Message role used by semantic `kind: "message"` regions.
+ * Message role used by semantic `kind: "message"` nodes.
  *
  * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool),
  * while still allowing custom roles for bespoke targets.
  */
-export type PromptRole = string;
+export type KnownPromptRole = "system" | "user" | "assistant" | "tool";
+export type PromptRole = KnownPromptRole | (string & {});
 
 /**
  * A model provider that can generate completions.
@@ -54,8 +55,7 @@ export interface CriaContext {
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
- * Content parts that appear as leaf nodes in the prompt tree.
- * These are the actual semantic content (text, tool calls, etc.).
+ * Content parts that appear as leaf nodes in message nodes.
  */
 export type PromptPart =
   | { type: "text"; text: string }
@@ -70,59 +70,81 @@ export type PromptPart =
 
 export type ToolCallPart = Extract<PromptPart, { type: "tool-call" }>;
 export type ToolResultPart = Extract<PromptPart, { type: "tool-result" }>;
+export type ReasoningPart = Extract<PromptPart, { type: "reasoning" }>;
+export type TextPart = Extract<PromptPart, { type: "text" }>;
 
 /**
- * Structural node in the prompt tree. Contains metadata (priority, strategy)
- * and children, which can be parts, other nodes, or strings (which become text parts).
+ * Structural scope node in the prompt tree.
+ * Scopes group messages for compaction and composition.
  */
-export type PromptNode =
-  | {
-      priority: number;
-      strategy?: Strategy | undefined;
-      id?: string | undefined;
-      context?: CriaContext | undefined;
-      children: PromptChild[];
-    }
-  | {
-      priority: number;
-      strategy?: Strategy | undefined;
-      id?: string | undefined;
-      context?: CriaContext | undefined;
-      kind: "message";
-      role: PromptRole;
-      children: PromptChild[];
-    };
+export interface PromptScope {
+  kind: "scope";
+  priority: number;
+  strategy?: Strategy | undefined;
+  id?: string | undefined;
+  context?: CriaContext | undefined;
+  children: readonly PromptNode[];
+}
 
 /**
- * A child in the prompt tree can be:
- * - A string (converted to text part during layout)
- * - A PromptPart (content leaf)
- * - A PromptNode (structural container)
+ * Message boundary node in the prompt tree.
  */
-export type PromptChild = string | PromptPart | PromptNode;
-export type PromptChildren = PromptChild[];
-
-/**
- * The root of a prompt tree. Alias for backward compatibility.
- * Design: PromptTree (PromptNode with PromptPart leaves) -> PromptLayout (PromptPart[], message-bounded)
- * -> RenderOut. Layout flattens the tree into a linear sequence of parts grouped by messages.
- */
-export type PromptElement = PromptNode;
-
-export type MessageElement = Extract<PromptNode, { kind: "message" }>;
-export type ToolCallElement = Extract<PromptPart, { type: "tool-call" }>;
-export type ToolResultElement = Extract<PromptPart, { type: "tool-result" }>;
-export type ReasoningElement = Extract<PromptPart, { type: "reasoning" }>;
-
-export interface PromptMessage {
-  // Tool messages are strict: exactly one tool-result part, no text.
+export interface PromptMessageNode {
+  kind: "message";
   role: PromptRole;
-  parts: PromptPart[];
+  id?: string | undefined;
+  children: readonly PromptPart[];
 }
 
-export interface PromptLayout {
-  messages: PromptMessage[];
+export type PromptNode = PromptScope | PromptMessageNode;
+export type PromptTree = PromptScope;
+
+export type ScopeChildren = readonly PromptNode[];
+export type MessageChildren = readonly PromptPart[];
+
+export type ScopeElement = PromptScope;
+export type MessageElement = PromptMessageNode;
+export type ToolCallElement = ToolCallPart;
+export type ToolResultElement = ToolResultPart;
+export type ReasoningElement = ReasoningPart;
+
+export interface SystemMessage {
+  role: "system";
+  text: string;
 }
+
+export interface UserMessage {
+  role: "user";
+  text: string;
+}
+
+export interface AssistantMessage {
+  role: "assistant";
+  text: string;
+  reasoning?: string | undefined;
+  toolCalls?: readonly ToolCallPart[] | undefined;
+}
+
+export interface ToolMessage {
+  role: "tool";
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+}
+
+export interface CustomMessage {
+  role: PromptRole;
+  text: string;
+}
+
+export type PromptMessage =
+  | SystemMessage
+  | UserMessage
+  | AssistantMessage
+  | ToolMessage
+  | CustomMessage;
+
+export type PromptLayout = readonly PromptMessage[];
 
 /**
  * A renderer that converts a flat prompt layout into provider-specific output.
@@ -132,18 +154,18 @@ export abstract class PromptRenderer<TOutput> {
   abstract render(layout: PromptLayout): TOutput;
 }
 
-export type StrategyResult = PromptElement | null;
+export type StrategyResult = PromptScope | null;
 
 /**
  * Context passed to strategy functions during the fit loop.
  *
- * @property target - The specific region to reduce
+ * @property target - The specific scope to reduce
  * @property totalTokens - Current total token count for the prompt
  * @property iteration - Which iteration of the fit loop (for debugging)
  * @property context - Inherited context from ancestor provider components
  */
 export interface StrategyInput {
-  target: PromptElement;
+  target: PromptScope;
   totalTokens: number;
   iteration: number;
   /** Context inherited from ancestor provider components */
@@ -151,11 +173,11 @@ export interface StrategyInput {
 }
 
 /**
- * A Strategy function that rewrites a region subtree when the prompt is over budget.
+ * A Strategy function that rewrites a scope subtree when the prompt is over budget.
  *
  * Strategies are applied during fitting, starting from the least important
  * priority (highest number). Strategies run **bottom-up** (post-order) so nested
- * regions get a chance to shrink before their parents.
+ * scopes get a chance to shrink before their parents.
  *
  * Strategies must be:
  * - **Pure**: don't mutate the input element

@@ -7,37 +7,32 @@ import type {
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { z } from "zod";
 import { safeStringify } from "../renderers/shared";
-import type { PromptLayout, PromptPart } from "../types";
+import type { PromptLayout } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
-type ToolCall = Extract<PromptPart, { type: "tool-call" }>;
-type ToolResult = Extract<PromptPart, { type: "tool-result" }>;
-
 export class OpenAIChatRenderer extends PromptRenderer<
   ChatCompletionMessageParam[]
 > {
   render(layout: PromptLayout): ChatCompletionMessageParam[] {
-    return layout.messages.map((m) => {
+    return layout.map((m) => {
       if (m.role === "system") {
-        return { role: "system", content: textFrom(m.parts) };
+        return { role: "system", content: m.text };
       }
       if (m.role === "user") {
-        return { role: "user", content: textFrom(m.parts) };
+        return { role: "user", content: m.text };
       }
       if (m.role === "assistant") {
-        const text = textFrom(m.parts);
-        const toolCalls = m.parts.filter(
-          (p) => p.type === "tool-call"
-        ) as ToolCall[];
         const result: ChatCompletionAssistantMessageParam = {
           role: "assistant",
         };
-        if (text) result.content = text;
-        if (toolCalls.length > 0) {
-          result.tool_calls = toolCalls.map((tc) => ({
+        if (m.text) {
+          result.content = m.text;
+        }
+        if (m.toolCalls && m.toolCalls.length > 0) {
+          result.tool_calls = m.toolCalls.map((tc) => ({
             id: tc.toolCallId,
             type: "function",
             function: { name: tc.toolName, arguments: safeStringify(tc.input) },
@@ -45,12 +40,16 @@ export class OpenAIChatRenderer extends PromptRenderer<
         }
         return result;
       }
-      // tool
-      const p = m.parts[0] as ToolResult;
+      if (m.role === "tool") {
+        return {
+          role: "tool",
+          tool_call_id: m.toolCallId,
+          content: safeStringify(m.output),
+        };
+      }
       return {
-        role: "tool",
-        tool_call_id: p.toolCallId,
-        content: safeStringify(p.output),
+        role: m.role as ChatCompletionMessageParam["role"],
+        content: m.text,
       };
     });
   }
@@ -61,82 +60,80 @@ export class OpenAIResponsesRenderer extends PromptRenderer<
 > {
   render(layout: PromptLayout): ResponseInputItem[] {
     let idx = 0;
-    return layout.messages.flatMap((m) => {
+    return layout.flatMap((m) => {
       if (m.role === "tool") {
-        const p = m.parts[0] as ToolResult;
         return [
           {
             type: "function_call_output" as const,
-            call_id: p.toolCallId,
-            output: safeStringify(p.output),
+            call_id: m.toolCallId,
+            output: safeStringify(m.output),
           },
         ];
       }
+
       const role = m.role as "system" | "user" | "assistant";
       const items: ResponseInputItem[] = [];
-      let buf = "";
-      const flush = () => {
-        if (buf) {
-          items.push({ role, content: buf } as ResponseInputItem);
-          buf = "";
-        }
-      };
-      for (const p of m.parts) {
-        if (p.type === "text") buf += p.text;
-        else if (p.type === "reasoning") {
-          flush();
-          items.push({
-            id: `reasoning_${idx++}`,
-            type: "reasoning",
-            summary: [{ type: "summary_text", text: p.text }],
-          });
-        } else if (p.type === "tool-call") {
-          flush();
+
+      if (m.text) {
+        items.push({ role, content: m.text } as ResponseInputItem);
+      }
+
+      if (m.role === "assistant" && m.reasoning) {
+        items.push({
+          id: `reasoning_${idx++}`,
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: m.reasoning }],
+        });
+      }
+
+      if (m.role === "assistant" && m.toolCalls) {
+        for (const tc of m.toolCalls) {
           items.push({
             type: "function_call",
-            call_id: p.toolCallId,
-            name: p.toolName,
-            arguments: safeStringify(p.input),
+            call_id: tc.toolCallId,
+            name: tc.toolName,
+            arguments: safeStringify(tc.input),
           });
         }
       }
-      flush();
+
       return items;
     });
   }
 }
 
-const textFrom = (parts: readonly PromptPart[]) =>
-  parts
-    .filter((p) => p.type === "text")
-    .map((p) => p.text)
-    .join("");
-
 function countChatMessageTokens(msg: ChatCompletionMessageParam): number {
   let n = 0;
-  if ("content" in msg && typeof msg.content === "string")
+  if ("content" in msg && typeof msg.content === "string") {
     n += countText(msg.content);
+  }
   if ("tool_calls" in msg && msg.tool_calls) {
-    for (const c of msg.tool_calls)
+    for (const c of msg.tool_calls) {
       n += countText(c.function.name + c.function.arguments);
+    }
   }
   return n;
 }
 
 function countResponseItemTokens(item: ResponseInputItem): number {
-  if ("content" in item && typeof item.content === "string")
+  if ("content" in item && typeof item.content === "string") {
     return countText(item.content);
+  }
   if (item.type === "message" && Array.isArray(item.content)) {
     return (item.content as { text?: string }[]).reduce(
       (n, c) => n + (c.text ? countText(c.text) : 0),
       0
     );
   }
-  if (item.type === "reasoning")
+  if (item.type === "reasoning") {
     return item.summary.reduce((n, s) => n + countText(s.text), 0);
-  if (item.type === "function_call")
+  }
+  if (item.type === "function_call") {
     return countText(item.name + item.arguments);
-  if (item.type === "function_call_output") return countText(item.output);
+  }
+  if (item.type === "function_call_output") {
+    return countText(item.output);
+  }
   return 0;
 }
 

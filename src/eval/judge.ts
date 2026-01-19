@@ -1,7 +1,8 @@
 import { z } from "zod";
+import type { TextInput } from "../dsl";
 import { c, cria } from "../dsl";
 import { render } from "../render";
-import type { ModelProvider, PromptChildren, PromptElement } from "../types";
+import type { ModelProvider, PromptTree } from "../types";
 
 export const DEFAULT_THRESHOLD = 0.8;
 
@@ -19,10 +20,10 @@ export interface EvalResult {
 }
 
 export interface Judgment {
-  toPass(criterion: PromptChildren): Promise<void>;
+  toPass(criterion: TextInput): Promise<void>;
 }
 
-export type Judge = (prompt: PromptElement) => Judgment;
+export type Judge = (prompt: PromptTree) => Judgment;
 
 const EvalResultSchema = z.object({
   score: z.number().min(0).max(1),
@@ -32,8 +33,8 @@ const EvalResultSchema = z.object({
 export function createJudge(config: JudgeConfig): Judge {
   const { target, evaluator, threshold = DEFAULT_THRESHOLD } = config;
 
-  return (prompt: PromptElement): Judgment => {
-    const evaluate = async (criterion: PromptChildren): Promise<EvalResult> => {
+  return (prompt: PromptTree): Judgment => {
+    const evaluate = async (criterion: TextInput): Promise<EvalResult> => {
       const response = await target.completion(
         await render(prompt, { provider: target })
       );
