@@ -39,7 +39,7 @@ const documentSections = (docs: typeof documents): Prompt =>
       .message(
         "assistant",
         `Here are some reference documents:\n\n### ${doc.title}\n${doc.content}\n\n`,
-        { priority: 3, id: `doc-${i}` }
+        { id: `doc-${i}` }
       );
     return cria.merge(acc, section);
   }, cria.prompt());
@@ -49,14 +49,12 @@ const historySections = (history: typeof conversationHistory): Prompt =>
     const section = cria
       .prompt()
       .message(msg.role as "user" | "assistant", msg.content, {
-        priority: 2,
         id: `msg-${i}`,
       });
     return cria.merge(acc, section);
   }, cria.prompt());
 
-const systemRules = (text: string): Prompt =>
-  cria.prompt().system(text, { priority: 0 });
+const systemRules = (text: string): Prompt => cria.prompt().system(text);
 
 const withDocuments = (docs: typeof documents): Prompt =>
   cria.prompt().omit(documentSections(docs), { priority: 3, id: "documents" });
@@ -70,7 +68,7 @@ const withHistory = (history: typeof conversationHistory): Prompt =>
   });
 
 const userRequest = (question: string): Prompt =>
-  cria.prompt().user(question, { priority: 1, id: "question" });
+  cria.prompt().user(question, { id: "question" });
 
 const prompt = cria.merge(
   systemRules(systemPrompt),

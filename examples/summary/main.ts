@@ -30,22 +30,18 @@ const systemRules = (): Prompt =>
     );
 
 const summaryBlock = (): Prompt =>
-  cria.prompt().user((m) =>
-    m.summary(fullHistory, {
-      id: "running-summary",
-      store,
-      priority: 2,
-    })
-  );
+  cria.prompt().summary(cria.prompt().user(fullHistory), {
+    id: "running-summary",
+    store,
+    priority: 2,
+  });
 
 const recentHistory = (): Prompt =>
-  cria.prompt().user((m) =>
-    m.truncate(recentTurns, {
-      budget: 200,
-      from: "start",
-      priority: 1,
-    })
-  );
+  cria.prompt().truncate(cria.prompt().user(recentTurns), {
+    budget: 200,
+    from: "start",
+    priority: 1,
+  });
 
 const userRequest = (question: string): Prompt => cria.prompt().user(question);
 

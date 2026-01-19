@@ -268,7 +268,7 @@ describe("PromptBuilder", () => {
           priority: 1,
         });
 
-      const summaryOutput = "system: [Summary of earlier conversation]\nS";
+      const summaryOutput = "system: S";
       const fullOutput = `user: ${"x".repeat(200)}`;
       const budget =
         tokensFor(fullOutput) > tokensFor(summaryOutput)
