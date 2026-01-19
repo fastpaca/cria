@@ -27,7 +27,7 @@ const messages = await cria
   .prompt()
   .system("You are a research assistant.")
   .vectorSearch({ store, query: question, limit: 10 })
-  .provider(provider, (p) =>
+  .providerScope(provider, (p) =>
     p.summary(conversation, { store: memory }).last(conversation, { N: 20 })
   )
   .user(question)

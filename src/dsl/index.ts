@@ -39,6 +39,7 @@ export { c, type TextInput } from "./templating";
 export type { ResultFormatter } from "./vector-search";
 
 import type {
+  ModelProvider,
   PromptMessageNode,
   PromptRole,
   PromptScope,
@@ -66,6 +67,17 @@ function scope(
   return createScope(children, opts);
 }
 
+function createPrompt(): PromptBuilder<unknown>;
+function createPrompt<TProvider extends ModelProvider<unknown>>(
+  provider: TProvider
+): PromptBuilder<TProvider>;
+function createPrompt(provider?: ModelProvider<unknown>) {
+  if (provider === undefined) {
+    return PromptBuilder.create();
+  }
+  return PromptBuilder.create(provider);
+}
+
 /**
  * Namespace for building prompts as code.
  *
@@ -86,7 +98,7 @@ function scope(
  * ```
  */
 export const cria = {
-  prompt: () => PromptBuilder.create(),
+  prompt: createPrompt,
   c: templateC,
   merge: (...builders: PromptBuilder[]) => {
     const [first, ...rest] = builders;
@@ -106,7 +118,7 @@ export const cria = {
 /**
  * Standalone function to create a new prompt builder.
  */
-export const prompt = () => PromptBuilder.create();
+export const prompt = createPrompt;
 
 /**
  * Merge multiple builders into one (zod-like merge).

@@ -121,7 +121,7 @@ export function Summary({
         );
       } else {
         throw new Error(
-          `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to render() or wrap the summary in cria.provider(modelProvider, (p) => p.summary(...)).`
+          `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to render(), bind one with cria.prompt(provider) or cria.prompt().provider(provider), or wrap the summary in cria.prompt().providerScope(provider, (p) => p.summary(...)).`
         );
       }
 

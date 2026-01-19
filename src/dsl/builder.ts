@@ -36,9 +36,13 @@ import { VectorSearch } from "./vector-search";
 /**
  * Content that can be passed to scope-level operations like truncate/omit.
  */
+type AnyPromptBuilder =
+  | PromptBuilder<unknown>
+  | PromptBuilder<ModelProvider<unknown>>;
+
 export type ScopeContent =
   | PromptNode
-  | PromptBuilder
+  | AnyPromptBuilder
   | Promise<PromptNode>
   | readonly ScopeContent[];
 
@@ -49,17 +53,20 @@ export type ScopeContent =
 export type BuilderChild =
   | PromptNode
   | PromptPart
-  | PromptBuilder
+  | AnyPromptBuilder
   | string
   | number
   | boolean
   | Promise<PromptNode | PromptPart | string | number | boolean>;
 
-type RenderResult<TOptions extends RenderOptions> = TOptions extends {
-  provider: ModelProvider<infer TOutput>;
-}
-  ? TOutput
-  : unknown;
+type BoundProvider = ModelProvider<unknown>;
+type ProviderFor<P> = P extends BoundProvider ? P : undefined;
+type RenderedForProvider<P> =
+  P extends ModelProvider<infer TOutput> ? TOutput : unknown;
+type RenderOptionsWithoutProvider<TRendered> = Omit<
+  RenderOptions<TRendered>,
+  "provider"
+>;
 
 /**
  * Shared fluent API for prompt-level and message-level builders.
@@ -124,7 +131,9 @@ export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
   }
 }
 
-export class MessageBuilder extends BuilderBase<MessageBuilder> {
+export class MessageBuilder<P = unknown> extends BuilderBase<
+  MessageBuilder<P>
+> {
   constructor(
     children: BuilderChild[] = [],
     context: CriaContext | undefined = undefined
@@ -135,11 +144,11 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
   protected create(
     children: BuilderChild[],
     context: CriaContext | undefined
-  ): MessageBuilder {
-    return new MessageBuilder(children, context);
+  ): MessageBuilder<P> {
+    return new MessageBuilder<P>(children, context);
   }
 
-  append(content: TextInput): MessageBuilder {
+  append(content: TextInput): MessageBuilder<P> {
     const normalized = normalizeTextInput(content);
     return this.addChildren(normalized);
   }
@@ -153,7 +162,7 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
     limit?: number;
     threshold?: number;
     formatter?: ResultFormatter<T>;
-  }): MessageBuilder {
+  }): MessageBuilder<P> {
     const props: Parameters<typeof VectorSearch<T>>[0] = {
       store: opts.store,
       query: opts.query,
@@ -178,7 +187,7 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
   /**
    * Add a formatted list of examples.
    */
-  examples(title: string, items: string[]): MessageBuilder {
+  examples(title: string, items: string[]): MessageBuilder<P> {
     const element = formatExamples(title, items);
     return this.addChild(element);
   }
@@ -195,32 +204,71 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
  * child arrays, so keep prompts reasonably sized.
  * Call `.build()` to get the final `PromptTree`.
  */
-export class PromptBuilder extends BuilderBase<PromptBuilder> {
+export class PromptBuilder<P = unknown> extends BuilderBase<PromptBuilder<P>> {
+  private readonly boundProvider: ProviderFor<P> | undefined;
+
   private constructor(
     children: BuilderChild[] = [],
-    context: CriaContext | undefined = undefined
+    context: CriaContext | undefined = undefined,
+    provider: ProviderFor<P> | undefined = undefined
   ) {
-    super(children, context);
+    const existingProvider = context?.provider;
+    if (provider && existingProvider && provider !== existingProvider) {
+      throw new Error(
+        "Cannot create a prompt builder with a mismatched provider."
+      );
+    }
+    const nextContext =
+      provider && (!context || context.provider !== provider)
+        ? { ...(context ?? {}), provider }
+        : context;
+    super(children, nextContext);
+    this.boundProvider = provider;
   }
 
   /**
    * Create a new empty prompt builder.
    */
-  static create(): PromptBuilder {
-    return new PromptBuilder();
+  static create(): PromptBuilder<unknown>;
+  static create<TProvider extends BoundProvider>(
+    provider: TProvider
+  ): PromptBuilder<TProvider>;
+  static create(provider?: BoundProvider) {
+    if (!provider) {
+      return new PromptBuilder();
+    }
+    return new PromptBuilder([], undefined, provider);
   }
 
   protected create(
     children: BuilderChild[],
     context: CriaContext | undefined
-  ): PromptBuilder {
-    return new PromptBuilder(children, context);
+  ): PromptBuilder<P> {
+    return new PromptBuilder<P>(children, context, this.boundProvider);
+  }
+
+  /**
+   * Bind this prompt builder to a provider.
+   * Enables provider-specific rendering without passing a provider at render time.
+   */
+  provider<TProvider extends BoundProvider>(
+    modelProvider: TProvider
+  ): PromptBuilder<TProvider> {
+    if (this.context?.provider && this.context.provider !== modelProvider) {
+      throw new Error("Cannot bind a prompt builder to a different provider.");
+    }
+
+    return new PromptBuilder<TProvider>(
+      this.children,
+      this.context,
+      modelProvider
+    );
   }
 
   scope(
-    fn: (builder: PromptBuilder) => PromptBuilder,
+    fn: (builder: PromptBuilder<P>) => PromptBuilder<P>,
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     if (typeof fn !== "function") {
       throw new Error(
         `scope() requires a callback function. Received: ${typeof fn}`
@@ -248,7 +296,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
       priority?: number;
       id?: string;
     }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     const node = resolveScopeContent(content).then((children) =>
       createScope(children, {
         ...(opts.priority !== undefined && { priority: opts.priority }),
@@ -266,7 +314,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   omit(
     content: ScopeContent,
     opts?: { priority?: number; id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     const node = resolveScopeContent(content).then((children) =>
       createScope(children, {
         ...(opts?.priority !== undefined && { priority: opts.priority }),
@@ -288,17 +336,17 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    *
    * const provider = createProvider(openai("gpt-4o"));
    * cria.prompt()
-   *   .provider(provider, (p) =>
+   *   .providerScope(provider, (p) =>
    *     p.summary(content, { id: "conv", store })
    *   )
    * ```
    */
-  provider(
-    modelProvider: ModelProvider<unknown>,
-    fn: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder {
+  providerScope<TProvider extends BoundProvider>(
+    modelProvider: TProvider,
+    fn: (builder: PromptBuilder<TProvider>) => PromptBuilder<TProvider>
+  ): PromptBuilder<P> {
     const context: CriaContext = { provider: modelProvider };
-    const inner = fn(this.create([], context));
+    const inner = fn(PromptBuilder.create(modelProvider));
 
     const element = inner.buildChildren().then(
       (children): PromptScope => ({
@@ -323,7 +371,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
     formatter?: ResultFormatter<T>;
     priority?: number;
     id?: string;
-  }): PromptBuilder {
+  }): PromptBuilder<P> {
     const props: Parameters<typeof VectorSearch<T>>[0] = {
       store: opts.store,
       query: opts.query,
@@ -348,7 +396,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
       summarize?: Summarizer;
       priority?: number;
     }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     const element = resolveScopeContent(content).then((children) =>
       Summary({
         id: opts.id,
@@ -365,7 +413,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   /**
    * Add a raw PromptNode (escape hatch for advanced usage).
    */
-  raw(element: PromptNode | Promise<PromptNode>): PromptBuilder {
+  raw(element: PromptNode | Promise<PromptNode>): PromptBuilder<P> {
     return this.addChild(element);
   }
 
@@ -383,8 +431,13 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    * ```
    */
   override merge(
-    ...items: (PromptBuilder | PromptNode | readonly PromptNode[])[]
-  ): PromptBuilder {
+    ...items: (
+      | PromptBuilder<P>
+      | PromptBuilder<unknown>
+      | PromptNode
+      | readonly PromptNode[]
+    )[]
+  ): PromptBuilder<P> {
     const newChildren: BuilderChild[] = [...this.children];
     let nextContext = this.context;
 
@@ -396,7 +449,11 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   }
 
   private mergeItem(
-    item: PromptBuilder | PromptNode | readonly PromptNode[],
+    item:
+      | PromptBuilder<P>
+      | PromptBuilder<unknown>
+      | PromptNode
+      | readonly PromptNode[],
     target: BuilderChild[],
     currentContext: CriaContext | undefined
   ): CriaContext | undefined {
@@ -437,8 +494,8 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    */
   when(
     condition: boolean,
-    fn: (builder: PromptBuilder) => PromptBuilder
-  ): PromptBuilder {
+    fn: (builder: PromptBuilder<P>) => PromptBuilder<P>
+  ): PromptBuilder<P> {
     return condition ? fn(this) : this;
   }
 
@@ -446,9 +503,9 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    * Add a system message.
    */
   system(
-    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    content: TextInput | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     return this.addMessage("system", content, opts);
   }
 
@@ -456,9 +513,9 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    * Add a user message.
    */
   user(
-    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    content: TextInput | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     return this.addMessage("user", content, opts);
   }
 
@@ -466,9 +523,9 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    * Add an assistant message.
    */
   assistant(
-    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    content: TextInput | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     return this.addMessage("assistant", content, opts);
   }
 
@@ -478,7 +535,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
   tool(
     result: ToolResultPart | readonly ToolResultPart[],
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     const children = Array.isArray(result) ? [...result] : [result];
     const element = createMessage("tool", children, opts?.id);
     return this.addChild(element);
@@ -489,9 +546,9 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    */
   message(
     role: PromptRole,
-    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    content: TextInput | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     return this.addMessage(role, content, opts);
   }
 
@@ -518,21 +575,46 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
    * Render the prompt directly using the provided options.
    * Equivalent to `render(await builder.build(), options)`.
    */
-  async render<TOptions extends RenderOptions>(
-    options: TOptions
-  ): Promise<RenderResult<TOptions>> {
+  async render<TProvider extends BoundProvider>(
+    this: PromptBuilder<TProvider>,
+    options?: RenderOptionsWithoutProvider<RenderedForProvider<TProvider>>
+  ): Promise<RenderedForProvider<TProvider>>;
+  async render<TProvider extends BoundProvider>(
+    this: PromptBuilder<unknown>,
+    options: RenderOptions<RenderedForProvider<TProvider>> & {
+      provider: TProvider;
+    }
+  ): Promise<RenderedForProvider<TProvider>>;
+  async render(options?: RenderOptions<unknown>): Promise<unknown> {
     const element = await this.build();
-    return (await renderPrompt(element, options)) as RenderResult<TOptions>;
+    const providerOverride = options?.provider;
+    if (providerOverride) {
+      return await renderPrompt(element, {
+        ...(options ?? {}),
+        provider: providerOverride,
+      });
+    }
+
+    if (!this.boundProvider) {
+      throw new Error(
+        "Rendering requires a provider. Bind one with cria.prompt(provider) or cria.prompt().provider(provider), or pass a provider to render()."
+      );
+    }
+
+    return await renderPrompt(element, {
+      ...(options ?? {}),
+      provider: this.boundProvider,
+    });
   }
 
   private addMessage(
     role: PromptRole,
-    content: TextInput | ((builder: MessageBuilder) => MessageBuilder),
+    content: TextInput | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder {
+  ): PromptBuilder<P> {
     const childrenPromise =
       typeof content === "function"
-        ? content(new MessageBuilder([], this.context)).buildChildren()
+        ? content(new MessageBuilder<P>([], this.context)).buildChildren()
         : Promise.resolve(normalizeTextInput(content));
 
     const element = childrenPromise.then((children) =>
@@ -546,7 +628,7 @@ export class PromptBuilder extends BuilderBase<PromptBuilder> {
 /**
  * Prompt type alias for external use.
  */
-export type Prompt = PromptBuilder;
+export type Prompt<P = unknown> = PromptBuilder<P>;
 
 // Resolution functions (colocated with builders)
 

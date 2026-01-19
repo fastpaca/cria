@@ -47,6 +47,16 @@ describe("PromptBuilder", () => {
 
       expect(output).toBe("system: Hello\n\nuser: World");
     });
+
+    test("render() uses bound provider when available", async () => {
+      const output = await cria
+        .prompt()
+        .provider(provider)
+        .system("Hello")
+        .render({ budget: tokensFor("system: Hello") });
+
+      expect(output).toBe("system: Hello");
+    });
   });
 
   describe("messages", () => {
