@@ -6,7 +6,7 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import type { z } from "zod";
 import { countText, safeStringify } from "../renderers/shared";
-import type { PromptLayout, PromptMessage } from "../types";
+import type { PromptLayout, PromptMessage, ToolCallPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
 
 export interface AnthropicRenderResult {
@@ -15,7 +15,7 @@ export interface AnthropicRenderResult {
 }
 
 export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
-  render(layout: PromptLayout): AnthropicRenderResult {
+  override render(layout: PromptLayout): AnthropicRenderResult {
     const messages: MessageParam[] = [];
     let system = "";
 
@@ -30,6 +30,10 @@ export class AnthropicRenderer extends PromptRenderer<AnthropicRenderResult> {
     }
 
     return system ? { system, messages } : { messages };
+  }
+
+  override historyToLayout(rendered: AnthropicRenderResult): PromptLayout {
+    return parseAnthropicHistory(rendered);
   }
 }
 
@@ -99,6 +103,134 @@ function renderToolResultMessage(
       },
     ],
   };
+}
+
+function parseAnthropicHistory(rendered: AnthropicRenderResult): PromptLayout {
+  const layout: PromptMessage[] = [];
+  const toolNameById = new Map<string, string>();
+
+  if (rendered.system) {
+    layout.push({ role: "system", text: rendered.system });
+  }
+
+  for (const message of rendered.messages) {
+    layout.push(...parseAnthropicMessage(message, toolNameById));
+  }
+
+  return layout;
+}
+
+function parseAnthropicMessage(
+  message: MessageParam,
+  toolNameById: Map<string, string>
+): PromptMessage[] {
+  if (message.role === "assistant") {
+    return [parseAnthropicAssistantMessage(message, toolNameById)];
+  }
+  if (message.role === "user") {
+    return parseAnthropicUserMessage(message, toolNameById);
+  }
+  return [];
+}
+
+function parseAnthropicAssistantMessage(
+  message: MessageParam,
+  toolNameById: Map<string, string>
+): PromptMessage {
+  if (message.role !== "assistant") {
+    throw new Error("Expected an assistant message.");
+  }
+
+  if (typeof message.content === "string") {
+    return { role: "assistant", text: message.content };
+  }
+
+  const { text, toolCalls } = collectAnthropicAssistantParts(
+    message.content,
+    toolNameById
+  );
+  const assistant: Extract<PromptMessage, { role: "assistant" }> = {
+    role: "assistant",
+    text,
+  };
+  if (toolCalls.length > 0) {
+    assistant.toolCalls = toolCalls;
+  }
+  return assistant;
+}
+
+function collectAnthropicAssistantParts(
+  blocks: ContentBlockParam[],
+  toolNameById: Map<string, string>
+): { text: string; toolCalls: ToolCallPart[] } {
+  let text = "";
+  const toolCalls: ToolCallPart[] = [];
+
+  for (const block of blocks) {
+    if (block.type === "text") {
+      text += block.text;
+      continue;
+    }
+    if (block.type === "tool_use") {
+      toolNameById.set(block.id, block.name);
+      toolCalls.push({
+        type: "tool-call",
+        toolCallId: block.id,
+        toolName: block.name,
+        input: block.input,
+      });
+    }
+  }
+
+  return { text, toolCalls };
+}
+
+function parseAnthropicUserMessage(
+  message: MessageParam,
+  toolNameById: Map<string, string>
+): PromptMessage[] {
+  if (message.role !== "user") {
+    throw new Error("Expected a user message.");
+  }
+
+  if (typeof message.content === "string") {
+    return [{ role: "user", text: message.content }];
+  }
+
+  return parseAnthropicUserBlocks(message.content, toolNameById);
+}
+
+function parseAnthropicUserBlocks(
+  blocks: ContentBlockParam[],
+  toolNameById: Map<string, string>
+): PromptMessage[] {
+  const messages: PromptMessage[] = [];
+  let text = "";
+
+  for (const block of blocks) {
+    if (block.type === "text") {
+      text += block.text;
+      continue;
+    }
+    if (block.type === "tool_result") {
+      if (text) {
+        messages.push({ role: "user", text });
+        text = "";
+      }
+      messages.push({
+        role: "tool",
+        toolCallId: block.tool_use_id,
+        toolName: toolNameById.get(block.tool_use_id) ?? "",
+        output: block.content,
+      });
+    }
+  }
+
+  if (text) {
+    messages.push({ role: "user", text });
+  }
+
+  return messages;
 }
 
 function appendSystemText(current: string, next: string): string {

@@ -6,10 +6,10 @@
  * import { cria } from "@fastpaca/cria";
  *
  * const prompt = await cria
- *   .prompt()
+ *   .prompt(provider)
  *   .system("You are a helpful assistant.")
  *   .user("What is the capital of France?")
- *   .render({ budget: 4000, provider });
+ *   .render({ budget: 4000 });
  * ```
  *
  * @packageDocumentation

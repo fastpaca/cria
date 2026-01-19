@@ -62,11 +62,11 @@ const model = openai("gpt-4o-mini");
 const provider = createProvider(model);
 
 const prompt = cria
-  .prompt()
+  .prompt(provider)
   .system("You are a helpful assistant.")
   .user(userQuestion);
 
-const messages = await prompt.render({ provider, budget: 8000 });
+const messages = await prompt.render({ budget: 8000 });
 const { text } = await generateText({ model, messages });
 
 console.log(text);
@@ -93,11 +93,13 @@ const appContext = (context: string): Prompt =>
 
 const userRequest = (question: string): Prompt => cria.prompt().user(question);
 
-const prompt = cria.merge(
-  systemRules(),
-  appContext("We build Cria: prompts as structured, composable code."),
-  userRequest(userQuestion)
-);
+const prompt = cria
+  .merge(
+    systemRules(),
+    appContext("We build Cria: prompts as structured, composable code."),
+    userRequest(userQuestion)
+  )
+  .provider(provider);
 ```
 
 This is the workflow: start with a working prompt, then refactor into composable blocks that you can plug and play across your app.

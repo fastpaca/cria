@@ -24,14 +24,14 @@ Cria is a lightweight prompt composition library for structured prompt engineeri
 
 ```ts
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are a research assistant.")
   .vectorSearch({ store, query: question, limit: 10 })
   .providerScope(provider, (p) =>
     p.summary(conversation, { store: memory }).last(conversation, { N: 20 })
   )
   .user(question)
-  .render({ budget: 200_000, provider });
+  .render({ budget: 200_000 });
 ```
 
 Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.md)** to jump to the right how-to.
@@ -57,10 +57,10 @@ import { cria } from "@fastpaca/cria";
 const client = new OpenAI();
 const provider = createProvider(client, "gpt-4o-mini");
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, provider });
+  .render({ budget });
 const response = await client.chat.completions.create({ model: "gpt-4o-mini", messages });
 ```
 </details>
@@ -76,10 +76,10 @@ import { cria } from "@fastpaca/cria";
 const client = new OpenAI();
 const provider = createResponsesProvider(client, "gpt-5-nano");
 const input = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, provider });
+  .render({ budget });
 const response = await client.responses.create({ model: "gpt-5-nano", input });
 ```
 </details>
@@ -95,10 +95,10 @@ import { cria } from "@fastpaca/cria";
 const client = new Anthropic();
 const provider = createProvider(client, "claude-haiku-4-5");
 const { system, messages } = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, provider });
+  .render({ budget });
 const response = await client.messages.create({ model: "claude-haiku-4-5", system, messages });
 ```
 </details>
@@ -113,10 +113,10 @@ import { generateText } from "ai";
 
 const provider = createProvider(model);
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, provider });
+  .render({ budget });
 const { text } = await generateText({ model, messages });
 ```
 </details>

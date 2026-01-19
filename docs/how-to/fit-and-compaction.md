@@ -15,19 +15,19 @@ import { createProvider } from "@fastpaca/cria/openai";
 const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
 const output = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are a helpful assistant.")
   .truncate(history, { budget: 4000, priority: 2 })
   .omit(optionalExamples, { priority: 3 })
   .user(question)
-  .render({ budget: 8000, provider });
+  .render({ budget: 8000 });
 ```
 
 ## Where token counts come from
 
 Token counting is provider-owned. Providers use tiktoken internally and map the rendered output into the strings that should be counted.
 
-If you set a budget but don’t provide a provider, `render()` throws.
+If you set a budget but don’t provide a provider (or bind one with `cria.prompt(provider)`), `render()` throws.
 
 ## Priorities: what stays vs what shrinks
 
@@ -117,7 +117,7 @@ import { createProvider } from "@fastpaca/cria/openai";
 const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
 try {
-  await cria.prompt().user(question).render({ budget: 8000, provider });
+  await cria.prompt(provider).user(question).render({ budget: 8000 });
 } catch (error) {
   if (error instanceof FitError) {
     console.error("over budget by", error.overBudgetBy);

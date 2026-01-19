@@ -8,6 +8,8 @@ import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
   CriaContext,
   ModelProvider,
+  PromptLayout,
+  PromptMessage,
   PromptNode,
   PromptPart,
   PromptRole,
@@ -60,9 +62,11 @@ export type BuilderChild =
   | Promise<PromptNode | PromptPart | string | number | boolean>;
 
 type BoundProvider = ModelProvider<unknown>;
-type ProviderFor<P> = P extends BoundProvider ? P : undefined;
 type RenderedForProvider<P> =
   P extends ModelProvider<infer TOutput> ? TOutput : unknown;
+type ProviderHistory<P extends BoundProvider> = Parameters<
+  P["renderer"]["historyToLayout"]
+>[0];
 type RenderOptionsWithoutProvider<TRendered> = Omit<
   RenderOptions<TRendered>,
   "provider"
@@ -72,8 +76,8 @@ type RenderOptionsWithoutProvider<TRendered> = Omit<
  * Shared fluent API for prompt-level and message-level builders.
  */
 export abstract class BuilderBase<TBuilder extends BuilderBase<TBuilder>> {
-  protected readonly children: BuilderChild[];
-  protected readonly context: CriaContext | undefined;
+  readonly children: BuilderChild[];
+  readonly context: CriaContext | undefined;
 
   protected constructor(
     children: BuilderChild[] = [],
@@ -205,12 +209,12 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
  * Call `.build()` to get the final `PromptTree`.
  */
 export class PromptBuilder<P = unknown> extends BuilderBase<PromptBuilder<P>> {
-  private readonly boundProvider: ProviderFor<P> | undefined;
+  private readonly boundProvider: BoundProvider | undefined;
 
   private constructor(
     children: BuilderChild[] = [],
     context: CriaContext | undefined = undefined,
-    provider: ProviderFor<P> | undefined = undefined
+    provider: BoundProvider | undefined = undefined
   ) {
     const existingProvider = context?.provider;
     if (provider && existingProvider && provider !== existingProvider) {
@@ -358,6 +362,24 @@ export class PromptBuilder<P = unknown> extends BuilderBase<PromptBuilder<P>> {
     );
 
     return this.addChild(element);
+  }
+
+  /**
+   * Add provider-native history to the prompt.
+   * Requires a bound provider via cria.prompt(provider) or builder.provider(provider).
+   */
+  history<TProvider extends BoundProvider>(
+    this: PromptBuilder<TProvider>,
+    history: ProviderHistory<TProvider>
+  ): PromptBuilder<TProvider> {
+    if (!this.boundProvider) {
+      throw new Error(
+        "History requires a bound provider. Bind one with cria.prompt(provider) or cria.prompt().provider(provider)."
+      );
+    }
+
+    const layout = this.boundProvider.renderer.historyToLayout(history);
+    return this.addChildren(layoutToNodes(layout));
   }
 
   /**
@@ -760,4 +782,45 @@ async function resolveScopeChild(child: BuilderChild): Promise<PromptNode[]> {
   }
 
   throw new Error("Unsupported child type.");
+}
+
+function layoutToNodes(layout: PromptLayout): PromptNode[] {
+  return layout.map((message) => ({
+    kind: "message",
+    role: message.role,
+    children: messageToParts(message),
+  }));
+}
+
+function messageToParts(message: PromptMessage): PromptPart[] {
+  if (message.role === "tool") {
+    return [
+      {
+        type: "tool-result",
+        toolCallId: message.toolCallId,
+        toolName: message.toolName,
+        output: message.output,
+      },
+    ];
+  }
+
+  if (message.role === "assistant") {
+    const parts: PromptPart[] = [];
+    if (message.text) {
+      parts.push({ type: "text", text: message.text });
+    }
+    if (message.reasoning) {
+      parts.push({ type: "reasoning", text: message.reasoning });
+    }
+    if (message.toolCalls) {
+      parts.push(...message.toolCalls);
+    }
+    return parts;
+  }
+
+  if (message.text) {
+    return [{ type: "text", text: message.text }];
+  }
+
+  return [];
 }

@@ -25,10 +25,10 @@ const client = new OpenAI();
 const provider = createProvider(client, "gpt-4o-mini");
 
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ provider, budget: 8000 });
+  .render({ budget: 8000 });
 
 const response = await client.chat.completions.create({
   model: "gpt-4o-mini",
@@ -57,10 +57,10 @@ const client = new OpenAI();
 const provider = createResponsesProvider(client, "o3");
 
 const input = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ provider, budget: 8000 });
+  .render({ budget: 8000 });
 
 const response = await client.responses.create({ model: "o3", input });
 ```
@@ -77,7 +77,7 @@ See `../../examples/openai-responses/README.md` for full setup details.
 
 ## Budgets and compaction
 
-If you pass a `budget` to `render()`, you must supply a provider. The provider owns token counting via tiktoken.
+If you pass a `budget` to `render()`, you must supply a provider or bind one with `cria.prompt(provider)`. The provider owns token counting via tiktoken.
 
 Next: [Fit & compaction](fit-and-compaction.md)
 

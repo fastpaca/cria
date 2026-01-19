@@ -23,10 +23,10 @@ const client = new Anthropic();
 const provider = createProvider(client, "claude-sonnet-4-20250514");
 
 const { system, messages } = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ provider, budget: 8000 });
+  .render({ budget: 8000 });
 
 const response = await client.messages.create({
   model: "claude-sonnet-4-20250514",
@@ -47,6 +47,6 @@ See `../../examples/anthropic/README.md` for full setup details.
 
 ## Budgets and compaction
 
-If you pass a `budget` to `render()`, you must supply a provider. The provider owns token counting via tiktoken.
+If you pass a `budget` to `render()`, you must supply a provider or bind one with `cria.prompt(provider)`. The provider owns token counting via tiktoken.
 
 Next: [Fit & compaction](fit-and-compaction.md)

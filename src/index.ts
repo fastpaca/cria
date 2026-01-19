@@ -6,11 +6,11 @@
  * import { cria } from "@fastpaca/cria";
  *
  * const result = await cria
- *   .prompt()
+ *   .prompt(provider)
  *   .system("You are a helpful assistant.")
  *   .truncate(conversationHistory, { budget: 20000, from: "start", priority: 2 })
  *   .omit(optionalContext, { priority: 3 })
- *   .render({ budget: 128000, provider });
+ *   .render({ budget: 128000 });
  * ```
  *
  * @packageDocumentation

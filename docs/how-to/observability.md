@@ -18,7 +18,10 @@ const hooks: RenderHooks = {
 };
 
 const provider = createProvider(new OpenAI(), "gpt-4o-mini");
-await cria.prompt().user(userQuestion).render({ budget: 8000, provider, hooks });
+await cria
+  .prompt(provider)
+  .user(userQuestion)
+  .render({ budget: 8000, hooks });
 ```
 
 ## OpenTelemetry

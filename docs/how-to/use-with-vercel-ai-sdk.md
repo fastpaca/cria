@@ -19,10 +19,10 @@ const model = openai("gpt-4o-mini");
 const provider = createProvider(model);
 
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ provider, budget: 8000 });
+  .render({ budget: 8000 });
 
 const { text } = await generateText({ model, messages });
 ```
@@ -39,6 +39,6 @@ See `../../examples/ai-sdk/README.md` for full setup details.
 
 ## Budgets and compaction
 
-If you pass a `budget` to `render()`, you must supply a provider. The provider owns token counting via tiktoken.
+If you pass a `budget` to `render()`, you must supply a provider or bind one with `cria.prompt(provider)`. The provider owns token counting via tiktoken.
 
 Next: [Fit & compaction](fit-and-compaction.md)

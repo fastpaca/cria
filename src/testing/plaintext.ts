@@ -18,12 +18,16 @@ export class PlainTextRenderer extends PromptRenderer<string> {
     this.includeRolePrefix = options.includeRolePrefix ?? false;
   }
 
-  render(layout: PromptLayout): string {
+  override render(layout: PromptLayout): string {
     const messages = layout.map((message) =>
       formatPlaintextMessage(message, this.includeRolePrefix)
     );
 
     return messages.join(this.joinMessagesWith);
+  }
+
+  override historyToLayout(rendered: string): PromptLayout {
+    return [{ role: "user", text: rendered }];
   }
 }
 
