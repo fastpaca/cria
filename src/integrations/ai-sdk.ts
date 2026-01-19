@@ -1,4 +1,9 @@
-import type { LanguageModel, ModelMessage, ToolResultPart } from "ai";
+import type {
+  AssistantContent,
+  LanguageModel,
+  ModelMessage,
+  ToolResultPart,
+} from "ai";
 import { generateObject, generateText } from "ai";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
@@ -13,15 +18,15 @@ import { ModelProvider, PromptRenderer } from "../types";
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
+/** AI SDK content part types that can appear in assistant messages. */
+type AssistantPart = Exclude<AssistantContent, string>[number];
+
 export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
   render(layout: PromptLayout): ModelMessage[] {
     const messages: ModelMessage[] = [];
-
     for (const message of layout.messages) {
-      const nextMessages = partsToModelMessages(message.role, message.parts);
-      messages.push(...nextMessages);
+      messages.push(...partsToModelMessages(message.role, message.parts));
     }
-
     return messages;
   }
 }
@@ -29,52 +34,28 @@ export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
 type ToolResultPromptPart = Extract<PromptPart, { type: "tool-result" }>;
 type NonToolPromptPart = Exclude<PromptPart, { type: "tool-result" }>;
 
-type PartGroup =
-  | { kind: "non-tool"; parts: NonToolPromptPart[] }
-  | { kind: "tool-result"; parts: ToolResultPromptPart[] };
-
 function partsToModelMessages(
   role: string,
   parts: readonly PromptPart[]
 ): ModelMessage[] {
-  const groups = groupParts(coalesceTextParts(parts));
+  const coalesced = coalesceTextParts(parts);
+
+  // AI SDK tool results must be separate role="tool" messages
+  const mainParts = coalesced.filter(
+    (p): p is NonToolPromptPart => p.type !== "tool-result"
+  );
+  const toolParts = coalesced.filter(
+    (p): p is ToolResultPromptPart => p.type === "tool-result"
+  );
 
   const result: ModelMessage[] = [];
-  for (const group of groups) {
-    if (group.kind === "tool-result") {
-      result.push(toToolModelMessage(group.parts));
-      continue;
-    }
-    result.push(toModelMessage(role, group.parts));
+  if (mainParts.length > 0 || toolParts.length === 0) {
+    result.push(toModelMessage(role, mainParts));
   }
-
+  if (toolParts.length > 0) {
+    result.push(toToolModelMessage(toolParts));
+  }
   return result;
-}
-
-function groupParts(parts: readonly PromptPart[]): PartGroup[] {
-  const groups: PartGroup[] = [];
-
-  for (const part of parts) {
-    const lastGroup = groups.at(-1);
-
-    // AI SDK tool results must be emitted as separate role="tool" messages.
-    if (part.type === "tool-result") {
-      if (lastGroup?.kind === "tool-result") {
-        lastGroup.parts.push(part);
-      } else {
-        groups.push({ kind: "tool-result", parts: [part] });
-      }
-      continue;
-    }
-
-    if (lastGroup?.kind === "non-tool") {
-      lastGroup.parts.push(part);
-    } else {
-      groups.push({ kind: "non-tool", parts: [part] });
-    }
-  }
-
-  return groups;
 }
 
 function toModelMessage(
@@ -84,49 +65,22 @@ function toModelMessage(
   if (role === "system") {
     return { role: "system", content: partsToText(parts) };
   }
-
   if (role === "user") {
     return { role: "user", content: partsToText(parts) };
   }
-
-  type AssistantModelMessage = Extract<ModelMessage, { role: "assistant" }>;
-  type AssistantContent = AssistantModelMessage["content"];
-  type AssistantContentPart =
-    Exclude<AssistantContent, string> extends readonly (infer Part)[]
-      ? Part
-      : never;
-
-  const content: AssistantContentPart[] = [];
-  for (const part of parts) {
-    if (part.type === "text") {
-      content.push({ type: "text", text: part.text });
-    } else if (part.type === "reasoning") {
-      content.push({ type: "reasoning", text: part.text });
-    } else if (part.type === "tool-call") {
-      content.push({
-        type: "tool-call",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        input: part.input,
-      });
-    }
-  }
-
-  return { role: "assistant", content };
+  // NonToolPromptPart is structurally identical to AssistantPart subset
+  return { role: "assistant", content: parts as AssistantPart[] };
 }
 
 function toToolModelMessage(
   parts: readonly ToolResultPromptPart[]
 ): ModelMessage {
-  const content: ToolResultPart[] = [];
-  for (const part of parts) {
-    content.push({
-      type: "tool-result",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      output: coerceToolResultOutput(part.output),
-    });
-  }
+  const content: ToolResultPart[] = parts.map((p) => ({
+    type: "tool-result",
+    toolCallId: p.toolCallId,
+    toolName: p.toolName,
+    output: coerceToolResultOutput(p.output),
+  }));
   return { role: "tool", content };
 }
 
@@ -137,9 +91,7 @@ function countModelMessageTokens(message: ModelMessage): number {
 
   let tokens = 0;
   for (const part of message.content) {
-    if (part.type === "text") {
-      tokens += countText(part.text);
-    } else if (part.type === "reasoning") {
+    if (part.type === "text" || part.type === "reasoning") {
       tokens += countText(part.text);
     } else if (part.type === "tool-call") {
       tokens += countText(part.toolName + safeStringify(part.input));
@@ -147,7 +99,6 @@ function countModelMessageTokens(message: ModelMessage): number {
       tokens += countText(safeStringify(part.output));
     }
   }
-
   return tokens;
 }
 
@@ -155,42 +106,31 @@ function coerceToolResultOutput(output: unknown): ToolResultPart["output"] {
   if (typeof output === "string") {
     return { type: "text", value: output };
   }
-
   if (isToolResultOutput(output)) {
     return output;
   }
-
   return { type: "text", value: safeStringify(output) };
-}
-
-interface ToolResultOutputLike {
-  type: unknown;
-  value?: unknown;
-  reason?: unknown;
 }
 
 function isToolResultOutput(value: unknown): value is ToolResultPart["output"] {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-
-  const output = value as ToolResultOutputLike;
-
-  if (typeof output.type !== "string") {
+  const v = value as { type?: unknown; value?: unknown; reason?: unknown };
+  if (typeof v.type !== "string") {
     return false;
   }
-
-  switch (output.type) {
+  switch (v.type) {
     case "text":
     case "error-text":
-      return typeof output.value === "string";
+      return typeof v.value === "string";
     case "json":
     case "error-json":
-      return output.value !== undefined;
+      return v.value !== undefined;
     case "execution-denied":
-      return output.reason === undefined || typeof output.reason === "string";
+      return v.reason === undefined || typeof v.reason === "string";
     case "content":
-      return Array.isArray(output.value);
+      return Array.isArray(v.value);
     default:
       return false;
   }

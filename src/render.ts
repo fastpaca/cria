@@ -11,10 +11,14 @@ import {
 } from "./types";
 
 export interface RenderOptions<TRendered = unknown> {
-  /** Token budget. Omit for unlimited. */
+  // Provider that supplies the renderer.
+  provider: ModelProvider<TRendered>;
+
+  // Token budget. Omit for unlimited. If set, the fit loop will be
+  // executed to reduce the prompt to the budget.
   budget?: number;
-  /** Provider that supplies the renderer. */
-  provider?: ModelProvider<TRendered>;
+
+  // Hooks to invoke during the fit loop.
   hooks?: RenderHooks;
 }
 

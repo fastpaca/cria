@@ -276,6 +276,8 @@ export type Strategy = (input: StrategyInput) => MaybePromise<StrategyResult>;
 /**
  * Error thrown when the prompt cannot be fit within the budget.
  *
+ * This is a standard error that should be caught and handled by the caller.
+ *
  * This happens when:
  * - No strategies remain but still over budget
  * - Strategies made no progress (possible infinite loop)
