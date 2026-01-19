@@ -234,12 +234,19 @@ function createMessage(
 }
 
 function containsMessageNodes(element: PromptElement): boolean {
-  if (element.kind === "message") {
+  if ("kind" in element && element.kind === "message") {
     return true;
   }
 
   for (const child of element.children) {
-    if (typeof child !== "string" && containsMessageNodes(child)) {
+    if (typeof child === "string") {
+      continue;
+    }
+    // PromptPart has no children, skip
+    if ("type" in child) {
+      continue;
+    }
+    if (containsMessageNodes(child)) {
       return true;
     }
   }

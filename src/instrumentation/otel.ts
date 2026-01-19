@@ -102,25 +102,24 @@ export function createOtelRenderHooks({
 }
 
 function setElementAttributes(span: Span, element: PromptElement): void {
-  span.setAttribute("cria.node.kind", element.kind ?? "region");
+  // PromptPart doesn't have kind/priority/id, skip
+  if ("type" in element) {
+    span.setAttribute("cria.part.type", element.type as string);
+    return;
+  }
+
+  span.setAttribute(
+    "cria.node.kind",
+    "kind" in element && element.kind ? element.kind : "region"
+  );
   span.setAttribute("cria.node.priority", element.priority);
 
   if (element.id) {
     span.setAttribute("cria.node.id", element.id);
   }
 
-  switch (element.kind) {
-    case "message":
-      span.setAttribute("cria.node.role", element.role);
-      break;
-    case "tool-call":
-    case "tool-result":
-      span.setAttribute("cria.node.tool_call_id", element.toolCallId);
-      span.setAttribute("cria.node.tool_name", element.toolName);
-      break;
-    default:
-      // No additional attributes for other element kinds
-      break;
+  if ("kind" in element && element.kind === "message") {
+    span.setAttribute("cria.node.role", element.role);
   }
 }
 

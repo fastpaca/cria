@@ -1,12 +1,11 @@
 import type {
   MessageElement,
+  PromptChild,
   PromptChildren,
   PromptElement,
+  PromptPart,
   PromptRole,
-  ReasoningElement,
   Strategy,
-  ToolCallElement,
-  ToolResultElement,
 } from "../types";
 
 interface RegionProps {
@@ -88,12 +87,16 @@ export function Reasoning({
   priority = 0,
   strategy,
   id,
-}: ReasoningProps): ReasoningElement {
+}: ReasoningProps): PromptChild {
+  const part: PromptPart = { type: "reasoning", text };
+  // If no metadata needed, return part directly
+  if (priority === 0 && !strategy && !id) {
+    return part;
+  }
+  // Otherwise wrap in a region
   return {
-    kind: "reasoning",
-    text,
     priority,
-    children: [],
+    children: [part],
     ...(strategy && { strategy }),
     ...(id && { id }),
   };
@@ -112,14 +115,21 @@ export function ToolCall({
   priority = 0,
   strategy,
   id,
-}: ToolCallProps): ToolCallElement {
-  return {
-    kind: "tool-call",
+}: ToolCallProps): PromptChild {
+  const part: PromptPart = {
+    type: "tool-call",
     toolCallId,
     toolName,
     input,
+  };
+  // If no metadata needed, return part directly
+  if (priority === 0 && !strategy && !id) {
+    return part;
+  }
+  // Otherwise wrap in a region
+  return {
     priority,
-    children: [],
+    children: [part],
     ...(strategy && { strategy }),
     ...(id && { id }),
   };
@@ -138,14 +148,21 @@ export function ToolResult({
   priority = 0,
   strategy,
   id,
-}: ToolResultProps): ToolResultElement {
-  return {
-    kind: "tool-result",
+}: ToolResultProps): PromptChild {
+  const part: PromptPart = {
+    type: "tool-result",
     toolCallId,
     toolName,
     output,
+  };
+  // If no metadata needed, return part directly
+  if (priority === 0 && !strategy && !id) {
+    return part;
+  }
+  // Otherwise wrap in a region
+  return {
     priority,
-    children: [],
+    children: [part],
     ...(strategy && { strategy }),
     ...(id && { id }),
   };

@@ -34,6 +34,7 @@ import type {
   PromptChild,
   PromptChildren,
   PromptElement,
+  PromptPart,
   PromptRole,
   ToolResultElement,
 } from "./types";
@@ -54,9 +55,11 @@ export type ScopeContent =
  */
 export type BuilderChild =
   | PromptElement
+  | PromptPart
   | PromptBuilder
   | string
   | Promise<PromptElement>
+  | Promise<PromptPart>
   | Promise<string>;
 
 type RenderResult<TOptions extends RenderOptions> = TOptions extends {

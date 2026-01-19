@@ -54,52 +54,8 @@ export interface CriaContext {
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
- * The core IR node type. All Cria components return a `PromptElement`.
- *
- * **Everything is a Region** (think: a DOM `<div>`): `priority`, `strategy`, and
- * `children` make up the structural prompt tree.
- *
- * If you attach a semantic `kind`, the node becomes a recognized
- * prompt part (message/tool-call/tool-result/reasoning) and renderers can emit
- * structured targets without parsing strings.
- */
-export interface PromptElementBase {
-  priority: number;
-  strategy?: Strategy | undefined;
-  id?: string | undefined;
-  context?: CriaContext | undefined;
-  children: PromptChildren;
-}
-
-export type PromptElement =
-  | (PromptElementBase & { kind?: undefined })
-  | (PromptElementBase & { kind: "message"; role: PromptRole })
-  | (PromptElementBase & {
-      kind: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-    })
-  | (PromptElementBase & {
-      kind: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    })
-  | (PromptElementBase & { kind: "reasoning"; text: string });
-
-export type MessageElement = Extract<PromptElement, { kind: "message" }>;
-export type ToolCallElement = Extract<PromptElement, { kind: "tool-call" }>;
-export type ToolResultElement = Extract<PromptElement, { kind: "tool-result" }>;
-export type ReasoningElement = Extract<PromptElement, { kind: "reasoning" }>;
-
-export type PromptChild = string | PromptElement;
-export type PromptChildren = PromptChild[];
-
-/**
- * Design: PromptTree (parts + children) -> PromptLayout (parts only, message-bounded)
- * -> RenderOut. Layout does not introduce new semantic IR; it reuses PromptPart
- * and only reshapes hierarchy so renderers stay pure and predictable.
+ * Content parts that appear as leaf nodes in the prompt tree.
+ * These are the actual semantic content (text, tool calls, etc.).
  */
 export type PromptPart =
   | { type: "text"; text: string }
@@ -114,6 +70,49 @@ export type PromptPart =
 
 export type ToolCallPart = Extract<PromptPart, { type: "tool-call" }>;
 export type ToolResultPart = Extract<PromptPart, { type: "tool-result" }>;
+
+/**
+ * Structural node in the prompt tree. Contains metadata (priority, strategy)
+ * and children, which can be parts, other nodes, or strings (which become text parts).
+ */
+export type PromptNode =
+  | {
+      priority: number;
+      strategy?: Strategy | undefined;
+      id?: string | undefined;
+      context?: CriaContext | undefined;
+      children: PromptChild[];
+    }
+  | {
+      priority: number;
+      strategy?: Strategy | undefined;
+      id?: string | undefined;
+      context?: CriaContext | undefined;
+      kind: "message";
+      role: PromptRole;
+      children: PromptChild[];
+    };
+
+/**
+ * A child in the prompt tree can be:
+ * - A string (converted to text part during layout)
+ * - A PromptPart (content leaf)
+ * - A PromptNode (structural container)
+ */
+export type PromptChild = string | PromptPart | PromptNode;
+export type PromptChildren = PromptChild[];
+
+/**
+ * The root of a prompt tree. Alias for backward compatibility.
+ * Design: PromptTree (PromptNode with PromptPart leaves) -> PromptLayout (PromptPart[], message-bounded)
+ * -> RenderOut. Layout flattens the tree into a linear sequence of parts grouped by messages.
+ */
+export type PromptElement = PromptNode;
+
+export type MessageElement = Extract<PromptNode, { kind: "message" }>;
+export type ToolCallElement = Extract<PromptPart, { type: "tool-call" }>;
+export type ToolResultElement = Extract<PromptPart, { type: "tool-result" }>;
+export type ReasoningElement = Extract<PromptPart, { type: "reasoning" }>;
 
 export interface PromptMessage {
   // Tool messages are strict: exactly one tool-result part, no text.

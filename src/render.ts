@@ -6,6 +6,7 @@ import {
   type PromptChild,
   type PromptElement,
   type PromptLayout,
+  type PromptNode,
   type PromptPart,
   type StrategyInput,
 } from "./types";
@@ -124,8 +125,6 @@ function layoutPrompt(root: PromptElement): PromptLayout {
   // Traversal order is depth-first, left-to-right so layout is deterministic.
   const messages: PromptLayout["messages"] = [];
 
-  type NonMessageKind = Exclude<PromptElement["kind"], "message" | undefined>;
-
   const assertPartAllowedInRole = (
     role: PromptLayout["messages"][number]["role"],
     part: PromptPart
@@ -197,7 +196,7 @@ function layoutPrompt(root: PromptElement): PromptLayout {
   };
 
   const handleMessageNode = (
-    node: PromptElement & { kind: "message" },
+    node: Extract<PromptNode, { kind: "message" }>,
     current: PromptLayout["messages"][number] | null
   ): void => {
     if (current) {
@@ -209,47 +208,6 @@ function layoutPrompt(root: PromptElement): PromptLayout {
     assertToolMessageParts(message);
   };
 
-  const toSemanticPart = (
-    node: PromptElement & { kind: NonMessageKind }
-  ): PromptPart | null => {
-    if (node.children.length > 0) {
-      throw new Error("Semantic nodes cannot have children.");
-    }
-
-    switch (node.kind) {
-      case "tool-call":
-        return {
-          type: "tool-call",
-          toolCallId: node.toolCallId,
-          toolName: node.toolName,
-          input: node.input,
-        };
-      case "tool-result":
-        return {
-          type: "tool-result",
-          toolCallId: node.toolCallId,
-          toolName: node.toolName,
-          output: node.output,
-        };
-      case "reasoning":
-        return node.text.length > 0
-          ? { type: "reasoning", text: node.text }
-          : null;
-      default:
-        throw new Error("Unsupported semantic node.");
-    }
-  };
-
-  const handleSemanticNode = (
-    node: PromptElement & { kind: NonMessageKind },
-    current: PromptLayout["messages"][number] | null
-  ): void => {
-    const part = toSemanticPart(node);
-    if (part) {
-      pushPart(current, part);
-    }
-  };
-
   const walk = (
     node: PromptChild,
     current: PromptLayout["messages"][number] | null
@@ -259,17 +217,20 @@ function layoutPrompt(root: PromptElement): PromptLayout {
       return;
     }
 
-    if (!node.kind) {
-      walkChildren(node.children, current);
+    // Check if it's a PromptPart (has 'type' property)
+    if ("type" in node) {
+      pushPart(current, node);
       return;
     }
 
-    if (node.kind === "message") {
+    // It's a PromptNode
+    if ("kind" in node && node.kind === "message") {
       handleMessageNode(node, current);
       return;
     }
 
-    handleSemanticNode(node, current);
+    // Regular region node - walk children
+    walkChildren(node.children, current);
   };
 
   walk(root, null);
@@ -326,9 +287,14 @@ function collectProviders(element: PromptElement): ModelProvider<unknown>[] {
     }
 
     for (const child of node.children) {
-      if (typeof child !== "string") {
-        visit(child);
+      if (typeof child === "string") {
+        continue;
       }
+      // PromptPart has no context, skip
+      if ("type" in child) {
+        continue;
+      }
+      visit(child);
     }
   };
 
@@ -452,6 +418,10 @@ function findLowestImportancePriority(element: PromptElement): number | null {
     if (typeof child === "string") {
       continue;
     }
+    // PromptPart has no priority/strategy, skip
+    if ("type" in child) {
+      continue;
+    }
     const childMax = findLowestImportancePriority(child);
     maxPriority = maxNullable(maxPriority, childMax);
   }
@@ -490,6 +460,12 @@ async function applyStrategiesAtPriority(
 
   for (const child of element.children) {
     if (typeof child === "string") {
+      nextChildren.push(child);
+      continue;
+    }
+
+    // PromptPart has no strategy, pass through unchanged
+    if ("type" in child) {
       nextChildren.push(child);
       continue;
     }
