@@ -108,8 +108,6 @@ const retrieval = (query: string): Prompt =>
       store,
       query,
       limit: 3,
-      priority: 2,
-      id: "vector-results",
     })
   );
 

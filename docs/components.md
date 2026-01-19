@@ -4,7 +4,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 
 ## Structure
 
-- `Region`: groups children into a logical block (a “subtree” you can prioritize and compact).
+- `Scope`: groups children into a logical block (a “subtree” you can prioritize and compact).
 - `Message`: semantic messages with roles (`system`, `user`, `assistant`, `tool`, or custom). Tool messages must contain only `ToolResult`.
 
 ## Fit & compaction
