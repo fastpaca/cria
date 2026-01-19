@@ -17,7 +17,7 @@ export class OpenAIChatRenderer extends PromptRenderer<
   ChatCompletionMessageParam[]
 > {
   render(layout: PromptLayout): ChatCompletionMessageParam[] {
-    return layout.map((m) => {
+    return layout.map((m): ChatCompletionMessageParam => {
       if (m.role === "system") {
         return { role: "system", content: m.text };
       }
@@ -40,16 +40,10 @@ export class OpenAIChatRenderer extends PromptRenderer<
         }
         return result;
       }
-      if (m.role === "tool") {
-        return {
-          role: "tool",
-          tool_call_id: m.toolCallId,
-          content: safeStringify(m.output),
-        };
-      }
       return {
-        role: m.role as ChatCompletionMessageParam["role"],
-        content: m.text,
+        role: "tool",
+        tool_call_id: m.toolCallId,
+        content: safeStringify(m.output),
       };
     });
   }

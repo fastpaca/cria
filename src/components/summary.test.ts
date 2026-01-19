@@ -1,15 +1,10 @@
 import { expect, test } from "vitest";
-import {
-  InMemoryStore,
-  Last,
-  Message,
-  render,
-  type StoredSummary,
-  type SummarizerContext,
-  Summary,
-} from "../index";
+import { InMemoryStore } from "../memory";
+import { render } from "../render";
 import { createTestProvider } from "../testing/plaintext";
 import type { PromptPart, PromptScope } from "../types";
+import type { StoredSummary, SummarizerContext } from "./index";
+import { Last, Message, Summary } from "./index";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);

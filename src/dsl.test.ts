@@ -70,11 +70,11 @@ describe("PromptBuilder", () => {
       expect(result).toBe("assistant: Hi there! How can I help?");
     });
 
-    test("message() adds a custom role message", async () => {
+    test("message() adds a message with explicit role", async () => {
       const result = await renderBuilder(
-        cria.prompt().message("developer", "Result: 42")
+        cria.prompt().message("user", "Question: 42")
       );
-      expect(result).toBe("developer: Result: 42");
+      expect(result).toBe("user: Question: 42");
     });
 
     test("tool() adds a tool result message", async () => {
@@ -119,7 +119,7 @@ describe("PromptBuilder", () => {
       const element = await cria
         .prompt()
         .truncate(cria.prompt().user(chunk).user(chunk).user(chunk), {
-          budget: 2,
+          budget: 500, // High budget = drop fewer children per iteration
           priority: 1,
         })
         .build();
@@ -268,10 +268,9 @@ describe("PromptBuilder", () => {
           store,
           summarize: summarizer,
           priority: 1,
-          role: "user",
         });
 
-      const summaryOutput = "user: [Summary of earlier conversation]\nS";
+      const summaryOutput = "system: [Summary of earlier conversation]\nS";
       const fullOutput = `user: ${"x".repeat(200)}`;
       const budget =
         tokensFor(fullOutput) > tokensFor(summaryOutput)

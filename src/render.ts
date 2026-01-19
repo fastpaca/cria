@@ -1,4 +1,5 @@
 import {
+  type AssistantMessage,
   type CriaContext,
   FitError,
   type MaybePromise,
@@ -6,6 +7,7 @@ import {
   type PromptLayout,
   type PromptMessage,
   type PromptNode,
+  type PromptPart,
   type PromptScope,
   type PromptTree,
   type StrategyInput,
@@ -170,10 +172,12 @@ function buildToolMessage(children: readonly PromptPart[]): PromptMessage {
   };
 }
 
-function buildAssistantMessage(children: readonly PromptPart[]): PromptMessage {
+function buildAssistantMessage(
+  children: readonly PromptPart[]
+): AssistantMessage {
   const { text, reasoning, toolCalls } = collectAssistantParts(children);
 
-  const message: PromptMessage = { role: "assistant", text };
+  const message: AssistantMessage = { role: "assistant", text };
   if (reasoning.length > 0) {
     message.reasoning = reasoning;
   }
@@ -227,7 +231,7 @@ function buildTextMessage(
     return { role: "user", text };
   }
 
-  return { role, text };
+  throw new Error(`Unsupported message role: ${role}`);
 }
 
 function collectTextParts(children: readonly PromptPart[]): string {

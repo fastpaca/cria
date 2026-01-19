@@ -41,7 +41,7 @@ function renderModelMessage(message: PromptMessage): ModelMessage {
     return renderAssistantMessage(message);
   }
 
-  return { role: message.role as ModelMessage["role"], content: message.text };
+  return { role: message.role, content: message.text };
 }
 
 function renderToolMessage(

@@ -1,6 +1,7 @@
 import type { Attributes, Span, Tracer } from "@opentelemetry/api";
 import { describe, expect, test } from "vitest";
-import { Message, Omit, render, Scope } from "../index";
+import { Message, Omit, Scope } from "../components";
+import { render } from "../index";
 import { createTestProvider } from "../testing/plaintext";
 import { createOtelRenderHooks } from "./otel";
 

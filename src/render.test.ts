@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { Message, Omit, render, Scope, Truncate } from "./index";
+import { Message, Omit, Scope, Truncate } from "./components";
+import { render } from "./index";
 import type { FitErrorEvent } from "./render";
 import { createTestProvider } from "./testing/plaintext";
 import type { PromptNode, PromptPart } from "./types";

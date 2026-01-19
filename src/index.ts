@@ -22,21 +22,6 @@ export type {
   Summarizer,
   SummarizerContext,
 } from "./components";
-export {
-  CodeBlock,
-  Examples,
-  Last,
-  Message,
-  Omit,
-  Reasoning,
-  Scope,
-  Separator,
-  Summary,
-  ToolCall,
-  ToolResult,
-  Truncate,
-  VectorSearch,
-} from "./components";
 // DSL
 export type { BuilderChild, Prompt, ScopeContent, TextInput } from "./dsl";
 export {
@@ -70,28 +55,23 @@ export type {
 export { render } from "./render";
 export type {
   CriaContext,
-  KnownPromptRole,
   MaybePromise,
   MessageChildren,
-  MessageElement,
   PromptLayout,
   PromptMessage,
+  PromptMessageNode,
   PromptNode,
   PromptPart,
   PromptRole,
   PromptScope,
   PromptTree,
-  ReasoningElement,
   ReasoningPart,
   ScopeChildren,
-  ScopeElement,
   Strategy,
   StrategyInput,
   StrategyResult,
   TextPart,
-  ToolCallElement,
   ToolCallPart,
-  ToolResultElement,
   ToolResultPart,
 } from "./types";
 export {

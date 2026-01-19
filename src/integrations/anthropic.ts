@@ -46,18 +46,25 @@ function renderAnthropicMessage(
   message: PromptMessage
 ): RenderedAnthropicMessage {
   if (message.role === "system") {
-    return { systemText: message.text };
+    return { systemText: (message as { text: string }).text };
   }
 
   if (message.role === "tool") {
-    return { message: renderToolResultMessage(message) };
+    const toolMessage = message as Extract<PromptMessage, { role: "tool" }>;
+    return { message: renderToolResultMessage(toolMessage) };
   }
 
   if (message.role === "assistant") {
-    return { message: renderAssistantMessage(message) };
+    const assistantMessage = message as Extract<
+      PromptMessage,
+      { role: "assistant" }
+    >;
+    const rendered = renderAssistantMessage(assistantMessage);
+    return rendered ? { message: rendered } : {};
   }
 
-  return { message: renderUserMessage(message.text) };
+  const rendered = renderUserMessage((message as { text: string }).text);
+  return rendered ? { message: rendered } : {};
 }
 
 function renderUserMessage(text: string): MessageParam | undefined {

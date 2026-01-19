@@ -29,11 +29,9 @@ import type { z } from "zod";
 /**
  * Message role used by semantic `kind: "message"` nodes.
  *
- * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool),
- * while still allowing custom roles for bespoke targets.
+ * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool).
  */
-export type KnownPromptRole = "system" | "user" | "assistant" | "tool";
-export type PromptRole = KnownPromptRole | (string & {});
+export type PromptRole = "system" | "user" | "assistant" | "tool";
 
 /**
  * A model provider that can generate completions.
@@ -128,12 +126,6 @@ export type PromptTree = PromptScope;
 export type ScopeChildren = readonly PromptNode[];
 export type MessageChildren = readonly PromptPart[];
 
-export type ScopeElement = PromptScope;
-export type MessageElement = PromptMessageNode;
-export type ToolCallElement = ToolCallPart;
-export type ToolResultElement = ToolResultPart;
-export type ReasoningElement = ReasoningPart;
-
 export interface SystemMessage {
   role: "system";
   text: string;
@@ -158,24 +150,18 @@ export interface ToolMessage {
   output: unknown;
 }
 
-export interface CustomMessage {
-  role: PromptRole;
-  text: string;
-}
-
 /*
 PromptLayout is a list of fully-shaped messages. The union is deliberate:
 - Assistant messages can include reasoning/toolCalls.
 - Tool messages are singular tool results with call metadata.
-- System/User/Custom messages are text-only.
+- System/User messages are text-only.
 This keeps invalid combinations out of the layout by construction.
 */
 export type PromptMessage =
   | SystemMessage
   | UserMessage
   | AssistantMessage
-  | ToolMessage
-  | CustomMessage;
+  | ToolMessage;
 
 export type PromptLayout = readonly PromptMessage[];
 

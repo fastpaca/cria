@@ -1,6 +1,6 @@
 import type {
   MessageChildren,
-  MessageElement,
+  PromptMessageNode,
   PromptPart,
   PromptRole,
   PromptScope,
@@ -52,7 +52,7 @@ export function Message({
   messageRole,
   id,
   children = [],
-}: MessageProps): MessageElement {
+}: MessageProps): PromptMessageNode {
   return {
     kind: "message",
     role: messageRole,
