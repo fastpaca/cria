@@ -44,7 +44,7 @@ Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.m
 - **Need to drop optional context when the context window is full?** Use `.omit(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
 
-## Integrations
+## Providers
 
 <details>
 <summary><strong>OpenAI Chat Completions</strong></summary>

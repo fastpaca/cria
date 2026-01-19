@@ -18,16 +18,16 @@
       "import": "./dist/index.js"
     },
     "./ai-sdk": {
-      "types": "./dist/integrations/ai-sdk.d.ts",
-      "import": "./dist/integrations/ai-sdk.js"
+      "types": "./dist/providers/ai-sdk.d.ts",
+      "import": "./dist/providers/ai-sdk.js"
     },
     "./openai": {
-      "types": "./dist/integrations/openai.d.ts",
-      "import": "./dist/integrations/openai.js"
+      "types": "./dist/providers/openai.d.ts",
+      "import": "./dist/providers/openai.js"
     },
     "./anthropic": {
-      "types": "./dist/integrations/anthropic.d.ts",
-      "import": "./dist/integrations/anthropic.js"
+      "types": "./dist/providers/anthropic.d.ts",
+      "import": "./dist/providers/anthropic.js"
     },
     "./memory": {
       "types": "./dist/memory/index.d.ts",

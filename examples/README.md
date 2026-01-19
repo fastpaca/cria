@@ -1,6 +1,6 @@
 # Examples
 
-Examples live in each integration folder's main file.
+Examples live in each provider folder's main file.
 
 - Start with `docs/quickstart.md`, then pick a task guide from `docs/README.md`.
 
