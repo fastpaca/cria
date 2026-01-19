@@ -1,3 +1,29 @@
+/*
+Prompt pipeline mental model (authoritative + opinionated):
+
+Fluent DSL
+   |
+   v
+PromptTree  (scopes + message leaves)
+   |
+   v
+PromptLayout (flat, role-shaped messages)
+   |
+   v
+RenderOut (provider payloads)
+
+Why this shape?
+- Scopes exist for compaction/strategy. They are structural only.
+- Messages are semantic boundaries. They are leaf nodes and only hold parts.
+- Parts are the smallest typed units (text/reasoning/tool-call/tool-result).
+
+PromptLayout intentionally normalizes message shapes so renderers do NOT
+re-interpret parts or re-check invariants. Some providers (AI SDK, Anthropic)
+require a parts array, so renderers re-expand assistant/tool data back into
+parts. That is a translation step for provider compatibility, not a loop in
+the core model.
+*/
+
 import type { z } from "zod";
 
 /**
@@ -137,6 +163,13 @@ export interface CustomMessage {
   text: string;
 }
 
+/*
+PromptLayout is a list of fully-shaped messages. The union is deliberate:
+- Assistant messages can include reasoning/toolCalls.
+- Tool messages are singular tool results with call metadata.
+- System/User/Custom messages are text-only.
+This keeps invalid combinations out of the layout by construction.
+*/
 export type PromptMessage =
   | SystemMessage
   | UserMessage

@@ -11,6 +11,11 @@ const countText = (text: string): number => encoder.encode(text).length;
 
 export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
   render(layout: PromptLayout): ModelMessage[] {
+    /*
+    AI SDK expects message "content" as either a string or a parts array.
+    PromptLayout already normalized our semantic messages, so here we simply
+    re-expand assistant/tool messages into the parts form the SDK requires.
+    */
     return layout.map(renderModelMessage);
   }
 }
