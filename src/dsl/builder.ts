@@ -5,7 +5,12 @@
 import type { KVMemory, VectorMemory } from "../memory";
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
-import { normalizeTextInput, type TextInput } from "../templating";
+import {
+  isPromptPart,
+  normalizeTextInput,
+  type TextInput,
+  textPart,
+} from "../templating";
 import type {
   CriaContext,
   ModelProvider,
@@ -173,11 +178,7 @@ export class MessageBuilder extends BuilderBase<MessageBuilder> {
   /**
    * Add a formatted list of examples.
    */
-  examples(
-    title: string,
-    items: string[],
-    _opts?: { id?: string }
-  ): MessageBuilder {
+  examples(title: string, items: string[]): MessageBuilder {
     const element = formatExamples(title, items);
     return this.addChild(element);
   }
@@ -549,16 +550,8 @@ export type Prompt = PromptBuilder;
 
 // Resolution functions (colocated with builders)
 
-function textPart(value: string): PromptPart {
-  return { type: "text", text: value };
-}
-
 function isPromptNode(value: unknown): value is PromptNode {
   return typeof value === "object" && value !== null && "kind" in value;
-}
-
-function isPromptPart(value: unknown): value is PromptPart {
-  return typeof value === "object" && value !== null && "type" in value;
 }
 
 async function resolveMessageChildren(
@@ -668,11 +661,11 @@ async function resolveScopeChild(child: BuilderChild): Promise<PromptNode[]> {
     return [await child.build()];
   }
 
-  if (typeof child === "string" || typeof child === "number") {
-    throw new Error("Text nodes are only allowed inside messages.");
-  }
-
-  if (typeof child === "boolean") {
+  if (
+    typeof child === "string" ||
+    typeof child === "number" ||
+    typeof child === "boolean"
+  ) {
     throw new Error("Text nodes are only allowed inside messages.");
   }
 

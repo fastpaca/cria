@@ -1,13 +1,9 @@
 import type { LanguageModel, ModelMessage, ToolResultPart } from "ai";
 import { generateObject, generateText } from "ai";
-import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { safeStringify } from "../renderers/shared";
+import { countText, safeStringify } from "../renderers/shared";
 import type { PromptLayout, PromptMessage, PromptPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
-
-const encoder = getEncoding("cl100k_base");
-const countText = (text: string): number => encoder.encode(text).length;
 
 export class AiSdkRenderer extends PromptRenderer<ModelMessage[]> {
   render(layout: PromptLayout): ModelMessage[] {

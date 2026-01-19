@@ -4,14 +4,10 @@ import type {
   MessageParam,
   Model,
 } from "@anthropic-ai/sdk/resources/messages";
-import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { safeStringify } from "../renderers/shared";
+import { countText, safeStringify } from "../renderers/shared";
 import type { PromptLayout, PromptMessage } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
-
-const encoder = getEncoding("cl100k_base");
-const countText = (text: string): number => encoder.encode(text).length;
 
 export interface AnthropicRenderResult {
   system?: string;

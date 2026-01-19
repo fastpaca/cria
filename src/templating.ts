@@ -53,11 +53,11 @@ export function c(
   return children;
 }
 
-function textPart(value: string): PromptPart {
+export function textPart(value: string): PromptPart {
   return { type: "text", text: value };
 }
 
-function isPromptPart(value: unknown): value is PromptPart {
+export function isPromptPart(value: unknown): value is PromptPart {
   return typeof value === "object" && value !== null && "type" in value;
 }
 
