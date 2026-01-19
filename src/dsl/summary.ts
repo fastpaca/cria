@@ -10,7 +10,6 @@ import type {
   PromptRole,
   PromptScope,
   ScopeChildren,
-  Strategy,
   StrategyInput,
 } from "../types";
 import { PromptBuilder } from "./builder";
@@ -49,61 +48,26 @@ async function defaultSummarizer(
   ctx: SummarizerContext,
   provider: ModelProvider<unknown>
 ): Promise<string> {
-  const summaryPrompt = await buildSummaryPrompt(
-    ctx.target,
-    ctx.existingSummary
-  );
+  const summaryPrompt = await PromptBuilder.create()
+    .system(
+      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information."
+    )
+    .when(ctx.existingSummary !== null, (p) =>
+      p.assistant(`Current summary:\n${ctx.existingSummary}`)
+    )
+    .merge(ctx.target.children)
+    .when(ctx.existingSummary !== null, (p) =>
+      p.user(
+        "Update the summary based on the previous summary and the conversation above."
+      )
+    )
+    .when(ctx.existingSummary === null, (p) =>
+      p.user("Summarize the conversation above.")
+    )
+    .build();
+
   const rendered = await render(summaryPrompt, { provider });
-
   return provider.completion(rendered);
-}
-
-interface SummaryStrategyOptions {
-  id: string;
-  store: KVMemory<StoredSummary>;
-  summarize?: Summarizer | undefined;
-  role: PromptRole;
-}
-
-function createSummaryStrategy({
-  id,
-  store,
-  summarize,
-  role,
-}: SummaryStrategyOptions): Strategy {
-  return async (input: StrategyInput) => {
-    const { target, context } = input;
-
-    const existingEntry = await store.get(id);
-
-    const summarizerContext: SummarizerContext = {
-      target,
-      existingSummary: existingEntry?.data.content ?? null,
-      ...(context.provider ? { provider: context.provider } : {}),
-    };
-
-    let newSummary: string;
-    if (summarize) {
-      newSummary = await summarize(summarizerContext);
-    } else if (context.provider) {
-      newSummary = await defaultSummarizer(summarizerContext, context.provider);
-    } else {
-      throw new Error(
-        `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to render() or wrap the summary in cria.provider(modelProvider, (p) => p.summary(...)).`
-      );
-    }
-
-    await store.set(id, {
-      content: newSummary,
-    });
-
-    // Return a scope with the summary message using the DSL
-    const tree = await PromptBuilder.create()
-      .message(role, `[Summary of earlier conversation]\n${newSummary}`)
-      .build();
-
-    return { ...tree, priority: target.priority };
-  };
 }
 
 interface SummaryProps {
@@ -137,26 +101,38 @@ export function Summary({
 }: SummaryProps): PromptScope {
   return createScope(children, {
     priority,
-    strategy: createSummaryStrategy({ id, store, summarize, role }),
-  });
-}
+    strategy: async (input: StrategyInput) => {
+      const { target, context } = input;
+      const existingEntry = await store.get(id);
 
-function buildSummaryPrompt(
-  target: PromptScope,
-  existingSummary: string | null
-): Promise<PromptScope> {
-  return PromptBuilder.create()
-    .system(
-      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information."
-    )
-    .when(existingSummary !== null, (p) =>
-      p.assistant(`Current summary:\n${existingSummary}`)
-    )
-    .merge(target.children)
-    .user(
-      existingSummary
-        ? "Update the summary based on the previous summary and the conversation above."
-        : "Summarize the conversation above."
-    )
-    .build();
+      const summarizerContext: SummarizerContext = {
+        target,
+        existingSummary: existingEntry?.data.content ?? null,
+        ...(context.provider ? { provider: context.provider } : {}),
+      };
+
+      let newSummary: string;
+      if (summarize) {
+        newSummary = await summarize(summarizerContext);
+      } else if (context.provider) {
+        newSummary = await defaultSummarizer(
+          summarizerContext,
+          context.provider
+        );
+      } else {
+        throw new Error(
+          `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to render() or wrap the summary in cria.provider(modelProvider, (p) => p.summary(...)).`
+        );
+      }
+
+      await store.set(id, {
+        content: newSummary,
+      });
+
+      const tree = await PromptBuilder.create()
+        .message(role, newSummary)
+        .build();
+      return { ...tree, priority: target.priority };
+    },
+  });
 }
