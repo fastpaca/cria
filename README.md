@@ -150,18 +150,27 @@ await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
 **Done**
 
 - [x] Fluent DSL and priority-based eviction
-- [x] Components: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
-- [x] Providers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
-- [x] AI SDK helpers: Messages component, DEFAULT_PRIORITIES
-- [x] Memory: InMemoryStore, Redis, Postgres, Chroma, Qdrant
-- [x] Observability: render hooks, validation schemas, OpenTelemetry
+- [x] Providers/Integrations
+  - [x] OpenAI (Chat Completions + Responses)
+  - [x] Anthropic
+  - [x] AI SDK
+- [x] Memory:
+  - [x] Key Value Stores for Summaries
+    - [x] Redis
+    - [x] Postgres
+  - [x] Vector Store / RAG
+    - [x] Chroma
+    - [x] Qdrant
+- [x] Observability
+  - [x] render hooks
+  - [x] OpenTelemetry
 - [x] Prompt eval / testing functionality
 
 **Planned**
 
 - [ ] Next.js adapter
-- [ ] GenAI semantic conventions for OpenTelemetry
 - [ ] Visualization tool
+- [ ] Seamless provider integration (type system, no hoops)
 
 ## Contributing
 
