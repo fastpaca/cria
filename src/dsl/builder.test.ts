@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { render } from "../render";
 import { createTestProvider } from "../testing/plaintext";
-import type { PromptNode } from "../types";
+import type { PromptMessageNode, PromptNode } from "../types";
 import { c, cria, PromptBuilder, prompt } from "./index";
 
 const provider = createTestProvider({
@@ -10,8 +10,8 @@ const provider = createTestProvider({
 });
 const tokensFor = (text: string): number => provider.countTokens(text);
 
-const renderBuilder = async <P>(
-  builder: PromptBuilder<P>,
+const renderBuilder = async (
+  builder: PromptBuilder<unknown>,
   budget = 10_000
 ): Promise<string> => render(await builder.build(), { provider, budget });
 
@@ -91,7 +91,7 @@ describe("PromptBuilder", () => {
           toolCallId: "call_1",
           toolName: "calc",
           output: '{"answer":42}',
-        })
+        }) as PromptBuilder<unknown>
       );
       expect(result).toBe('tool: [tool-result:calc]{"answer":42}');
     });
@@ -112,7 +112,9 @@ describe("PromptBuilder", () => {
 
     test("message callbacks support appended content", async () => {
       const result = await renderBuilder(
-        cria.prompt().user((m) => m.append(c`Hello `).append("World"))
+        cria
+          .prompt()
+          .user((m) => m.append(c`Hello ` as unknown as string).append("World"))
       );
 
       expect(result).toBe("user: Hello World");
@@ -168,12 +170,14 @@ describe("PromptBuilder", () => {
     });
 
     test("raw() adds arbitrary node", async () => {
-      const custom: PromptNode = {
+      const custom: PromptMessageNode = {
         kind: "message",
         role: "user",
         children: [{ type: "text", text: "Custom content" }],
       };
 
+      // @ts-expect-error - Type system limitation: PromptMessageNode<ProviderToolIO> vs PromptNode<UnboundToolIO>
+      // Runtime is safe since we're only using text parts
       const element = await cria.prompt().raw(custom).build();
 
       const result = await render(element, {
@@ -265,13 +269,16 @@ describe("PromptBuilder", () => {
 
   describe("content types", () => {
     test("truncate accepts raw PromptNode content", async () => {
-      const inner: PromptNode = {
+      const inner: PromptMessageNode = {
         kind: "message",
         role: "user",
         children: [{ type: "text", text: "element content" }],
       };
+      // Type system limitation: PromptMessageNode<ProviderToolIO> vs ScopeContent<UnboundToolIO>
+      // Runtime is safe since we're only using text parts
       const element = await cria
         .prompt()
+        // @ts-expect-error - Type mismatch between ProviderToolIO and UnboundToolIO
         .truncate(inner, { budget: 100 })
         .build();
 
