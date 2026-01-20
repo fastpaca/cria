@@ -13,15 +13,18 @@ export OPENAI_API_KEY="sk-..."
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { cria } from "@fastpaca/cria";
-import { renderer } from "@fastpaca/cria/ai-sdk";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
+
+const model = openai("gpt-4o-mini");
+const provider = createProvider(model);
 
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ renderer });
+  .render({ budget: 8000 });
 
-const { text } = await generateText({ model: openai("gpt-4o-mini"), messages });
+const { text } = await generateText({ model, messages });
 ```
 
 Runnable example: [ai-sdk](../../examples/ai-sdk)
@@ -36,6 +39,6 @@ See `../../examples/ai-sdk/README.md` for full setup details.
 
 ## Budgets and compaction
 
-If you pass a `budget` to `render()`, you must also supply token counts (either a `tokenizer` option, or a provider context that supplies one).
+If you pass a `budget` to `render()`, you must supply a provider or bind one with `cria.prompt(provider)`. The provider owns token counting via tiktoken.
 
 Next: [Fit & compaction](fit-and-compaction.md)

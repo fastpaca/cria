@@ -1,12 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { cria, type Prompt } from "@fastpaca/cria";
-import { anthropic } from "@fastpaca/cria/anthropic";
-import { get_encoding } from "tiktoken";
+import { createProvider } from "@fastpaca/cria/anthropic";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const enc = get_encoding("cl100k_base");
-const tokenizer = (text: string): number => enc.encode(text).length;
 const MODEL = "claude-haiku-4-5";
+const provider = createProvider(client, MODEL);
 
 const systemRules = (): Prompt =>
   cria.prompt().system("You are a concise assistant that answers directly.");
@@ -20,12 +18,14 @@ const prompt = cria.merge(
 
 async function main(): Promise<void> {
   const rendered = await prompt.render({
-    tokenizer,
+    provider,
     budget: 2000,
-    renderer: anthropic,
   });
 
   const { system, messages } = rendered;
+  const totalTokens = provider.countTokens(rendered);
+
+  console.log(`=== Token count: ${totalTokens} / 2000 ===`);
 
   const response = await client.messages.create({
     model: MODEL,

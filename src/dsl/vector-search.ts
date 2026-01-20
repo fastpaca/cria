@@ -1,9 +1,19 @@
+/**
+ * VectorSearch async component for RAG-style retrieval.
+ */
+
 import type {
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
 } from "../memory";
-import type { PromptChildren, PromptElement } from "../types";
+import type {
+  PromptPart,
+  PromptRole,
+  PromptScope,
+  ProviderToolIO,
+} from "../types";
+import { PromptBuilder } from "./builder";
 
 /** Simple message shape for query extraction. */
 interface Message {
@@ -42,7 +52,10 @@ function defaultFormatter<T>(results: VectorSearchResult<T>[]): string {
 
 type QueryExtractor = (messages: Message[]) => string | null | undefined;
 
-interface VectorSearchProps<T = unknown> {
+interface VectorSearchProps<
+  T = unknown,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
   /** Vector memory store to search */
   store: VectorMemory<T>;
   /**
@@ -62,27 +75,31 @@ interface VectorSearchProps<T = unknown> {
   threshold?: number;
   /** Custom formatter for search results. Default: numbered list format */
   formatResults?: ResultFormatter<T>;
-  /** Priority for this region (higher number = reduced first). Default: 0 */
+  /** Priority for this scope (higher number = reduced first). Default: 0 */
   priority?: number;
   /** Stable identifier for caching/debugging */
   id?: string;
+  /** Role for the emitted message. Default: "user" */
+  role?: PromptRole;
   /** Query text provided as children (preferred over `query` when present). */
-  children?: PromptChildren;
+  children?: readonly PromptPart<TToolIO>[];
 }
 
-function queryFromChildren(children?: PromptChildren): string | null {
+function queryFromChildren<TToolIO extends ProviderToolIO>(
+  children?: readonly PromptPart<TToolIO>[]
+): string | null {
   if (!children || children.length === 0) {
     return null;
   }
 
   let buffer = "";
   for (const child of children) {
-    if (typeof child !== "string") {
+    if (child.type !== "text") {
       throw new Error(
-        "VectorSearch children must be plain text. Wrap complex content in a formatter before passing it as a query."
+        "VectorSearch children must be text parts. Use a formatter to build complex queries."
       );
     }
-    buffer += child;
+    buffer += child.text;
   }
 
   const trimmed = buffer.trim();
@@ -99,7 +116,7 @@ interface QuerySources {
   query?: string | undefined;
   messages?: Message[] | undefined;
   extractQuery?: QueryExtractor | undefined;
-  children?: PromptChildren | undefined;
+  children?: readonly PromptPart[] | undefined;
 }
 
 function deriveQuery(props: QuerySources): string | null | undefined {
@@ -127,37 +144,12 @@ function deriveQuery(props: QuerySources): string | null | undefined {
 }
 
 /**
- * Renders vector search results into the prompt.
- *
- * The query is resolved at render time. No pre-fetching needed. Query sources, in
- * order of precedence:
- * 1) Children text: `<VectorSearch store={store}>find docs about RAG</VectorSearch>`
- * 2) `query` prop: `<VectorSearch store={store} query="find docs about RAG" />`
- * 3) Messages: `<VectorSearch store={store} messages={messages} />`
- *    - Defaults to the last user message, or use `extractQuery` to customize.
- *
- * @example
- * ```tsx
- * <VectorSearch store={store} limit={5}>
- *   my query: {topic}
- * </VectorSearch>
- * ```
- *
- * @example Using messages as the query source
- * ```tsx
- * <VectorSearch store={store} messages={messages} />
- * ```
- *
- * @example Custom extractor
- * ```tsx
- * <VectorSearch
- *   store={store}
- *   messages={messages}
- *   extractQuery={(msgs) => msgs.at(-1)?.content}
- * />
- * ```
+ * Renders vector search results into a scoped message.
  */
-export async function VectorSearch<T = unknown>({
+export async function VectorSearch<
+  T = unknown,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+>({
   store,
   query,
   messages,
@@ -167,8 +159,9 @@ export async function VectorSearch<T = unknown>({
   formatResults = defaultFormatter,
   priority = 0,
   id,
+  role = "user",
   children,
-}: VectorSearchProps<T>): Promise<PromptElement> {
+}: VectorSearchProps<T, TToolIO>): Promise<PromptScope<TToolIO>> {
   const finalQuery = deriveQuery({
     query,
     messages,
@@ -190,9 +183,12 @@ export async function VectorSearch<T = unknown>({
   const results = await store.search(finalQuery, searchOptions);
   const content = formatResults(results);
 
+  // Use the DSL to build the result scope
+  const tree = await PromptBuilder.create().message(role, content).build();
+
   return {
+    ...tree,
     priority,
-    children: [content] as PromptChildren,
     ...(id && { id }),
   };
 }

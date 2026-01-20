@@ -1,24 +1,47 @@
-import { markdownRenderer } from "./renderers/markdown";
 import {
+  type AssistantMessage,
   type CriaContext,
   FitError,
   type MaybePromise,
-  type PromptElement,
-  type PromptRenderer,
+  type ModelProvider,
+  type PromptLayout,
+  type PromptMessage,
+  type PromptNode,
+  type PromptPart,
+  type PromptScope,
+  type PromptTree,
+  type ProviderToolIO,
   type StrategyInput,
-  type Tokenizer,
+  type ToolCallPart,
+  type ToolResultPart,
 } from "./types";
 
-export interface RenderOptions {
-  tokenizer?: Tokenizer;
-  /** Token budget. Omit for unlimited. */
+/**
+ * Render pipeline:
+ * - PromptTree carries provider-bound tool IO types.
+ * - layoutPrompt flattens the tree into a PromptLayout and enforces invariants.
+ * - The provider's renderer translates that layout into the provider payload.
+ * - Token counting is provider-owned and happens on rendered output.
+ */
+export interface RenderOptions<
+  TRendered = unknown,
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  // Provider that supplies the renderer.
+  provider: ModelProvider<TRendered, TToolIO>;
+
+  // Token budget. Omit for unlimited. If set, the fit loop will be
+  // executed to reduce the prompt to the budget.
   budget?: number;
-  renderer?: PromptRenderer<unknown>;
-  hooks?: RenderHooks;
+
+  // Hooks to invoke during the fit loop.
+  hooks?: RenderHooks<TToolIO>;
 }
 
-export interface FitStartEvent {
-  element: PromptElement;
+export interface FitStartEvent<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  element: PromptTree<TToolIO>;
   budget: number;
   totalTokens: number;
 }
@@ -29,15 +52,19 @@ export interface FitIterationEvent {
   totalTokens: number;
 }
 
-export interface StrategyAppliedEvent {
-  target: PromptElement;
-  result: PromptElement | null;
+export interface StrategyAppliedEvent<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  target: PromptScope<TToolIO>;
+  result: PromptScope<TToolIO> | null;
   priority: number;
   iteration: number;
 }
 
-export interface FitCompleteEvent {
-  result: PromptElement | null;
+export interface FitCompleteEvent<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  result: PromptScope<TToolIO> | null;
   iterations: number;
   totalTokens: number;
 }
@@ -49,67 +76,208 @@ export interface FitErrorEvent {
   totalTokens: number;
 }
 
-export interface RenderHooks {
-  onFitStart?: (event: FitStartEvent) => MaybePromise<void>;
+export interface RenderHooks<TToolIO extends ProviderToolIO = ProviderToolIO> {
+  onFitStart?: (event: FitStartEvent<TToolIO>) => MaybePromise<void>;
   onFitIteration?: (event: FitIterationEvent) => MaybePromise<void>;
-  onStrategyApplied?: (event: StrategyAppliedEvent) => MaybePromise<void>;
-  onFitComplete?: (event: FitCompleteEvent) => MaybePromise<void>;
+  onStrategyApplied?: (
+    event: StrategyAppliedEvent<TToolIO>
+  ) => MaybePromise<void>;
+  onFitComplete?: (event: FitCompleteEvent<TToolIO>) => MaybePromise<void>;
   onFitError?: (event: FitErrorEvent) => MaybePromise<void>;
 }
 
-type RenderOutput<TOptions extends RenderOptions> = TOptions extends {
-  renderer: PromptRenderer<infer TOutput>;
-}
-  ? TOutput
-  : string;
-
-export async function render<TOptions extends RenderOptions>(
-  element: MaybePromise<PromptElement>,
-  { tokenizer, budget, renderer, hooks }: TOptions
-): Promise<RenderOutput<TOptions>> {
+export async function render<TRendered, TToolIO extends ProviderToolIO>(
+  element: MaybePromise<PromptTree<TToolIO>>,
+  options: RenderOptions<TRendered, TToolIO>
+): Promise<TRendered> {
+  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.renderer -> provider.countTokens.
+  // The fit loop just re-renders and re-counts until we land under budget.
   /*
-   * Builders and the optional JSX runtime both return a PromptElement (or Promise).
-   * render() awaits the root value and does not walk/normalize children here.
-   * Non-Promise thenables are intentionally unsupported.
+   * Rendering is budget-agnostic; fitting owns the budget and simply calls
+   * rendering to get total tokens. Keep that separation explicit here.
    */
   const resolvedElement = element instanceof Promise ? await element : element;
+  const provider = resolveProvider(resolvedElement, options.provider);
 
-  const resolvedRenderer = (renderer ?? markdownRenderer) as PromptRenderer<
-    RenderOutput<TOptions>
-  >;
-
-  // Skip fitting if no budget specified (unlimited)
-  if (budget === undefined || budget === null) {
-    return (await resolvedRenderer.render(
-      resolvedElement
-    )) as RenderOutput<TOptions>;
+  if (options.budget === undefined || options.budget === null) {
+    return renderOutput(resolvedElement, provider);
   }
-
-  if (budget <= 0) {
-    return resolvedRenderer.empty();
-  }
-
-  const tokenizerResolution = resolveTokenizer(resolvedElement, tokenizer);
-  if (!tokenizerResolution) {
-    throw new Error(
-      "Token budgeting requires a tokenizer. Provide one to render(), or wrap your prompt in a provider that supplies a tokenizer (e.g. <OpenAIProvider>, <AnthropicProvider>, or <AISDKProvider>). See docs/how-to/fit-and-compaction.md for details."
-    );
-  }
-
-  const tokenizerFn = tokenizerResolution.tokenizer;
 
   const fitted = await fitToBudget(
     resolvedElement,
-    budget,
-    tokenizerFn,
-    resolvedRenderer.tokenString,
-    hooks
+    options.budget,
+    provider,
+    options.hooks,
+    { provider }
   );
+
   if (!fitted) {
-    return resolvedRenderer.empty();
+    return renderOutput({ kind: "scope", priority: 0, children: [] }, provider);
   }
 
-  return (await resolvedRenderer.render(fitted)) as RenderOutput<TOptions>;
+  return renderOutput(fitted, provider);
+}
+
+function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>,
+  provider: ModelProvider<TRendered, TToolIO>
+): TRendered {
+  // Prompt tree composition is resolved before rendering; renderers only see layout.
+  const layout = layoutPrompt(root);
+  return provider.renderer.render(layout);
+}
+
+function renderAndCount<TRendered, TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>,
+  provider: ModelProvider<TRendered, TToolIO>
+): { output: TRendered; tokens: number } {
+  // Tree -> layout -> renderer output, then provider-owned token counting.
+  const layout = layoutPrompt(root);
+  const output = provider.renderer.render(layout);
+  const tokens = provider.countTokens(output);
+  return { output, tokens };
+}
+
+export function assertValidMessageScope<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+>(root: PromptTree<TToolIO>): void {
+  // Enforce layout invariants by reusing the layout pass.
+  layoutPrompt(root);
+}
+
+function layoutPrompt<TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>
+): PromptLayout<TToolIO> {
+  // Flatten tree to a list of opinionated messages.
+  // Traversal order is depth-first, left-to-right so layout is deterministic.
+  // This is the only place we validate message/part structure.
+  const messages: PromptMessage<TToolIO>[] = [];
+
+  const walk = (node: PromptNode<TToolIO>): void => {
+    if (node.kind === "message") {
+      messages.push(buildMessage(node));
+      return;
+    }
+
+    for (const child of node.children) {
+      walk(child);
+    }
+  };
+
+  walk(root);
+
+  return messages;
+}
+
+function buildMessage<TToolIO extends ProviderToolIO>(
+  node: Extract<PromptNode<TToolIO>, { kind: "message" }>
+): PromptMessage<TToolIO> {
+  if (node.role === "tool") {
+    return buildToolMessage(node.children);
+  }
+
+  if (node.role === "assistant") {
+    return buildAssistantMessage(node.children);
+  }
+
+  return buildTextMessage(node.role, node.children);
+}
+
+function buildToolMessage<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): PromptMessage<TToolIO> {
+  // Tool messages are a single tool result by construction.
+  if (children.length !== 1 || children[0]?.type !== "tool-result") {
+    throw new Error("Tool messages must contain exactly one tool result.");
+  }
+  const result = children[0] as ToolResultPart<TToolIO>;
+  return {
+    role: "tool",
+    toolCallId: result.toolCallId,
+    toolName: result.toolName,
+    output: result.output,
+  };
+}
+
+function buildAssistantMessage<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): AssistantMessage<TToolIO> {
+  const { text, reasoning, toolCalls } = collectAssistantParts(children);
+
+  const message: AssistantMessage<TToolIO> = { role: "assistant", text };
+  if (reasoning.length > 0) {
+    message.reasoning = reasoning;
+  }
+  if (toolCalls.length > 0) {
+    message.toolCalls = toolCalls;
+  }
+  return message;
+}
+
+function collectAssistantParts<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): {
+  text: string;
+  reasoning: string;
+  toolCalls: ToolCallPart<TToolIO>[];
+} {
+  let text = "";
+  let reasoning = "";
+  const toolCalls: ToolCallPart<TToolIO>[] = [];
+
+  for (const part of children) {
+    if (part.type === "text") {
+      text += part.text;
+      continue;
+    }
+    if (part.type === "reasoning") {
+      reasoning += part.text;
+      continue;
+    }
+    if (part.type === "tool-call") {
+      toolCalls.push(part);
+      continue;
+    }
+    if (part.type === "tool-result") {
+      // Tool results must live in tool messages, not assistant messages.
+      throw new Error("Tool results must be inside a tool message.");
+    }
+  }
+
+  return { text, reasoning, toolCalls };
+}
+
+function buildTextMessage<TToolIO extends ProviderToolIO>(
+  role: PromptMessage<TToolIO>["role"],
+  children: readonly PromptPart<TToolIO>[]
+): PromptMessage<TToolIO> {
+  // System/user messages are text-only; other parts are rejected here.
+  const text = collectTextParts(children);
+
+  if (role === "system") {
+    return { role: "system", text };
+  }
+
+  if (role === "user") {
+    return { role: "user", text };
+  }
+
+  throw new Error(`Unsupported message role: ${role}`);
+}
+
+function collectTextParts<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): string {
+  let text = "";
+  for (const part of children) {
+    if (part.type !== "text") {
+      throw new Error(
+        "Only assistant messages may contain reasoning or tool calls."
+      );
+    }
+    text += part.text;
+  }
+  return text;
 }
 
 async function safeInvoke<T>(
@@ -123,62 +291,74 @@ async function safeInvoke<T>(
   await handler(event);
 }
 
-interface TokenizerResolution {
-  tokenizer: Tokenizer;
-  source: "options" | "provider";
-  providerName?: string | undefined;
-}
+function resolveProvider<TRendered, TToolIO extends ProviderToolIO>(
+  element: PromptTree<TToolIO>,
+  override?: ModelProvider<TRendered, TToolIO>
+): ModelProvider<TRendered, TToolIO> {
+  // Provider may come from the tree (provider scopes) or from render options.
+  // Either way, it must be a single consistent provider for the entire tree.
+  const providers = collectProviders(element);
 
-function resolveTokenizer(
-  element: PromptElement,
-  override?: Tokenizer
-): TokenizerResolution | null {
   if (override) {
-    return { tokenizer: override, source: "options" };
+    if (providers.length > 0 && !providers.includes(override)) {
+      throw new Error("Render provider does not match provider in the tree.");
+    }
+    return override;
   }
 
-  const providerResolution = findProviderTokenizer(element);
-  if (providerResolution) {
-    return { ...providerResolution, source: "provider" };
+  if (providers.length === 0) {
+    throw new Error("Rendering requires a provider with a renderer.");
   }
 
-  return null;
+  if (providers.length > 1) {
+    throw new Error("Multiple providers found in one prompt tree.");
+  }
+
+  const provider = providers[0];
+  if (!provider) {
+    throw new Error("Rendering requires a provider with a renderer.");
+  }
+
+  return provider as ModelProvider<TRendered, TToolIO>;
 }
 
-function findProviderTokenizer(
-  element: PromptElement
-): Omit<TokenizerResolution, "source"> | null {
-  const providerTokenizer = element.context?.provider?.tokenizer;
-  if (providerTokenizer) {
-    return {
-      tokenizer: providerTokenizer,
-      providerName: element.context?.provider?.name,
-    };
-  }
+function collectProviders<TToolIO extends ProviderToolIO>(
+  element: PromptNode<TToolIO>
+): ModelProvider<unknown, ProviderToolIO>[] {
+  // Walk scopes and collect unique providers from context.
+  const found: ModelProvider<unknown, ProviderToolIO>[] = [];
 
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
+  const visit = (node: PromptNode<TToolIO>): void => {
+    if (node.kind === "message") {
+      return;
     }
-    const found = findProviderTokenizer(child);
-    if (found) {
-      return found;
-    }
-  }
 
-  return null;
+    const provider = node.context?.provider;
+    if (provider && !found.includes(provider)) {
+      found.push(provider);
+    }
+
+    for (const child of node.children) {
+      visit(child);
+    }
+  };
+
+  visit(element);
+  return found;
 }
 
-async function fitToBudget(
-  element: PromptElement,
+async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
+  element: PromptTree<TToolIO>,
   budget: number,
-  tokenizer: Tokenizer,
-  tokenString: (element: PromptElement) => string,
-  hooks: RenderHooks | undefined
-): Promise<PromptElement | null> {
-  let current: PromptElement | null = element;
+  provider: ModelProvider<TRendered, TToolIO>,
+  hooks: RenderHooks<TToolIO> | undefined,
+  baseContext: CriaContext
+): Promise<PromptScope<TToolIO> | null> {
+  // Fit loop is render-driven: render+count, then apply the lowest-importance
+  // strategy, re-render, and repeat until we fit or cannot reduce further.
+  let current: PromptScope<TToolIO> | null = element;
   let iteration = 0;
-  let totalTokens = tokenizer(tokenString(element));
+  let totalTokens = renderAndCount(element, provider).tokens;
 
   await safeInvoke(hooks?.onFitStart, {
     element,
@@ -187,7 +367,7 @@ async function fitToBudget(
   });
 
   while (current && totalTokens > budget) {
-    iteration++;
+    iteration += 1;
 
     const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
@@ -213,25 +393,44 @@ async function fitToBudget(
       totalTokens,
     });
 
-    const baseCtx = {
-      budget,
-      tokenizer,
-      tokenString,
+    const baseCtx: BaseContext<TToolIO> = {
       totalTokens,
       iteration,
     };
 
-    const applied = await applyStrategiesAtPriority(
-      current,
-      lowestImportancePriority,
-      baseCtx,
-      {}, // Start with empty context at the root
-      hooks,
-      iteration
-    );
+    const applied: { element: PromptNode<TToolIO> | null; applied: boolean } =
+      await applyStrategiesAtPriority(
+        current,
+        lowestImportancePriority,
+        baseCtx,
+        baseContext,
+        hooks,
+        iteration
+      );
+
+    if (!applied.applied) {
+      const error = new FitError({
+        overBudgetBy: totalTokens - budget,
+        priority: lowestImportancePriority,
+        iteration,
+        budget,
+        totalTokens,
+      });
+      await safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: lowestImportancePriority,
+        totalTokens,
+      });
+      throw error;
+    }
+
+    if (applied.element && applied.element.kind !== "scope") {
+      throw new Error("Root scope was replaced by a message node.");
+    }
     current = applied.element;
 
-    const nextTokens = current ? tokenizer(tokenString(current)) : 0;
+    const nextTokens = current ? renderAndCount(current, provider).tokens : 0;
     if (nextTokens >= totalTokens) {
       const error = new FitError({
         overBudgetBy: nextTokens - budget,
@@ -261,13 +460,16 @@ async function fitToBudget(
   return current;
 }
 
-function findLowestImportancePriority(element: PromptElement): number | null {
-  let maxPriority: number | null = element.strategy ? element.priority : null;
+function findLowestImportancePriority<TToolIO extends ProviderToolIO>(
+  node: PromptNode<TToolIO>
+): number | null {
+  if (node.kind === "message") {
+    return null;
+  }
 
-  for (const child of element.children) {
-    if (typeof child === "string") {
-      continue;
-    }
+  let maxPriority: number | null = node.strategy ? node.priority : null;
+
+  for (const child of node.children) {
     const childMax = findLowestImportancePriority(child);
     maxPriority = maxNullable(maxPriority, childMax);
   }
@@ -285,32 +487,33 @@ function maxNullable(a: number | null, b: number | null): number | null {
   return Math.max(a, b);
 }
 
-type BaseContext = Omit<StrategyInput, "target" | "context">;
+type BaseContext<TToolIO extends ProviderToolIO> = Omit<
+  StrategyInput<TToolIO>,
+  "target" | "context"
+>;
 
-async function applyStrategiesAtPriority(
-  element: PromptElement,
+async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
+  element: PromptNode<TToolIO>,
   priority: number,
-  baseCtx: BaseContext,
+  baseCtx: BaseContext<TToolIO>,
   inheritedContext: CriaContext,
-  hooks: RenderHooks | undefined,
+  hooks: RenderHooks<TToolIO> | undefined,
   iteration: number
-): Promise<{ element: PromptElement | null; applied: boolean }> {
-  // Merge this element's context with inherited context
-  // Element context overrides inherited context
+): Promise<{ element: PromptNode<TToolIO> | null; applied: boolean }> {
+  if (element.kind === "message") {
+    return { element, applied: false };
+  }
+
+  // Bottom-up: rewrite children first so nested strategies get first crack.
+  // Element context overrides inherited context.
   const mergedContext: CriaContext = element.context
     ? { ...inheritedContext, ...element.context }
     : inheritedContext;
 
   let childrenChanged = false;
-  const nextChildren: typeof element.children = [];
+  const nextChildren: PromptNode<TToolIO>[] = [];
 
   for (const child of element.children) {
-    if (typeof child === "string") {
-      nextChildren.push(child);
-      continue;
-    }
-
-    // Pass merged context to children
     const applied = await applyStrategiesAtPriority(
       child,
       priority,
@@ -330,7 +533,7 @@ async function applyStrategiesAtPriority(
   }
 
   const nextElement = childrenChanged
-    ? ({ ...element, children: nextChildren } as PromptElement)
+    ? ({ ...element, children: nextChildren } as PromptScope<TToolIO>)
     : element;
 
   if (nextElement.strategy && nextElement.priority === priority) {

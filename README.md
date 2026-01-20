@@ -26,14 +26,14 @@ Cria is a lightweight prompt composition library for structured prompt engineeri
 
 ```ts
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are a research assistant.")
   .vectorSearch({ store, query: question, limit: 10 })
-  .provider(provider, (p) =>
+  .providerScope(provider, (p) =>
     p.summary(conversation, { store: memory }).last(conversation, { N: 20 })
   )
   .user(question)
-  .render({ budget: 200_000, renderer });
+  .render({ budget: 200_000 });
 ```
 
 Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.md)** to jump to the right how-to.
@@ -42,27 +42,27 @@ Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.m
 
 - **Need RAG?** Call `.vectorSearch({ store, query })`.
 - **Need a summary for long conversations?** Use `.summary(...)`.
-- **Need to cap history but keep structure?** Use `.last(...)`.
+- **Need to cap history but keep structure?** Use `Last(...)`.
 - **Need to drop optional context when the context window is full?** Use `.omit(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
-- **Prefer TSX?** Import the optional JSX surface from `@fastpaca/cria/jsx`.
 
-## Integrations
+## Providers
 
 <details>
 <summary><strong>OpenAI Chat Completions</strong></summary>
 
 ```ts
 import OpenAI from "openai";
-import { chatCompletions } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
+const provider = createProvider(client, "gpt-4o-mini");
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, tokenizer, renderer: chatCompletions });
+  .render({ budget });
 const response = await client.chat.completions.create({ model: "gpt-4o-mini", messages });
 ```
 </details>
@@ -72,15 +72,16 @@ const response = await client.chat.completions.create({ model: "gpt-4o-mini", me
 
 ```ts
 import OpenAI from "openai";
-import { responses } from "@fastpaca/cria/openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
 import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
+const provider = createResponsesProvider(client, "gpt-5-nano");
 const input = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, tokenizer, renderer: responses });
+  .render({ budget });
 const response = await client.responses.create({ model: "gpt-5-nano", input });
 ```
 </details>
@@ -90,15 +91,16 @@ const response = await client.responses.create({ model: "gpt-5-nano", input });
 
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
-import { anthropic } from "@fastpaca/cria/anthropic";
+import { createProvider } from "@fastpaca/cria/anthropic";
 import { cria } from "@fastpaca/cria";
 
 const client = new Anthropic();
+const provider = createProvider(client, "claude-haiku-4-5");
 const { system, messages } = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, tokenizer, renderer: anthropic });
+  .render({ budget });
 const response = await client.messages.create({ model: "claude-haiku-4-5", system, messages });
 ```
 </details>
@@ -107,15 +109,16 @@ const response = await client.messages.create({ model: "claude-haiku-4-5", syste
 <summary><strong>Vercel AI SDK</strong></summary>
 
 ```ts
-import { renderer } from "@fastpaca/cria/ai-sdk";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
 import { cria } from "@fastpaca/cria";
 import { generateText } from "ai";
 
+const provider = createProvider(model);
 const messages = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
-  .render({ budget, tokenizer, renderer });
+  .render({ budget });
 const { text } = await generateText({ model, messages });
 ```
 </details>
@@ -150,11 +153,10 @@ await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
 
 - [x] Fluent DSL and priority-based eviction
 - [x] Components: Region, Message, Truncate, Omit, Last, Summary, VectorSearch, ToolCall, ToolResult, Reasoning, Examples, CodeBlock, Separator
-- [x] Renderers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
+- [x] Providers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
 - [x] AI SDK helpers: Messages component, DEFAULT_PRIORITIES
 - [x] Memory: InMemoryStore, Redis, Postgres, Chroma, Qdrant
-- [x] Observability: render hooks, validation schemas, snapshots, OpenTelemetry
-- [x] Tokenizer helpers
+- [x] Observability: render hooks, validation schemas, OpenTelemetry
 - [x] Prompt eval / testing functionality
 
 **Planned**
@@ -168,7 +170,6 @@ await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
 - Issues and PRs are welcome.
 - Keep changes small and focused.
 - If you add a feature, include a short example or doc note.
-- Prefer DSL-based examples in contributions; JSX lives under `@fastpaca/cria/jsx` as optional sugar.
 
 ## Support
 

@@ -5,50 +5,29 @@ Use budgets when you want a composed prompt to be predictable under pressure (lo
 ## The two things you need
 
 1. A `budget` passed to `render()`
-2. Token counts (either a `tokenizer` you pass, or a provider context that supplies one)
+2. A provider (it owns token counting via tiktoken)
 
 ```ts
-import { cria, type Tokenizer } from "@fastpaca/cria";
+import OpenAI from "openai";
+import { cria } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/openai";
 
-const tokenizer: Tokenizer = (text) => Math.ceil(text.length / 4); // rough estimate
+const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
 const output = await cria
-  .prompt()
+  .prompt(provider)
   .system("You are a helpful assistant.")
   .truncate(history, { budget: 4000, priority: 2 })
   .omit(optionalExamples, { priority: 3 })
   .user(question)
-  .render({ budget: 8000, tokenizer });
+  .render({ budget: 8000 });
 ```
 
 ## Where token counts come from
 
-You have two common options:
+Token counting is provider-owned. Providers use tiktoken internally and map the rendered output into the strings that should be counted.
 
-- Pass a `tokenizer` to `render()` (best if you can match your model accurately).
-- Attach a provider context (so components like `Summary` can call a model, and budgeting can reuse the provider’s tokenizer).
-
-If you set a budget but don’t provide token counts, `render()` throws.
-
-### Using a provider tokenizer (example)
-
-If you’re already using a provider helper, you can attach a tokenizer to it so `render()` can reuse it without passing `tokenizer` every time:
-
-```ts
-import OpenAI from "openai";
-import { chatCompletions, createProvider } from "@fastpaca/cria/openai";
-import { cria, type Tokenizer } from "@fastpaca/cria";
-
-const tokenizer: Tokenizer = (text) => Math.ceil(text.length / 4); // rough estimate
-
-const provider = createProvider(new OpenAI(), "gpt-4o-mini", { tokenizer });
-
-const messages = await cria
-  .prompt()
-  .provider(provider, (p) => p.truncate(history, { budget: 4000, priority: 2 }))
-  .user(question)
-  .render({ budget: 8000, renderer: chatCompletions });
-```
+If you set a budget but don’t provide a provider (or bind one with `cria.prompt(provider)`), `render()` throws.
 
 ## Priorities: what stays vs what shrinks
 
@@ -86,7 +65,7 @@ Use `omit(...)` for anything you *want* to include, but can live without.
 
 ## Tool messages and reasoning traces
 
-Cria can represent tool I/O as semantic nodes (`ToolCall`, `ToolResult`), and optional reasoning (`Reasoning`). These are often some of the biggest token sources, so they’re good compaction candidates:
+Cria can represent tool I/O as semantic nodes (`ToolCall`, `ToolResult`), and optional reasoning (`Reasoning`). Tool calls live in assistant messages, tool results live in tool messages. These are often some of the biggest token sources, so they’re good compaction candidates:
 
 - Keep `ToolResult`, omit `ToolCall` (or the reverse) by assigning priorities.
 - Summarize a long tool trace into a short ledger and keep only that.
@@ -101,15 +80,17 @@ const prompt = cria
   .prompt()
   .system("You are helpful.")
   .user("What's the weather in Oslo?")
-  .raw(
-    ToolCall({
-      toolCallId: "call_1",
-      toolName: "weather",
-      input: { city: "Oslo" },
-      priority: 3,
-    })
+  .assistant((m) =>
+    m.raw(
+      ToolCall({
+        toolCallId: "call_1",
+        toolName: "weather",
+        input: { city: "Oslo" },
+        priority: 3,
+      })
+    )
   )
-  .raw(
+  .tool(
     ToolResult({
       toolCallId: "call_1",
       toolName: "weather",
@@ -117,7 +98,7 @@ const prompt = cria
       priority: 1,
     })
   )
-  .raw(Reasoning({ text: "…verbose trace…", priority: 4 }));
+  .assistant((m) => m.raw(Reasoning({ text: "...verbose trace...", priority: 4 })));
 ```
 
 ## Handling FitError
@@ -129,10 +110,14 @@ If the prompt cannot be reduced further, `render()` throws `FitError`. Treat tha
 - Re-prioritize content so the right things can shrink first
 
 ```ts
+import OpenAI from "openai";
 import { FitError } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/openai";
+
+const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
 try {
-  await cria.prompt().user(question).render({ budget: 8000, tokenizer });
+  await cria.prompt(provider).user(question).render({ budget: 8000 });
 } catch (error) {
   if (error instanceof FitError) {
     console.error("over budget by", error.overBudgetBy);

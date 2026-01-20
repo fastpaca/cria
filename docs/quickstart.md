@@ -39,12 +39,6 @@ const prompt = cria
   .user(userQuestion);
 ```
 
-While iterating, you can always render to markdown:
-
-```ts
-const markdown = await prompt.render();
-```
-
 ## Run it in your current system (AI SDK example)
 
 This is a complete runnable setup using the Vercel AI SDK + OpenAI. It renders your Cria prompt into `ModelMessage[]`, then calls the model.
@@ -61,17 +55,19 @@ Create `main.ts`:
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { cria } from "@fastpaca/cria";
-import { renderer } from "@fastpaca/cria/ai-sdk";
+import { createProvider } from "@fastpaca/cria/ai-sdk";
 
 const userQuestion = "Give me 3 crisp bullet points on compounding learning.";
+const model = openai("gpt-4o-mini");
+const provider = createProvider(model);
 
 const prompt = cria
-  .prompt()
+  .prompt(provider)
   .system("You are a helpful assistant.")
   .user(userQuestion);
 
-const messages = await prompt.render({ renderer });
-const { text } = await generateText({ model: openai("gpt-4o-mini"), messages });
+const messages = await prompt.render({ budget: 8000 });
+const { text } = await generateText({ model, messages });
 
 console.log(text);
 ```
@@ -97,11 +93,13 @@ const appContext = (context: string): Prompt =>
 
 const userRequest = (question: string): Prompt => cria.prompt().user(question);
 
-const prompt = cria.merge(
-  systemRules(),
-  appContext("We build Cria: prompts as structured, composable code."),
-  userRequest(userQuestion)
-);
+const prompt = cria
+  .merge(
+    systemRules(),
+    appContext("We build Cria: prompts as structured, composable code."),
+    userRequest(userQuestion)
+  )
+  .provider(provider);
 ```
 
 This is the workflow: start with a working prompt, then refactor into composable blocks that you can plug and play across your app.

@@ -4,14 +4,11 @@ import {
   type Prompt,
   type StoredSummary,
 } from "@fastpaca/cria";
-import { chatCompletions, Provider } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
-import { encoding_for_model } from "tiktoken";
 
-const enc = encoding_for_model("gpt-4o-mini");
-const tokenizer = (text: string): number => enc.encode(text).length;
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const provider = new Provider(client, "gpt-4o-mini");
+const provider = createProvider(client, "gpt-4o-mini");
 const store = new InMemoryStore<StoredSummary>();
 
 const conversation = [
@@ -33,16 +30,14 @@ const systemRules = (): Prompt =>
     );
 
 const summaryBlock = (): Prompt =>
-  cria.prompt().provider(provider, (p) =>
-    p.summary(fullHistory, {
-      id: "running-summary",
-      store,
-      priority: 2,
-    })
-  );
+  cria.prompt().summary(cria.prompt().user(fullHistory), {
+    id: "running-summary",
+    store,
+    priority: 2,
+  });
 
 const recentHistory = (): Prompt =>
-  cria.prompt().truncate(recentTurns, {
+  cria.prompt().truncate(cria.prompt().user(recentTurns), {
     budget: 200,
     from: "start",
     priority: 1,
@@ -61,13 +56,13 @@ const prompt = cria.merge(
 
 async function main(): Promise<void> {
   const messages = await prompt.render({
-    tokenizer,
+    provider,
     budget: 800,
-    renderer: chatCompletions,
   });
 
   console.log("=== Rendered messages ===");
   console.log(JSON.stringify(messages, null, 2));
+  console.log(`=== Token count: ${provider.countTokens(messages)} / 800 ===`);
 
   const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",

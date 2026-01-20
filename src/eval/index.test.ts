@@ -1,21 +1,47 @@
+import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
-import { c } from "../dsl";
-import { markdownRenderer } from "../renderers/markdown";
-import type { ModelProvider } from "../types";
+import { c, cria } from "../dsl";
+import { createPlainTextRenderer } from "../testing/plaintext";
+import { ModelProvider } from "../types";
 import { createJudge } from "./index";
+
+const renderer = createPlainTextRenderer({
+  includeRolePrefix: true,
+  joinMessagesWith: "\n\n",
+});
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
+
+class MockProvider extends ModelProvider<string> {
+  readonly renderer = renderer;
+  private readonly completionValue: string;
+  private readonly objectValue: unknown | undefined;
+
+  constructor(completionValue: string, objectValue?: unknown) {
+    super();
+    this.completionValue = completionValue;
+    this.objectValue = objectValue;
+  }
+
+  countTokens(rendered: string): number {
+    return countText(rendered);
+  }
+
+  completion(): string {
+    return this.completionValue;
+  }
+
+  object<T>(_: string, schema: z.ZodType<T>): T {
+    return this.objectValue ? schema.parse(this.objectValue) : schema.parse({});
+  }
+}
 
 function createMockProvider(opts: {
   completion?: string;
   object?: unknown;
 }): ModelProvider<string> {
-  return {
-    name: "mock",
-    renderer: markdownRenderer,
-    completion: () => opts.completion ?? "",
-    object: <T>(_: string, schema: z.ZodType<T>) =>
-      opts.object ? schema.parse(opts.object) : schema.parse({}),
-  };
+  return new MockProvider(opts.completion ?? "", opts.object);
 }
 
 describe("judge", () => {
@@ -25,17 +51,7 @@ describe("judge", () => {
       object: { score: 0.9, reasoning: "Great" },
     });
 
-    const prompt = {
-      priority: 0,
-      children: [
-        {
-          kind: "message" as const,
-          role: "user",
-          priority: 0,
-          children: ["Hi"],
-        },
-      ],
-    };
+    const prompt = await cria.prompt().user("Hi").build();
 
     const judge = createJudge({ target, evaluator });
     await expect(judge(prompt).toPass(c`Be friendly`)).resolves.toBeUndefined();
@@ -47,17 +63,7 @@ describe("judge", () => {
       object: { score: 0.3, reasoning: "Not helpful" },
     });
 
-    const prompt = {
-      priority: 0,
-      children: [
-        {
-          kind: "message" as const,
-          role: "user",
-          priority: 0,
-          children: ["Help me"],
-        },
-      ],
-    };
+    const prompt = await cria.prompt().user("Help me").build();
 
     const judge = createJudge({ target, evaluator, threshold: 0.8 });
     await expect(judge(prompt).toPass(c`Be helpful`)).rejects.toThrow(
@@ -68,27 +74,18 @@ describe("judge", () => {
   test("passes criterion to evaluator", async () => {
     let capturedPrompt = "";
     const target = createMockProvider({ completion: "Response" });
-    const evaluator: ModelProvider<string> = {
-      name: "evaluator",
-      renderer: markdownRenderer,
-      completion: () => "",
-      object: <T>(rendered: string, schema: z.ZodType<T>) => {
+    const evaluator: ModelProvider<string> = new (class extends MockProvider {
+      constructor() {
+        super("");
+      }
+
+      object<T>(rendered: string, schema: z.ZodType<T>): T {
         capturedPrompt = rendered;
         return schema.parse({ score: 1, reasoning: "ok" });
-      },
-    };
+      }
+    })();
 
-    const prompt = {
-      priority: 0,
-      children: [
-        {
-          kind: "message" as const,
-          role: "user",
-          priority: 0,
-          children: ["Test"],
-        },
-      ],
-    };
+    const prompt = await cria.prompt().user("Test").build();
 
     const judge = createJudge({ target, evaluator });
     await judge(prompt).toPass(c`Check for politeness`);

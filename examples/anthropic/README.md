@@ -18,5 +18,5 @@ pnpm start
 
 ## Notes
 
-The Anthropic renderer automatically extracts system messages to the separate
+The Anthropic provider automatically extracts system messages to the separate
 `system` parameter required by the Anthropic API.

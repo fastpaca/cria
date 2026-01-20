@@ -6,7 +6,7 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import type { RenderHooks } from "../render";
-import type { PromptElement } from "../types";
+import type { PromptNode } from "../types";
 
 interface OtelRenderHooksOptions {
   tracer: Tracer;
@@ -101,27 +101,19 @@ export function createOtelRenderHooks({
   };
 }
 
-function setElementAttributes(span: Span, element: PromptElement): void {
-  span.setAttribute("cria.node.kind", element.kind ?? "region");
-  span.setAttribute("cria.node.priority", element.priority);
+function setElementAttributes(span: Span, element: PromptNode): void {
+  span.setAttribute("cria.node.kind", element.kind);
 
   if (element.id) {
     span.setAttribute("cria.node.id", element.id);
   }
 
-  switch (element.kind) {
-    case "message":
-      span.setAttribute("cria.node.role", element.role);
-      break;
-    case "tool-call":
-    case "tool-result":
-      span.setAttribute("cria.node.tool_call_id", element.toolCallId);
-      span.setAttribute("cria.node.tool_name", element.toolName);
-      break;
-    default:
-      // No additional attributes for other element kinds
-      break;
+  if (element.kind === "scope") {
+    span.setAttribute("cria.node.priority", element.priority);
+    return;
   }
+
+  span.setAttribute("cria.node.role", element.role);
 }
 
 function setAttributes(span: Span, attrs: Attributes): void {

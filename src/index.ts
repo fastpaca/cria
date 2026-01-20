@@ -6,39 +6,27 @@
  * import { cria } from "@fastpaca/cria";
  *
  * const result = await cria
- *   .prompt()
+ *   .prompt(provider)
  *   .system("You are a helpful assistant.")
  *   .truncate(conversationHistory, { budget: 20000, from: "start", priority: 2 })
  *   .omit(optionalContext, { priority: 3 })
- *   .render({ tokenizer, budget: 128000 });
+ *   .render({ budget: 128000 });
  * ```
  *
  * @packageDocumentation
  */
 
+// DSL - primary API
 export type {
+  BuilderChild,
+  Prompt,
   ResultFormatter,
+  ScopeContent,
   StoredSummary,
   Summarizer,
   SummarizerContext,
-} from "./components";
-export {
-  CodeBlock,
-  Examples,
-  Last,
-  Message,
-  Omit,
-  Reasoning,
-  Region,
-  Separator,
-  Summary,
-  ToolCall,
-  ToolResult,
-  Truncate,
-  VectorSearch,
-} from "./components";
-// DSL
-export type { BuilderChild, Prompt, ScopeContent, TextInput } from "./dsl";
+  TextInput,
+} from "./dsl";
 export {
   BuilderBase,
   c,
@@ -48,6 +36,7 @@ export {
   PromptBuilder,
   prompt,
 } from "./dsl";
+
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,
@@ -68,39 +57,27 @@ export type {
   StrategyAppliedEvent,
 } from "./render";
 export { render } from "./render";
-export { markdownRenderer } from "./renderers/markdown";
-export {
-  createSnapshot,
-  createSnapshotHooks,
-  diffSnapshots,
-  type Snapshot,
-  type SnapshotChild,
-  type SnapshotDiff,
-  type SnapshotElement,
-} from "./snapshot";
 export type {
   CriaContext,
-  JsonValue,
   MaybePromise,
-  ModelProvider,
-  PromptChild,
-  PromptChildren,
-  PromptElement,
-  PromptKind,
-  PromptNodeKind,
-  PromptRenderer,
+  MessageChildren,
+  PromptLayout,
+  PromptMessage,
+  PromptMessageNode,
+  PromptNode,
+  PromptPart,
   PromptRole,
+  PromptScope,
+  PromptTree,
+  ProviderToolIO,
+  ReasoningPart,
+  ScopeChildren,
   Strategy,
   StrategyInput,
   StrategyResult,
-  Tokenizer,
+  TextPart,
+  ToolCallPart,
+  ToolIOForProvider,
+  ToolResultPart,
 } from "./types";
-export {
-  FitError,
-  JsonValueSchema,
-  PromptChildrenSchema,
-  PromptChildSchema,
-  PromptElementSchema,
-  PromptKindSchema,
-  PromptRoleSchema,
-} from "./types";
+export { FitError, ModelProvider, PromptRenderer } from "./types";

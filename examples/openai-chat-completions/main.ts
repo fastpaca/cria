@@ -1,11 +1,9 @@
 import { cria, type Prompt } from "@fastpaca/cria";
-import { chatCompletions } from "@fastpaca/cria/openai";
+import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
-import { encoding_for_model } from "tiktoken";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const enc = encoding_for_model("gpt-4o-mini");
-const tokenizer = (text: string): number => enc.encode(text).length;
+const provider = createProvider(client, "gpt-4o-mini");
 
 const systemRules = (): Prompt =>
   cria.prompt().system("You are a helpful assistant.");
@@ -19,13 +17,13 @@ const prompt = cria.merge(
 
 async function main(): Promise<void> {
   const messages = await prompt.render({
-    tokenizer,
+    provider,
     budget: 2000,
-    renderer: chatCompletions,
   });
 
   console.log("=== Messages ===");
   console.log(JSON.stringify(messages, null, 2));
+  console.log(`=== Token count: ${provider.countTokens(messages)} / 2000 ===`);
 
   const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",

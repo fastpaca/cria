@@ -31,7 +31,7 @@ const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
 const prompt = cria
   .prompt()
-  .provider(provider, (p) =>
+  .providerScope(provider, (p) =>
     p.summary(history, { id: "history", store, priority: 2 })
   )
   .user(question);
