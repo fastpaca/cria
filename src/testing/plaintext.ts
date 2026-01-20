@@ -30,10 +30,6 @@ export class PlainTextRenderer extends PromptRenderer<string, PlainTextToolIO> {
 
     return messages.join(this.joinMessagesWith);
   }
-
-  override historyToLayout(rendered: string): PromptLayout<PlainTextToolIO> {
-    return [{ role: "user", text: rendered }];
-  }
 }
 
 function formatPlaintextMessage(

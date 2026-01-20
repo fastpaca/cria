@@ -8,8 +8,6 @@ import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
   CriaContext,
   ModelProvider,
-  PromptLayout,
-  PromptMessage,
   PromptNode,
   PromptPart,
   PromptRole,
@@ -75,9 +73,6 @@ type BoundProvider = ModelProvider<unknown, ProviderToolIO>;
 type RenderedForProvider<P> =
   P extends ModelProvider<infer TOutput, ProviderToolIO> ? TOutput : unknown;
 type BoundProviderFor<P> = P extends BoundProvider ? P : never;
-type ProviderHistory<P extends BoundProvider> = Parameters<
-  P["renderer"]["historyToLayout"]
->[0];
 type RenderOptionsWithoutProvider<
   TRendered,
   TToolIO extends ProviderToolIO,
@@ -384,24 +379,6 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     );
 
     return bound.addChild(element);
-  }
-
-  /**
-   * Add provider-native history to the prompt.
-   * Requires a bound provider via cria.prompt(provider) or builder.provider(provider).
-   */
-  history<TProvider extends BoundProvider>(
-    this: PromptBuilder<TProvider>,
-    history: ProviderHistory<TProvider>
-  ): PromptBuilder<TProvider> {
-    if (!this.boundProvider) {
-      throw new Error(
-        "History requires a bound provider. Bind one with cria.prompt(provider) or cria.prompt().provider(provider)."
-      );
-    }
-
-    const layout = this.boundProvider.renderer.historyToLayout(history);
-    return this.addChildren(layoutToNodes(layout));
   }
 
   /**
@@ -848,49 +825,4 @@ async function resolveScopeChild<P>(
   }
 
   throw new Error("Unsupported child type.");
-}
-
-function layoutToNodes<TToolIO extends ProviderToolIO>(
-  layout: PromptLayout<TToolIO>
-): PromptNode<TToolIO>[] {
-  return layout.map((message) => ({
-    kind: "message",
-    role: message.role,
-    children: messageToParts(message),
-  }));
-}
-
-function messageToParts<TToolIO extends ProviderToolIO>(
-  message: PromptMessage<TToolIO>
-): PromptPart<TToolIO>[] {
-  if (message.role === "tool") {
-    return [
-      {
-        type: "tool-result",
-        toolCallId: message.toolCallId,
-        toolName: message.toolName,
-        output: message.output,
-      },
-    ];
-  }
-
-  if (message.role === "assistant") {
-    const parts: PromptPart<TToolIO>[] = [];
-    if (message.text) {
-      parts.push({ type: "text", text: message.text });
-    }
-    if (message.reasoning) {
-      parts.push({ type: "reasoning", text: message.reasoning });
-    }
-    if (message.toolCalls) {
-      parts.push(...message.toolCalls);
-    }
-    return parts;
-  }
-
-  if (message.text) {
-    return [{ type: "text", text: message.text }];
-  }
-
-  return [];
 }

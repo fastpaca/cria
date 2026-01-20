@@ -121,18 +121,6 @@ describe("PromptBuilder", () => {
     });
   });
 
-  describe("history", () => {
-    test("history() appends provider-native history when bound", async () => {
-      const output = await cria
-        .prompt(provider)
-        .history("Hello")
-        .user("World")
-        .render({ budget: tokensFor("user: Hello\n\nuser: World") });
-
-      expect(output).toBe("user: Hello\n\nuser: World");
-    });
-  });
-
   describe("strategies", () => {
     test("truncate() shrinks scoped messages", async () => {
       const chunk = "x".repeat(50);

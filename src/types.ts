@@ -216,14 +216,6 @@ export abstract class PromptRenderer<
 > {
   /** Render a layout into provider-specific output. */
   abstract render(layout: PromptLayout<TToolIO>): TOutput;
-
-  /**
-   * Convert provider-specific history back into a prompt layout.
-   * Providers can override this to enable `prompt.history(...)`.
-   */
-  historyToLayout(_rendered: TOutput): PromptLayout<TToolIO> {
-    throw new Error("This provider does not support history parsing.");
-  }
 }
 
 export type StrategyResult<TToolIO extends ProviderToolIO = ProviderToolIO> =
