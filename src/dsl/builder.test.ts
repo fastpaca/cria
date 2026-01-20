@@ -1,10 +1,8 @@
 import { describe, expect, test } from "vitest";
-import type { StoredSummary } from "./dsl";
-import { c, cria, PromptBuilder, prompt } from "./dsl";
-import { InMemoryStore } from "./memory";
-import { render } from "./render";
-import { createTestProvider } from "./testing/plaintext";
-import type { PromptNode } from "./types";
+import { render } from "../render";
+import { createTestProvider } from "../testing/plaintext";
+import type { PromptNode } from "../types";
+import { c, cria, PromptBuilder, prompt } from "./index";
 
 const provider = createTestProvider({
   includeRolePrefix: true,
@@ -118,41 +116,6 @@ describe("PromptBuilder", () => {
       );
 
       expect(result).toBe("user: Hello World");
-    });
-  });
-
-  describe("strategies", () => {
-    test("truncate() shrinks scoped messages", async () => {
-      const chunk = "x".repeat(50);
-      const element = await cria
-        .prompt()
-        .truncate(cria.prompt().user(chunk).user(chunk).user(chunk), {
-          budget: 500, // High budget = drop fewer children per iteration
-          priority: 1,
-        })
-        .build();
-
-      const full = `user: ${chunk}\n\nuser: ${chunk}\n\nuser: ${chunk}`;
-      const result = await render(element, {
-        provider,
-        budget: Math.max(0, tokensFor(full) - 1),
-      });
-      expect(result).toContain("user:");
-      expect(result.length).toBeLessThan(full.length);
-    });
-
-    test("omit() drops scoped messages", async () => {
-      const element = await cria
-        .prompt()
-        .system("Required.")
-        .omit(cria.prompt().system("Optional content"), { priority: 2 })
-        .build();
-
-      const result = await render(element, {
-        provider,
-        budget: tokensFor("system: Required."),
-      });
-      expect(result).toBe("system: Required.");
     });
   });
 
@@ -300,35 +263,6 @@ describe("PromptBuilder", () => {
     });
   });
 
-  describe("summary helper", () => {
-    test("summary uses custom summarizer when over budget", async () => {
-      const store = new InMemoryStore<StoredSummary>();
-      const summarizer = () => "S";
-
-      const builder = cria
-        .prompt()
-        .summary(cria.prompt().user("x".repeat(200)), {
-          id: "conv-summary",
-          store,
-          summarize: summarizer,
-          priority: 1,
-        });
-
-      const summaryOutput = "system: S";
-      const fullOutput = `user: ${"x".repeat(200)}`;
-      const budget =
-        tokensFor(fullOutput) > tokensFor(summaryOutput)
-          ? tokensFor(summaryOutput)
-          : Math.max(0, tokensFor(fullOutput) - 1);
-
-      const output = await builder.render({ provider, budget });
-
-      expect(output).toBe(summaryOutput);
-      const entry = store.get("conv-summary");
-      expect(entry?.data.content).toBe("S");
-    });
-  });
-
   describe("content types", () => {
     test("truncate accepts raw PromptNode content", async () => {
       const inner: PromptNode = {
@@ -360,128 +294,6 @@ describe("PromptBuilder", () => {
         budget: tokensFor("user: builder content"),
       });
       expect(result).toBe("user: builder content");
-    });
-  });
-
-  test("scope() works", async () => {
-    const element = await cria
-      .prompt()
-      .scope((r) => r.user("Scoped content"))
-      .build();
-
-    const result = await render(element, {
-      provider,
-      budget: tokensFor("user: Scoped content"),
-    });
-    expect(result).toBe("user: Scoped content");
-  });
-
-  describe("vector search", () => {
-    interface TestDocument {
-      title: string;
-      content: string;
-    }
-
-    function createMockVectorStore(
-      results: { key: string; score: number; data: TestDocument }[]
-    ) {
-      return {
-        get: () => null,
-        set: () => {
-          /* no-op */
-        },
-        delete: () => false,
-        search: () =>
-          results.map((r) => ({
-            key: r.key,
-            score: r.score,
-            entry: {
-              data: r.data,
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            },
-          })),
-      };
-    }
-
-    test("vectorSearch renders results at prompt level", async () => {
-      const store = createMockVectorStore([
-        {
-          key: "doc-1",
-          score: 0.95,
-          data: { title: "Doc 1", content: "Content 1" },
-        },
-      ]);
-
-      const result = await cria
-        .prompt()
-        .vectorSearch({
-          store,
-          query: "search query",
-          limit: 1,
-        })
-        .render({ provider, budget: 10_000 });
-
-      expect(result).toContain("user:");
-      expect(result).toContain("score: 0.950");
-      expect(result).toContain("Doc 1");
-    });
-
-    test("vectorSearch renders results inside message", async () => {
-      const store = createMockVectorStore([
-        {
-          key: "doc-1",
-          score: 0.9,
-          data: { title: "Result", content: "Found it" },
-        },
-      ]);
-
-      const result = await cria
-        .prompt()
-        .user((m) =>
-          m.append("Here are the search results:\n").vectorSearch({
-            store,
-            query: "test query",
-            limit: 1,
-          })
-        )
-        .render({ provider, budget: 10_000 });
-
-      expect(result).toContain("user:");
-      expect(result).toContain("Here are the search results:");
-      expect(result).toContain("Result");
-    });
-
-    test("vectorSearch handles empty results", async () => {
-      const store = createMockVectorStore([]);
-
-      const result = await cria
-        .prompt()
-        .vectorSearch({
-          store,
-          query: "no matches",
-        })
-        .render({ provider, budget: 10_000 });
-
-      expect(result).toContain("Vector search returned no results");
-    });
-
-    test("vectorSearch uses custom formatter", async () => {
-      const store = createMockVectorStore([
-        { key: "doc-1", score: 0.9, data: { title: "A", content: "B" } },
-        { key: "doc-2", score: 0.8, data: { title: "C", content: "D" } },
-      ]);
-
-      const result = await cria
-        .prompt()
-        .vectorSearch({
-          store,
-          query: "test",
-          formatter: (results) => `Found ${results.length} documents`,
-        })
-        .render({ provider, budget: 10_000 });
-
-      expect(result).toContain("Found 2 documents");
     });
   });
 });
