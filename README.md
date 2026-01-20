@@ -29,9 +29,7 @@ const messages = await cria
   .prompt(provider)
   .system("You are a research assistant.")
   .vectorSearch({ store, query: question, limit: 10 })
-  .providerScope(provider, (p) =>
-    p.summary(conversation, { store: memory }).last(conversation, { N: 20 })
-  )
+  .summary(conversation, { id: "history", store: memory, priority: 2 })
   .user(question)
   .render({ budget: 200_000 });
 ```
@@ -42,7 +40,7 @@ Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.m
 
 - **Need RAG?** Call `.vectorSearch({ store, query })`.
 - **Need a summary for long conversations?** Use `.summary(...)`.
-- **Need to cap history but keep structure?** Use `Last(...)`.
+- **Need to cap history but keep structure?** Use `.last(...)`.
 - **Need to drop optional context when the context window is full?** Use `.omit(...)`.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
 
