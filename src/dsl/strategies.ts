@@ -20,6 +20,7 @@ export function createScope<TToolIO extends ProviderToolIO>(
   children: ScopeChildren<TToolIO>,
   opts?: { priority?: number; strategy?: Strategy; id?: string }
 ): PromptScope<TToolIO> {
+  // Thin helper that preserves tool IO types without coercion.
   return {
     kind: "scope",
     priority: opts?.priority ?? 0,
@@ -37,6 +38,7 @@ export function createMessage<TToolIO extends ProviderToolIO>(
   children: MessageChildren<TToolIO>,
   id?: string
 ): PromptMessageNode<TToolIO> {
+  // Message nodes only carry already-normalized parts; no conversion happens here.
   return {
     kind: "message",
     role,

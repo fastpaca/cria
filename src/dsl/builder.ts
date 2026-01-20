@@ -40,6 +40,15 @@ import { VectorSearch } from "./vector-search";
  */
 type AnyPromptBuilder = PromptBuilder<unknown>;
 
+/**
+ * Type flow in the DSL:
+ * - P is the bound provider type (or unknown when unbound).
+ * - ToolIOForProvider<P> extracts the provider's tool IO contract.
+ * - PromptPart/PromptNode/etc. are all parameterized by that tool IO so tool calls
+ *   stay typed from builder → tree → layout → renderer.
+ * - When P is unknown, ToolIOForProvider<P> resolves to "never" for tool IO,
+ *   preventing tool parts until a provider is bound.
+ */
 type ToolIOFor<P> = ToolIOForProvider<P>;
 type PromptPartFor<P> = PromptPart<ToolIOFor<P>>;
 type PromptNodeFor<P> = PromptNode<ToolIOFor<P>>;
@@ -73,6 +82,13 @@ type BoundProvider = ModelProvider<unknown, ProviderToolIO>;
 type RenderedForProvider<P> =
   P extends ModelProvider<infer TOutput, ProviderToolIO> ? TOutput : unknown;
 type BoundProviderFor<P> = P extends BoundProvider ? P : never;
+
+/**
+ * Provider binding helpers:
+ * - BoundProvider captures any provider with a renderer + tool IO contract.
+ * - RenderedForProvider ties render() return types to a specific provider.
+ * - RenderOptionsWithoutProvider omits provider when the builder is already bound.
+ */
 type RenderOptionsWithoutProvider<
   TRendered,
   TToolIO extends ProviderToolIO,
@@ -266,6 +282,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   /**
    * Bind this prompt builder to a provider.
    * Enables provider-specific rendering without passing a provider at render time.
+   * This also locks tool-call input/output types for the rest of the builder chain.
    */
   provider<TProvider extends BoundProvider>(
     this: PromptBuilder<unknown> | PromptBuilder<TProvider>,
@@ -614,6 +631,10 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   /**
    * Render the prompt directly using the provided options.
    * Equivalent to `render(await builder.build(), options)`.
+   *
+   * Overloads:
+   * - Bound builder: provider is implicit.
+   * - Unbound builder: provider must be supplied to establish tool IO types.
    */
   async render<TProvider extends BoundProvider>(
     this: PromptBuilder<TProvider>,
@@ -660,6 +681,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
   ): PromptBuilder<P> {
+    // Normalize text-like inputs into typed parts so tool IO stays provider-bound.
     const childrenPromise =
       typeof content === "function"
         ? content(new MessageBuilder<P>([], this.context)).buildChildren()
@@ -678,7 +700,9 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
  */
 export type Prompt<P = unknown> = PromptBuilder<P>;
 
-// Resolution functions (colocated with builders)
+// Resolution functions (colocated with builders).
+// They resolve async children and enforce message/scope boundaries early.
+// This avoids deferred checks and ensures type safety at build time.
 
 function isPromptNode<TToolIO extends ProviderToolIO>(
   value: unknown

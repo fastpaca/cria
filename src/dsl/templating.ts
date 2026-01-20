@@ -6,6 +6,11 @@
 
 import type { PromptPart, ProviderToolIO } from "../types";
 
+/**
+ * Text input types for message builders.
+ * These accept raw text and pre-built PromptParts, so tool parts can pass through
+ * without conversion while keeping provider-bound tool IO types intact.
+ */
 export type TextValue<TToolIO extends ProviderToolIO = ProviderToolIO> =
   | PromptPart<TToolIO>
   | boolean
@@ -75,7 +80,7 @@ export function isPromptPart<TToolIO extends ProviderToolIO = ProviderToolIO>(
   return typeof value === "object" && value !== null && "type" in value;
 }
 
-// Normalize text-like inputs into prompt parts.
+// Normalize text-like inputs into prompt parts while preserving existing parts.
 export function normalizeTextInput<TToolIO extends ProviderToolIO>(
   content?: TextInput<TToolIO>
 ): PromptPart<TToolIO>[] {

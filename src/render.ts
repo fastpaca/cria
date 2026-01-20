@@ -16,6 +16,13 @@ import {
   type ToolResultPart,
 } from "./types";
 
+/**
+ * Render pipeline:
+ * - PromptTree carries provider-bound tool IO types.
+ * - layoutPrompt flattens the tree into a PromptLayout and enforces invariants.
+ * - The provider's renderer translates that layout into the provider payload.
+ * - Token counting is provider-owned and happens on rendered output.
+ */
 export interface RenderOptions<
   TRendered = unknown,
   TToolIO extends ProviderToolIO = ProviderToolIO,
@@ -143,6 +150,7 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
 ): PromptLayout<TToolIO> {
   // Flatten tree to a list of opinionated messages.
   // Traversal order is depth-first, left-to-right so layout is deterministic.
+  // This is the only place we validate message/part structure.
   const messages: PromptMessage<TToolIO>[] = [];
 
   const walk = (node: PromptNode<TToolIO>): void => {
@@ -178,6 +186,7 @@ function buildMessage<TToolIO extends ProviderToolIO>(
 function buildToolMessage<TToolIO extends ProviderToolIO>(
   children: readonly PromptPart<TToolIO>[]
 ): PromptMessage<TToolIO> {
+  // Tool messages are a single tool result by construction.
   if (children.length !== 1 || children[0]?.type !== "tool-result") {
     throw new Error("Tool messages must contain exactly one tool result.");
   }
@@ -230,6 +239,7 @@ function collectAssistantParts<TToolIO extends ProviderToolIO>(
       continue;
     }
     if (part.type === "tool-result") {
+      // Tool results must live in tool messages, not assistant messages.
       throw new Error("Tool results must be inside a tool message.");
     }
   }
@@ -241,6 +251,7 @@ function buildTextMessage<TToolIO extends ProviderToolIO>(
   role: PromptMessage<TToolIO>["role"],
   children: readonly PromptPart<TToolIO>[]
 ): PromptMessage<TToolIO> {
+  // System/user messages are text-only; other parts are rejected here.
   const text = collectTextParts(children);
 
   if (role === "system") {
@@ -284,6 +295,8 @@ function resolveProvider<TRendered, TToolIO extends ProviderToolIO>(
   element: PromptTree<TToolIO>,
   override?: ModelProvider<TRendered, TToolIO>
 ): ModelProvider<TRendered, TToolIO> {
+  // Provider may come from the tree (provider scopes) or from render options.
+  // Either way, it must be a single consistent provider for the entire tree.
   const providers = collectProviders(element);
 
   if (override) {
@@ -312,6 +325,7 @@ function resolveProvider<TRendered, TToolIO extends ProviderToolIO>(
 function collectProviders<TToolIO extends ProviderToolIO>(
   element: PromptNode<TToolIO>
 ): ModelProvider<unknown, ProviderToolIO>[] {
+  // Walk scopes and collect unique providers from context.
   const found: ModelProvider<unknown, ProviderToolIO>[] = [];
 
   const visit = (node: PromptNode<TToolIO>): void => {
