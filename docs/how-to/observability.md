@@ -12,7 +12,7 @@ import { createProvider } from "@fastpaca/cria/openai";
 const hooks: RenderHooks = {
   onFitStart: (event) => console.log("fit start", event.totalTokens),
   onFitIteration: (event) => console.log("iteration", event.iteration, event.priority),
-  onStrategyApplied: (event) => console.log("applied", event.target.kind ?? "region"),
+  onStrategyApplied: (event) => console.log("applied", event.target.kind),
   onFitComplete: (event) => console.log("fit complete", event.totalTokens),
   onFitError: (event) => console.log("fit error", event.error.overBudgetBy),
 };

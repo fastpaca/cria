@@ -5,7 +5,7 @@ Cria treats prompts like a structured tree (similar to a UI component tree). Tha
 ## What Cria is
 
 - A fluent DSL for assembling prompt structure (`cria.prompt()`).
-- A small IR (intermediate representation): regions + semantic nodes (messages, tool messages, reasoning).
+- A small IR (intermediate representation): scopes + semantic nodes (messages, tool messages, reasoning).
 - A rendering layer: turn the same prompt tree into different provider payloads.
 - Optional compaction: when you set a token `budget`, strategies decide what can shrink first.
 
