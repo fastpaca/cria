@@ -1,13 +1,12 @@
-# Summary Component Example
+# Summary Example
 
-Demonstrates using the `<Summary>` and `<Last>` components for progressive conversation summarization.
+Demonstrates progressive conversation summarization with the fluent DSL.
 
 ## What it shows
 
-- `<Summary>` - Summarizes older messages when the prompt exceeds budget
-- `<Last N={4}>` - Keeps the last 4 messages in full
-- `InMemoryStore` - In-memory storage for summaries
-- Custom summarizer using OpenAI
+- `.summary()` - Summarizes older content when the prompt exceeds budget
+- `InMemoryStore` - In-memory storage for cached summaries
+- Priority-based compaction for long conversations
 
 ## Running
 

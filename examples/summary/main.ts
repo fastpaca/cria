@@ -1,81 +1,85 @@
-import {
-  cria,
-  InMemoryStore,
-  type Prompt,
-  type StoredSummary,
-} from "@fastpaca/cria";
+/**
+ * Cria Summary Example
+ *
+ * Shows how to use summary() for progressive conversation summarization.
+ * When the prompt exceeds budget, older content is summarized and cached.
+ */
+
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const provider = createProvider(client, "gpt-4o-mini");
-const store = new InMemoryStore<StoredSummary>();
+const MODEL = "gpt-4o-mini";
+const provider = createProvider(client, MODEL);
 
-const conversation = [
-  "USER: I'm planning a trip to Berlin. What neighborhoods should I stay in?",
-  "ASSISTANT: Prenzlauer Berg and Kreuzberg are great for food and nightlife.",
-  "USER: What are the must-see historical sites?",
-  "ASSISTANT: Brandenburg Gate, the Berlin Wall memorial, and Museum Island.",
-  "USER: Give me a short summary and a restaurant recommendation.",
+// Summary cache (use RedisStore or PostgresStore in production)
+const summaryStore = new InMemoryStore<StoredSummary>();
+
+// --- Sample Conversation History ---
+
+const conversationHistory = [
+  { role: "user" as const, content: "I'm planning a trip to Berlin." },
+  {
+    role: "assistant" as const,
+    content: "Great choice! Berlin has rich history and culture.",
+  },
+  { role: "user" as const, content: "What neighborhoods should I stay in?" },
+  {
+    role: "assistant" as const,
+    content: "Prenzlauer Berg and Kreuzberg are popular.",
+  },
+  { role: "user" as const, content: "What are the must-see historical sites?" },
+  {
+    role: "assistant" as const,
+    content: "Brandenburg Gate, Berlin Wall Memorial, Museum Island.",
+  },
 ];
 
-const recentTurns = conversation.slice(-2).join("\n");
-const fullHistory = conversation.join("\n");
-
-const systemRules = (): Prompt =>
-  cria
-    .prompt()
-    .system(
-      "You summarize long conversations and keep the last 2 turns verbatim."
-    );
-
-const summaryBlock = (): Prompt =>
-  cria.prompt().summary(cria.prompt().user(fullHistory), {
-    id: "running-summary",
-    store,
-    priority: 2,
-  });
-
-const recentHistory = (): Prompt =>
-  cria.prompt().truncate(cria.prompt().user(recentTurns), {
-    budget: 200,
-    from: "start",
-    priority: 1,
-  });
-
-const userRequest = (question: string): Prompt => cria.prompt().user(question);
-
-const prompt = cria.merge(
-  systemRules(),
-  summaryBlock(),
-  recentHistory(),
-  userRequest(
-    "Summarize the conversation so far and suggest a 1-day itinerary."
-  )
+// Build history as a prompt (for use with summary)
+const historyPrompt = conversationHistory.reduce(
+  (p, msg) => p.message(msg.role, msg.content),
+  cria.prompt()
 );
 
+// --- Build the Prompt with Fluent DSL ---
+
+const prompt = cria
+  .prompt(provider)
+  .system("You are a helpful travel assistant. Be concise.")
+  // History wrapped in summary - gets summarized when over budget
+  .summary(historyPrompt, {
+    id: "conversation-summary",
+    store: summaryStore,
+    priority: 2,
+  })
+  .user("What's a good 1-day itinerary for Berlin?");
+
+// --- Render and Call the Model ---
+
 async function main(): Promise<void> {
-  const messages = await prompt.render({
-    provider,
-    budget: 800,
-  });
+  const budget = 300; // Small budget to trigger summarization
+  const messages = await prompt.render({ budget });
 
   console.log("=== Rendered messages ===");
   console.log(JSON.stringify(messages, null, 2));
-  console.log(`=== Token count: ${provider.countTokens(messages)} / 800 ===`);
+  console.log(
+    `\n=== Token count: ${provider.countTokens(messages)} / ${budget} ===\n`
+  );
 
   const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: MODEL,
     messages,
   });
 
-  console.log("\n=== Assistant response ===");
+  console.log("=== Assistant response ===");
   console.log(completion.choices[0]?.message?.content);
 
-  const summaryEntry = store.get("running-summary");
-  if (summaryEntry) {
-    console.log("\n=== Stored summary ===");
-    console.log(summaryEntry.data.content);
+  // Show cached summary (persisted across renders)
+  const cached = summaryStore.get("conversation-summary");
+  if (cached) {
+    console.log("\n=== Cached summary ===");
+    console.log(cached.data.content);
   }
 }
 

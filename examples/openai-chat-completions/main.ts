@@ -1,32 +1,56 @@
-import { cria, type Prompt } from "@fastpaca/cria";
+/**
+ * Cria + OpenAI Chat Completions Example
+ *
+ * Shows the fluent DSL with budget-aware compaction.
+ * Lower priority content (like optional context) gets dropped first.
+ */
+
+import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const provider = createProvider(client, "gpt-4o-mini");
+const MODEL = "gpt-4o-mini";
+const provider = createProvider(client, MODEL);
 
-const systemRules = (): Prompt =>
-  cria.prompt().system("You are a helpful assistant.");
+// --- Sample Data ---
 
-const userRequest = (question: string): Prompt => cria.prompt().user(question);
+const detailedContext = `Berlin History:
+- Founded in the 13th century
+- Became capital of Prussia in 1701
+- Heavily bombed in WWII
+- Divided by the Berlin Wall 1961-1989
+- Reunified as Germany's capital in 1990
+- Today: ~3.7 million people, major cultural hub`;
 
-const prompt = cria.merge(
-  systemRules(),
-  userRequest("Give me three bullet points about Berlin's history.")
-);
+// --- Build the Prompt with Fluent DSL ---
+
+const prompt = cria
+  .prompt(provider)
+  // System instructions (priority 1 = critical)
+  .system("You are a helpful assistant. Answer in bullet points.")
+  // Detailed context: dropped if budget is tight (priority 3 = lower)
+  .omit(cria.prompt().assistant(`Context:\n${detailedContext}`), {
+    priority: 3,
+    id: "context",
+  })
+  // User question (priority 1 = critical)
+  .user("What are three key facts about Berlin?");
+
+// --- Render and Call the Model ---
 
 async function main(): Promise<void> {
-  const messages = await prompt.render({
-    provider,
-    budget: 2000,
-  });
+  const budget = 500;
+  const messages = await prompt.render({ budget });
 
   console.log("=== Messages ===");
   console.log(JSON.stringify(messages, null, 2));
-  console.log(`=== Token count: ${provider.countTokens(messages)} / 2000 ===`);
+  console.log(
+    `\n=== Token count: ${provider.countTokens(messages)} / ${budget} ===\n`
+  );
 
   const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: MODEL,
     messages,
   });
 
