@@ -1,9 +1,12 @@
 import type { LanguageModel, ModelMessage } from "ai";
 import { generateObject, generateText } from "ai";
+import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { countText } from "../renderers/shared";
 import type { PromptLayout, PromptMessage, PromptPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
+
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
 
 type AiContentPart = Exclude<ModelMessage["content"], string>[number];
 type AiToolCallPart = Extract<AiContentPart, { type: "tool-call" }>;

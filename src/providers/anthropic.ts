@@ -6,10 +6,13 @@ import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
+import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { countText } from "../renderers/shared";
 import type { PromptLayout, PromptMessage, ToolCallPart } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
+
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
 
 export interface AnthropicRenderResult {
   system?: string;

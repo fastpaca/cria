@@ -1,3 +1,4 @@
+import { getEncoding } from "js-tiktoken";
 import type OpenAI from "openai";
 import type {
   ChatCompletionAssistantMessageParam,
@@ -5,9 +6,11 @@ import type {
 } from "openai/resources/chat/completions";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { z } from "zod";
-import { countText } from "../renderers/shared";
 import type { PromptLayout } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
+
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
 
 export interface OpenAiToolIO {
   callInput: string;

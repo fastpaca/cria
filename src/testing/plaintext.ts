@@ -1,7 +1,10 @@
+import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { countText } from "../renderers/shared";
 import type { PromptLayout, PromptMessage } from "../types";
 import { ModelProvider, PromptRenderer } from "../types";
+
+const encoder = getEncoding("cl100k_base");
+const countText = (text: string): number => encoder.encode(text).length;
 
 export interface PlainTextRendererOptions {
   joinMessagesWith?: string;
