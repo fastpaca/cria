@@ -40,8 +40,10 @@ Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.m
 
 - **Need RAG?** Call `.vectorSearch({ store, query })`.
 - **Need a summary for long conversations?** Use `.summary(...)`.
-- **Need to cap history but keep structure?** Use `.last(...)`.
+- **Need to truncate history when over budget?** Use `.truncate(...)`.
 - **Need to drop optional context when the context window is full?** Use `.omit(...)`.
+- **Need conditional content?** Use `.when(condition, fn)` to conditionally include sections.
+- **Need to combine prompts?** Use `merge()` to combine multiple prompt builders.
 - **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
 
 ## Providers
@@ -150,6 +152,7 @@ await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
 **Done**
 
 - [x] Fluent DSL and priority-based eviction
+- [x] Conditional helpers (`when()`, `merge()`)
 - [x] Providers/Integrations
   - [x] OpenAI (Chat Completions + Responses)
   - [x] Anthropic
