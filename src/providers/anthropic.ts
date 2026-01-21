@@ -20,11 +20,17 @@ import type { ToolCallPart } from "../types";
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
+/**
+ * Rendered Anthropic input (system + messages array).
+ */
 export interface AnthropicRenderResult {
   system?: string;
   messages: MessageParam[];
 }
 
+/**
+ * Tool IO contract derived from Anthropic tool block shapes.
+ */
 export interface AnthropicToolIO {
   callInput: ToolUseBlockParam["input"];
   resultOutput: ToolResultBlockParam["content"];
@@ -35,6 +41,9 @@ type AnthropicAssistantContent = Extract<
   { role: "assistant" }
 >["content"];
 
+/**
+ * Adapter between chat-completions protocol messages and Anthropic messages.
+ */
 export class AnthropicAdapter
   implements
     ProviderAdapter<
@@ -42,6 +51,7 @@ export class AnthropicAdapter
       AnthropicRenderResult
     >
 {
+  /** Convert protocol messages into Anthropic input. */
   toProvider(
     input: ChatCompletionsInput<AnthropicToolIO>
   ): AnthropicRenderResult {
@@ -50,35 +60,22 @@ export class AnthropicAdapter
 
     for (const message of input) {
       if (message.role === "system" || message.role === "developer") {
-        system = system ? `${system}\n\n${message.content}` : message.content;
+        system = appendSystemContent(system, message.content);
         continue;
       }
 
       if (message.role === "tool") {
-        for (const result of message.content) {
-          messages.push({
-            role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: result.toolCallId,
-                content: result.output,
-              },
-            ],
-          });
-        }
+        appendToolResults(messages, message);
         continue;
       }
 
-      const rendered = renderAnthropicMessage(message);
-      if (rendered.message) {
-        messages.push(rendered.message);
-      }
+      appendRenderedMessage(messages, renderAnthropicMessage(message));
     }
 
     return system ? { system, messages } : { messages };
   }
 
+  /** Convert Anthropic input back into protocol messages. */
   fromProvider(
     input: AnthropicRenderResult
   ): ChatCompletionsInput<AnthropicToolIO> {
@@ -106,6 +103,38 @@ interface RenderedAnthropicMessage {
   message?: MessageParam;
 }
 
+function appendSystemContent(current: string, content: string): string {
+  return current ? `${current}\n\n${content}` : content;
+}
+
+function appendToolResults(
+  messages: MessageParam[],
+  message: Extract<ChatMessage<AnthropicToolIO>, { role: "tool" }>
+): void {
+  for (const result of message.content) {
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: result.toolCallId,
+          content: result.output ?? "",
+        },
+      ],
+    });
+  }
+}
+
+function appendRenderedMessage(
+  messages: MessageParam[],
+  rendered: RenderedAnthropicMessage
+): void {
+  if (rendered.message) {
+    messages.push(rendered.message);
+  }
+}
+
+/** Render a single protocol message into an Anthropic message if supported. */
 function renderAnthropicMessage(
   message: ChatMessage<AnthropicToolIO>
 ): RenderedAnthropicMessage {
@@ -119,12 +148,14 @@ function renderAnthropicMessage(
   }
 }
 
+/** Render a user message into Anthropic message format. */
 function renderAnthropicUserMessage(text: string): RenderedAnthropicMessage {
   return text
     ? { message: { role: "user", content: [{ type: "text", text }] } }
     : {};
 }
 
+/** Render assistant content into Anthropic message format. */
 function renderAnthropicAssistantMessage(
   content: AnthropicAssistantContent
 ): RenderedAnthropicMessage {
@@ -162,21 +193,23 @@ function renderAnthropicAssistantMessage(
     ? `${text}<thinking>\n${reasoning}\n</thinking>`
     : text;
 
-  const contentBlocks: ContentBlockParam[] = [
-    ...(combinedText ? [{ type: "text", text: combinedText }] : []),
-    ...toolUses,
-  ];
+  const contentBlocks: ContentBlockParam[] = [];
+  if (combinedText) {
+    contentBlocks.push({ type: "text", text: combinedText });
+  }
+  contentBlocks.push(...toolUses);
 
   return contentBlocks.length > 0
     ? { message: { role: "assistant", content: contentBlocks } }
     : {};
 }
 
+/** Parse an Anthropic assistant message into protocol assistant content. */
 function parseAnthropicAssistantMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
 ): ChatMessage<AnthropicToolIO> {
-  const blocks =
+  const blocks: ContentBlockParam[] =
     typeof message.content === "string"
       ? [{ type: "text", text: message.content }]
       : message.content;
@@ -198,20 +231,28 @@ function parseAnthropicAssistantMessage(
   }
 
   if (toolCalls.length > 0) {
+    const content: Array<
+      { type: "text"; text: string } | ToolCallPart<AnthropicToolIO>
+    > = [];
+    if (text) {
+      content.push({ type: "text", text });
+    }
+    content.push(...toolCalls);
     return {
       role: "assistant",
-      content: [...(text ? [{ type: "text", text }] : []), ...toolCalls],
+      content,
     };
   }
 
   return { role: "assistant", content: text };
 }
 
+/** Parse an Anthropic user message into protocol user/tool messages. */
 function parseAnthropicUserMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
 ): ChatMessage<AnthropicToolIO>[] {
-  const blocks =
+  const blocks: ContentBlockParam[] =
     typeof message.content === "string"
       ? [{ type: "text", text: message.content }]
       : message.content;
@@ -248,6 +289,7 @@ function parseAnthropicUserMessage(
   return output;
 }
 
+/** Serialize tool input for token counting. */
 const serializeToolInput = (input: ToolUseBlockParam["input"]): string => {
   if (typeof input === "string") {
     return input;
@@ -255,6 +297,7 @@ const serializeToolInput = (input: ToolUseBlockParam["input"]): string => {
   return JSON.stringify(input) ?? "";
 };
 
+/** Count tokens for a single Anthropic content block. */
 function countContentBlockTokens(b: ContentBlockParam): number {
   if (b.type === "text") {
     return countText(b.text);
@@ -277,6 +320,7 @@ function countContentBlockTokens(b: ContentBlockParam): number {
   return 0;
 }
 
+/** Count tokens for a single Anthropic message. */
 function countAnthropicMessageTokens(msg: MessageParam): number {
   if (typeof msg.content === "string") {
     return countText(msg.content);
@@ -284,12 +328,16 @@ function countAnthropicMessageTokens(msg: MessageParam): number {
   return msg.content.reduce((n, b) => n + countContentBlockTokens(b), 0);
 }
 
+/** Extract concatenated text from Anthropic response content blocks. */
 const extractText = (content: Anthropic.Messages.ContentBlock[]) =>
   content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
 
+/**
+ * Anthropic provider using the chat-completions protocol.
+ */
 export class AnthropicProvider extends ProtocolProvider<
   AnthropicRenderResult,
   ChatCompletionsInput<AnthropicToolIO>,
@@ -309,6 +357,7 @@ export class AnthropicProvider extends ProtocolProvider<
     this.maxTokens = maxTokens;
   }
 
+  /** Count tokens for Anthropic rendered input. */
   countTokens(r: AnthropicRenderResult): number {
     return (
       (r.system ? countText(r.system) : 0) +
@@ -316,6 +365,7 @@ export class AnthropicProvider extends ProtocolProvider<
     );
   }
 
+  /** Generate a text completion using Anthropic messages API. */
   async completion(r: AnthropicRenderResult): Promise<string> {
     const res = await this.client.messages.create({
       model: this.model,
@@ -326,6 +376,7 @@ export class AnthropicProvider extends ProtocolProvider<
     return extractText(res.content);
   }
 
+  /** Generate a structured object using Anthropic messages API. */
   async object<T>(r: AnthropicRenderResult, schema: z.ZodType<T>): Promise<T> {
     const res = await this.client.messages.create({
       model: this.model,
@@ -337,6 +388,7 @@ export class AnthropicProvider extends ProtocolProvider<
   }
 }
 
+/** Convenience creator for the Anthropic provider. */
 export function createProvider(
   client: Anthropic,
   model: Model,
