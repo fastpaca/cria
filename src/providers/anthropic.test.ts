@@ -1,17 +1,26 @@
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
-import type { MessageCodec } from "../message-codec";
+import type { ChatCompletionsInput } from "../protocols/chat-completions";
+import { ChatCompletionsProtocol } from "../protocols/chat-completions";
+import { ProtocolProvider } from "../provider-adapter";
 import { render } from "../render";
 import type { PromptMessageNode } from "../types";
-import { ModelProvider } from "../types";
-import { AnthropicCodec, type AnthropicToolIO } from "./anthropic";
+import {
+  AnthropicAdapter,
+  type AnthropicRenderResult,
+  type AnthropicToolIO,
+} from "./anthropic";
 
-class RenderOnlyProvider<T> extends ModelProvider<T, AnthropicToolIO> {
-  readonly codec: MessageCodec<T, AnthropicToolIO>;
-
-  constructor(codec: MessageCodec<T, AnthropicToolIO>) {
-    super();
-    this.codec = codec;
+class RenderOnlyProvider extends ProtocolProvider<
+  AnthropicRenderResult,
+  ChatCompletionsInput<AnthropicToolIO>,
+  AnthropicToolIO
+> {
+  constructor() {
+    super(
+      new ChatCompletionsProtocol<AnthropicToolIO>(),
+      new AnthropicAdapter()
+    );
   }
 
   countTokens(): number {
@@ -27,7 +36,7 @@ class RenderOnlyProvider<T> extends ModelProvider<T, AnthropicToolIO> {
   }
 }
 
-const provider = new RenderOnlyProvider(new AnthropicCodec());
+const provider = new RenderOnlyProvider();
 
 /**
  * Creates a message node with arbitrary PromptPart children.

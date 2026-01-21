@@ -32,12 +32,12 @@ const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 const prompt = cria
   .prompt()
   .providerScope(provider, (p) =>
-    p.summary(history, { id: "history", store, priority: 2 })
+    p.summary(cria.input(history), { id: "history", store, priority: 2 })
   )
   .user(question);
 ```
 
-Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.history(history)` when passing into `summary()` or other scope helpers.
+Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` when passing into `summary()` or other scope helpers.
 
 Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore` (`@fastpaca/cria/memory/redis`) or `PostgresStore` (`@fastpaca/cria/memory/postgres`).
 

@@ -8,9 +8,9 @@ import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
   CriaContext,
-  HistoryInput,
-  HistoryLayout,
+  InputLayout,
   ModelProvider,
+  PromptInput,
   PromptLayout,
   PromptMessage,
   PromptMessageNode,
@@ -62,18 +62,18 @@ type PromptScopeFor<P> = PromptScope<ToolIOFor<P>>;
 type PromptTreeFor<P> = PromptTree<ToolIOFor<P>>;
 type ToolResultPartFor<P> = ToolResultPart<ToolIOFor<P>>;
 type TextInputFor<P> = TextInput<ToolIOFor<P>>;
-type HistoryInputFor<P> =
+type InputFor<P> =
   P extends ModelProvider<infer TRendered, ProviderToolIO>
-    ? HistoryInput<TRendered>
+    ? PromptInput<TRendered>
     : never;
-type HistoryLayoutFor<P> = HistoryLayout<ToolIOFor<P>>;
+type InputLayoutFor<P> = InputLayout<ToolIOFor<P>>;
 
 export type ScopeContent<P = unknown> =
   | PromptNodeFor<P>
   | PromptBuilder<P>
   | AnyPromptBuilder
-  | HistoryInputFor<P>
-  | HistoryLayoutFor<P>
+  | InputFor<P>
+  | InputLayoutFor<P>
   | Promise<PromptNodeFor<P>>
   | readonly ScopeContent<P>[];
 
@@ -414,24 +414,24 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   /**
-   * Add provider-native history (requires a provider with a codec).
+   * Add provider-native input (requires a bound provider).
    */
-  history<TRendered, TToolIO extends ProviderToolIO>(
+  input<TRendered, TToolIO extends ProviderToolIO>(
     this: PromptBuilder<ModelProvider<TRendered, TToolIO>>,
     content: TRendered
   ): PromptBuilder<ModelProvider<TRendered, TToolIO>> {
     const provider = this.boundProvider;
     if (!provider) {
-      throw new Error("History inputs require a bound provider.");
+      throw new Error("Inputs require a bound provider.");
     }
     const layout = provider.codec.parse(content);
     return this.addChildren(promptLayoutToNodes(layout));
   }
 
   /**
-   * Add a PromptLayout history.
+   * Add a PromptLayout input.
    */
-  historyLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P> {
+  inputLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P> {
     return this.addChildren(promptLayoutToNodes(content));
   }
 
@@ -586,6 +586,18 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     opts?: { id?: string }
   ): PromptBuilder<P> {
     return this.addMessage("system", content, opts);
+  }
+
+  /**
+   * Add a developer message.
+   */
+  developer(
+    content:
+      | TextInputFor<P>
+      | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
+    opts?: { id?: string }
+  ): PromptBuilder<P> {
+    return this.addMessage("developer", content, opts);
   }
 
   /**
@@ -747,7 +759,14 @@ export type Prompt<P = unknown> = PromptBuilder<P>;
 function isPromptNode<TToolIO extends ProviderToolIO>(
   value: unknown
 ): value is PromptNode<TToolIO> {
-  return typeof value === "object" && value !== null && "kind" in value;
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  if (!("kind" in value)) {
+    return false;
+  }
+  const kind = (value as { kind?: unknown }).kind;
+  return kind === "scope" || kind === "message";
 }
 
 async function resolveMessageChildren<P>(
@@ -805,25 +824,25 @@ async function resolveScopeContent<P>(
     return [content];
   }
 
-  if (isHistoryLayout<ToolIOFor<P>>(content)) {
+  if (isInputLayout<ToolIOFor<P>>(content)) {
     return promptLayoutToNodes(content.value);
   }
 
-  if (isHistoryInput<RenderedForProvider<P>>(content)) {
-    return resolveHistoryContent<P>(content, codec);
+  if (isPromptInput<RenderedForProvider<P>>(content)) {
+    return resolveInputContent<P>(content, codec);
   }
 
   throw new Error(
-    "Scope content must be prompt nodes, prompt builders, or history wrappers."
+    "Scope content must be prompt nodes, prompt builders, or input wrappers."
   );
 }
 
-function resolveHistoryContent<P>(
-  content: HistoryInput<RenderedForProvider<P>>,
+function resolveInputContent<P>(
+  content: PromptInput<RenderedForProvider<P>>,
   codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> | null | undefined
 ): PromptNodeFor<P>[] {
   if (!codec) {
-    throw new Error("History inputs require a provider with a codec.");
+    throw new Error("Inputs require a provider with a codec.");
   }
   const layout = codec.parse(content.value);
   return promptLayoutToNodes(layout);
@@ -866,16 +885,16 @@ function promptMessageToNode<TToolIO extends ProviderToolIO>(
   return createMessage<TToolIO>(message.role, parts);
 }
 
-function isHistoryLayout<TToolIO extends ProviderToolIO>(
+function isInputLayout<TToolIO extends ProviderToolIO>(
   value: unknown
-): value is HistoryLayout<TToolIO> {
-  return isObject(value) && value.kind === "history-layout";
+): value is InputLayout<TToolIO> {
+  return isObject(value) && value.kind === "input-layout";
 }
 
-function isHistoryInput<TRendered>(
+function isPromptInput<TRendered>(
   value: unknown
-): value is HistoryInput<TRendered> {
-  return isObject(value) && value.kind === "history";
+): value is PromptInput<TRendered> {
+  return isObject(value) && value.kind === "input";
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

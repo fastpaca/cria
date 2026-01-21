@@ -17,7 +17,7 @@ interface PlainTextToolIO {
   resultOutput: string;
 }
 
-const ROLE_PREFIX_RE = /^(system|user|assistant|tool):\s*/;
+const ROLE_PREFIX_RE = /^(system|developer|user|assistant|tool):\s*/;
 
 export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
   private readonly joinMessagesWith: string;
@@ -62,7 +62,12 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
                 output: text,
               };
             }
-            if (role === "system" || role === "user" || role === "assistant") {
+            if (
+              role === "system" ||
+              role === "developer" ||
+              role === "user" ||
+              role === "assistant"
+            ) {
               return { role, text };
             }
           }

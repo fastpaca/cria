@@ -17,7 +17,7 @@ const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 const output = await cria
   .prompt(provider)
   .system("You are a helpful assistant.")
-  .truncate(history, { budget: 4000, priority: 2 })
+  .truncate(cria.input(history), { budget: 4000, priority: 2 })
   .omit(optionalExamples, { priority: 3 })
   .user(question)
   .render({ budget: 8000 });

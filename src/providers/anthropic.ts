@@ -8,9 +8,14 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { MessageCodec } from "../message-codec";
-import type { PromptLayout, PromptMessage, ToolCallPart } from "../types";
-import { ModelProvider } from "../types";
+import type {
+  ChatCompletionsInput,
+  ChatMessage,
+} from "../protocols/chat-completions";
+import { ChatCompletionsProtocol } from "../protocols/chat-completions";
+import type { ProviderAdapter } from "../provider-adapter";
+import { ProtocolProvider } from "../provider-adapter";
+import type { ToolCallPart } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -25,23 +30,47 @@ export interface AnthropicToolIO {
   resultOutput: ToolResultBlockParam["content"];
 }
 
-export class AnthropicCodec extends MessageCodec<
-  AnthropicRenderResult,
-  AnthropicToolIO
-> {
-  override render(
-    layout: PromptLayout<AnthropicToolIO>
+type AnthropicAssistantContent = Extract<
+  ChatMessage<AnthropicToolIO>,
+  { role: "assistant" }
+>["content"];
+
+export class AnthropicAdapter
+  implements
+    ProviderAdapter<
+      ChatCompletionsInput<AnthropicToolIO>,
+      AnthropicRenderResult
+    >
+{
+  toProvider(
+    input: ChatCompletionsInput<AnthropicToolIO>
   ): AnthropicRenderResult {
     const messages: MessageParam[] = [];
     let system = "";
 
-    for (const message of layout) {
-      const rendered = renderAnthropicMessage(message);
-      if (rendered.systemText) {
-        system = system
-          ? `${system}\n\n${rendered.systemText}`
-          : rendered.systemText;
+    for (const message of input) {
+      if (message.role === "system" || message.role === "developer") {
+        system = system ? `${system}\n\n${message.content}` : message.content;
+        continue;
       }
+
+      if (message.role === "tool") {
+        for (const result of message.content) {
+          messages.push({
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: result.toolCallId,
+                content: result.output,
+              },
+            ],
+          });
+        }
+        continue;
+      }
+
+      const rendered = renderAnthropicMessage(message);
       if (rendered.message) {
         messages.push(rendered.message);
       }
@@ -50,61 +79,41 @@ export class AnthropicCodec extends MessageCodec<
     return system ? { system, messages } : { messages };
   }
 
-  override parse(
-    rendered: AnthropicRenderResult
-  ): PromptLayout<AnthropicToolIO> {
-    const layout: PromptMessage<AnthropicToolIO>[] = [];
+  fromProvider(
+    input: AnthropicRenderResult
+  ): ChatCompletionsInput<AnthropicToolIO> {
+    const output: ChatMessage<AnthropicToolIO>[] = [];
     const toolNameById = new Map<string, string>();
 
-    if (rendered.system) {
-      layout.push({ role: "system", text: rendered.system });
+    if (input.system) {
+      output.push({ role: "system", content: input.system });
     }
 
-    for (const message of rendered.messages) {
-      switch (message.role) {
-        case "assistant":
-          layout.push(parseAnthropicAssistantMessage(message, toolNameById));
-          break;
-        case "user":
-          layout.push(...parseAnthropicUserMessage(message, toolNameById));
-          break;
-        default:
-          break;
+    for (const message of input.messages) {
+      if (message.role === "assistant") {
+        output.push(parseAnthropicAssistantMessage(message, toolNameById));
+      }
+      if (message.role === "user") {
+        output.push(...parseAnthropicUserMessage(message, toolNameById));
       }
     }
 
-    return layout;
+    return output;
   }
 }
 
 interface RenderedAnthropicMessage {
-  systemText?: string;
   message?: MessageParam;
 }
 
 function renderAnthropicMessage(
-  message: PromptMessage<AnthropicToolIO>
+  message: ChatMessage<AnthropicToolIO>
 ): RenderedAnthropicMessage {
   switch (message.role) {
-    case "system":
-      return { systemText: message.text };
     case "user":
-      return renderAnthropicUserMessage(message.text);
+      return renderAnthropicUserMessage(message.content);
     case "assistant":
-      return renderAnthropicAssistantMessage(message);
-    case "tool":
-      return {
-        message: {
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: message.toolCallId,
-              content: message.output,
-            },
-          ],
-        },
-      };
+      return renderAnthropicAssistantMessage(message.content);
     default:
       return {};
   }
@@ -117,27 +126,56 @@ function renderAnthropicUserMessage(text: string): RenderedAnthropicMessage {
 }
 
 function renderAnthropicAssistantMessage(
-  message: Extract<PromptMessage<AnthropicToolIO>, { role: "assistant" }>
+  content: AnthropicAssistantContent
 ): RenderedAnthropicMessage {
-  const text =
-    message.text +
-    (message.reasoning ? `<thinking>\n${message.reasoning}\n</thinking>` : "");
-  const content: ContentBlockParam[] = [
-    ...(text ? [{ type: "text", text }] : []),
-    ...(message.toolCalls ?? []).map((tc) => ({
-      type: "tool_use",
-      id: tc.toolCallId,
-      name: tc.toolName,
-      input: tc.input,
-    })),
+  if (typeof content === "string") {
+    return content
+      ? {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: content }],
+          },
+        }
+      : {};
+  }
+
+  let text = "";
+  let reasoning = "";
+  const toolUses: ContentBlockParam[] = [];
+
+  for (const part of content) {
+    if (part.type === "text") {
+      text += part.text;
+    } else if (part.type === "reasoning") {
+      reasoning += part.text;
+    } else if (part.type === "tool-call") {
+      toolUses.push({
+        type: "tool_use",
+        id: part.toolCallId,
+        name: part.toolName,
+        input: part.input,
+      });
+    }
+  }
+
+  const combinedText = reasoning
+    ? `${text}<thinking>\n${reasoning}\n</thinking>`
+    : text;
+
+  const contentBlocks: ContentBlockParam[] = [
+    ...(combinedText ? [{ type: "text", text: combinedText }] : []),
+    ...toolUses,
   ];
-  return content.length > 0 ? { message: { role: "assistant", content } } : {};
+
+  return contentBlocks.length > 0
+    ? { message: { role: "assistant", content: contentBlocks } }
+    : {};
 }
 
 function parseAnthropicAssistantMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
-): PromptMessage<AnthropicToolIO> {
+): ChatMessage<AnthropicToolIO> {
   const blocks =
     typeof message.content === "string"
       ? [{ type: "text", text: message.content }]
@@ -159,25 +197,25 @@ function parseAnthropicAssistantMessage(
     }
   }
 
-  const assistant: PromptMessage<AnthropicToolIO> = {
-    role: "assistant",
-    text,
-  };
   if (toolCalls.length > 0) {
-    assistant.toolCalls = toolCalls;
+    return {
+      role: "assistant",
+      content: [...(text ? [{ type: "text", text }] : []), ...toolCalls],
+    };
   }
-  return assistant;
+
+  return { role: "assistant", content: text };
 }
 
 function parseAnthropicUserMessage(
   message: MessageParam,
   toolNameById: Map<string, string>
-): PromptMessage<AnthropicToolIO>[] {
+): ChatMessage<AnthropicToolIO>[] {
   const blocks =
     typeof message.content === "string"
       ? [{ type: "text", text: message.content }]
       : message.content;
-  const layout: PromptMessage<AnthropicToolIO>[] = [];
+  const output: ChatMessage<AnthropicToolIO>[] = [];
   let text = "";
 
   for (const block of blocks) {
@@ -185,24 +223,29 @@ function parseAnthropicUserMessage(
       text += block.text;
     } else if (block.type === "tool_result") {
       if (text) {
-        layout.push({ role: "user", text });
+        output.push({ role: "user", content: text });
         text = "";
       }
       const toolName = toolNameById.get(block.tool_use_id) ?? "";
-      layout.push({
+      output.push({
         role: "tool",
-        toolCallId: block.tool_use_id,
-        toolName,
-        output: block.content,
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: block.tool_use_id,
+            toolName,
+            output: block.content,
+          },
+        ],
       });
     }
   }
 
   if (text) {
-    layout.push({ role: "user", text });
+    output.push({ role: "user", content: text });
   }
 
-  return layout;
+  return output;
 }
 
 const serializeToolInput = (input: ToolUseBlockParam["input"]): string => {
@@ -247,17 +290,20 @@ const extractText = (content: Anthropic.Messages.ContentBlock[]) =>
     .map((b) => b.text)
     .join("");
 
-export class AnthropicProvider extends ModelProvider<
+export class AnthropicProvider extends ProtocolProvider<
   AnthropicRenderResult,
+  ChatCompletionsInput<AnthropicToolIO>,
   AnthropicToolIO
 > {
-  readonly codec = new AnthropicCodec();
   private readonly client: Anthropic;
   private readonly model: Model;
   private readonly maxTokens: number;
 
   constructor(client: Anthropic, model: Model, maxTokens: number) {
-    super();
+    super(
+      new ChatCompletionsProtocol<AnthropicToolIO>(),
+      new AnthropicAdapter()
+    );
     this.client = client;
     this.model = model;
     this.maxTokens = maxTokens;
