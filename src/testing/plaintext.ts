@@ -7,7 +7,7 @@ import { ModelProvider } from "../types";
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
-export interface PlainTextRendererOptions {
+export interface PlainTextCodecOptions {
   joinMessagesWith?: string;
   includeRolePrefix?: boolean;
 }
@@ -23,7 +23,7 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
   private readonly joinMessagesWith: string;
   private readonly includeRolePrefix: boolean;
 
-  constructor(options: PlainTextRendererOptions = {}) {
+  constructor(options: PlainTextCodecOptions = {}) {
     super();
     this.joinMessagesWith = options.joinMessagesWith ?? "";
     this.includeRolePrefix = options.includeRolePrefix ?? false;
@@ -121,16 +121,16 @@ function renderAssistantContent(
   return content;
 }
 
-export function createPlainTextRenderer(
-  options: PlainTextRendererOptions = {}
+export function createPlainTextCodec(
+  options: PlainTextCodecOptions = {}
 ): MessageCodec<string, PlainTextToolIO> {
   return new PlainTextCodec(options);
 }
 
 export function createTestProvider(
-  options: PlainTextRendererOptions = {}
+  options: PlainTextCodecOptions = {}
 ): ModelProvider<string, PlainTextToolIO> {
-  return new PlainTextProvider(createPlainTextRenderer(options));
+  return new PlainTextProvider(createPlainTextCodec(options));
 }
 
 export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
