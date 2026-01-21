@@ -8,8 +8,9 @@
   },
   "dependencies": {
     "@fastpaca/cria": "link:../..",
-    "openai": "^4.0.0",
-    "tiktoken": "^1.0.22"
+    "openai": "^4.104.0",
+    "tiktoken": "^1.0.22",
+    "zod": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -120,11 +120,14 @@ importers:
         specifier: link:../..
         version: link:../..
       openai:
-        specifier: ^4.0.0
-        version: 4.104.0(zod@3.25.76)
+        specifier: ^4.104.0
+        version: 4.104.0(zod@4.2.1)
       tiktoken:
         specifier: ^1.0.22
         version: 1.0.22
+      zod:
+        specifier: ^4.1.0
+        version: 4.2.1
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -139,11 +142,14 @@ importers:
         specifier: link:../..
         version: link:../..
       openai:
-        specifier: ^4.0.0
-        version: 4.104.0(zod@3.25.76)
+        specifier: ^4.104.0
+        version: 4.104.0(zod@4.2.1)
       tiktoken:
         specifier: ^1.0.22
         version: 1.0.22
+      zod:
+        specifier: ^4.1.0
+        version: 4.2.1
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -159,13 +165,16 @@ importers:
         version: link:../..
       chromadb:
         specifier: ^2.0.0
-        version: 2.4.6(zod@3.25.76)
+        version: 2.4.6(zod@4.2.1)
       openai:
-        specifier: ^4.0.0
-        version: 4.104.0(zod@3.25.76)
+        specifier: ^4.104.0
+        version: 4.104.0(zod@4.2.1)
       tiktoken:
         specifier: ^1.0.0
         version: 1.0.22
+      zod:
+        specifier: ^4.1.0
+        version: 4.2.1
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -3122,9 +3131,6 @@ packages:
     resolution: {integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==}
     engines: {node: '>=18'}
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.2.1:
     resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
 
@@ -4634,33 +4640,6 @@ snapshots:
   chromadb-js-bindings-win32-x64-msvc@0.1.3:
     optional: true
 
-  chromadb@2.4.6(zod@3.25.76):
-    dependencies:
-      '@google/generative-ai': 0.1.3
-      '@xenova/transformers': 2.17.2
-      chromadb-default-embed: 2.14.0
-      cliui: 8.0.1
-      cohere-ai: 7.20.0
-      isomorphic-fetch: 3.0.0
-      ollama: 0.5.18
-      openai: 4.104.0(zod@3.25.76)
-      semver: 7.7.3
-      voyageai: 0.0.3
-    optionalDependencies:
-      chromadb-js-bindings-darwin-arm64: 0.1.3
-      chromadb-js-bindings-darwin-x64: 0.1.3
-      chromadb-js-bindings-linux-arm64-gnu: 0.1.3
-      chromadb-js-bindings-linux-x64-gnu: 0.1.3
-      chromadb-js-bindings-win32-x64-msvc: 0.1.3
-    transitivePeerDependencies:
-      - aws-crt
-      - bare-abort-controller
-      - bare-buffer
-      - encoding
-      - react-native-b4a
-      - ws
-      - zod
-
   chromadb@2.4.6(zod@4.2.1):
     dependencies:
       '@google/generative-ai': 0.1.3
@@ -5533,20 +5512,6 @@ snapshots:
       onnx-proto: 4.0.4
       onnxruntime-common: 1.14.0
       platform: 1.3.6
-
-  openai@4.104.0(zod@3.25.76):
-    dependencies:
-      '@types/node': 18.19.130
-      '@types/node-fetch': 2.6.13
-      abort-controller: 3.0.0
-      agentkeepalive: 4.6.0
-      form-data-encoder: 1.7.2
-      formdata-node: 4.4.1
-      node-fetch: 2.7.0
-    optionalDependencies:
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - encoding
 
   openai@4.104.0(zod@4.2.1):
     dependencies:
@@ -6445,8 +6410,5 @@ snapshots:
       yargs-parser: 22.0.0
 
   yoctocolors@2.1.2: {}
-
-  zod@3.25.76:
-    optional: true
 
   zod@4.2.1: {}
