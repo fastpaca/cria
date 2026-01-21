@@ -1,7 +1,8 @@
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
+import { MessageCodec } from "../message-codec";
 import type { PromptLayout, PromptMessage } from "../types";
-import { ModelProvider, PromptRenderer } from "../types";
+import { ModelProvider } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -16,7 +17,9 @@ interface PlainTextToolIO {
   resultOutput: string;
 }
 
-export class PlainTextRenderer extends PromptRenderer<string, PlainTextToolIO> {
+const ROLE_PREFIX_RE = /^(system|user|assistant|tool):\s*/;
+
+export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
   private readonly joinMessagesWith: string;
   private readonly includeRolePrefix: boolean;
 
@@ -32,6 +35,41 @@ export class PlainTextRenderer extends PromptRenderer<string, PlainTextToolIO> {
     );
 
     return messages.join(this.joinMessagesWith);
+  }
+
+  override parse(rendered: string): PromptLayout<PlainTextToolIO> {
+    if (!rendered) {
+      return [];
+    }
+
+    const segments = this.joinMessagesWith
+      ? rendered.split(this.joinMessagesWith)
+      : [rendered];
+
+    return segments
+      .filter((segment) => segment.length > 0)
+      .map((segment): PromptMessage<PlainTextToolIO> => {
+        if (this.includeRolePrefix) {
+          const match = segment.match(ROLE_PREFIX_RE);
+          if (match) {
+            const role = match[1];
+            const text = segment.slice(match[0].length);
+            if (role === "tool") {
+              return {
+                role: "tool",
+                toolCallId: "tool",
+                toolName: "tool",
+                output: text,
+              };
+            }
+            if (role === "system" || role === "user" || role === "assistant") {
+              return { role, text };
+            }
+          }
+        }
+
+        return { role: "assistant", text: segment };
+      });
   }
 }
 
@@ -78,12 +116,24 @@ function renderAssistantContent(
   return content;
 }
 
-export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
-  readonly renderer: PromptRenderer<string, PlainTextToolIO>;
+export function createPlainTextRenderer(
+  options: PlainTextRendererOptions = {}
+): MessageCodec<string, PlainTextToolIO> {
+  return new PlainTextCodec(options);
+}
 
-  constructor(renderer: PromptRenderer<string, PlainTextToolIO>) {
+export function createTestProvider(
+  options: PlainTextRendererOptions = {}
+): ModelProvider<string, PlainTextToolIO> {
+  return new PlainTextProvider(createPlainTextRenderer(options));
+}
+
+export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
+  readonly codec: MessageCodec<string, PlainTextToolIO>;
+
+  constructor(codec: MessageCodec<string, PlainTextToolIO>) {
     super();
-    this.renderer = renderer;
+    this.codec = codec;
   }
 
   countTokens(rendered: string): number {
@@ -97,16 +147,4 @@ export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
   object<T>(rendered: string, schema: z.ZodType<T>): T {
     return schema.parse(JSON.parse(rendered));
   }
-}
-
-export function createPlainTextRenderer(
-  options: PlainTextRendererOptions = {}
-): PromptRenderer<string, PlainTextToolIO> {
-  return new PlainTextRenderer(options);
-}
-
-export function createTestProvider(
-  options: PlainTextRendererOptions = {}
-): ModelProvider<string, PlainTextToolIO> {
-  return new PlainTextProvider(createPlainTextRenderer(options));
 }

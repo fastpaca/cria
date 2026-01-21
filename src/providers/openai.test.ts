@@ -1,20 +1,21 @@
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
+import type { MessageCodec } from "../message-codec";
 import { render } from "../render";
-import type { PromptMessageNode, PromptRenderer } from "../types";
+import type { PromptMessageNode } from "../types";
 import { ModelProvider } from "../types";
 import {
-  OpenAIChatRenderer,
-  OpenAIResponsesRenderer,
+  OpenAIChatCodec,
+  OpenAIResponsesCodec,
   type OpenAiToolIO,
 } from "./openai";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, OpenAiToolIO> {
-  readonly renderer: PromptRenderer<T, OpenAiToolIO>;
+  readonly codec: MessageCodec<T, OpenAiToolIO>;
 
-  constructor(renderer: PromptRenderer<T>) {
+  constructor(codec: MessageCodec<T, OpenAiToolIO>) {
     super();
-    this.renderer = renderer;
+    this.codec = codec;
   }
 
   countTokens(): number {
@@ -30,13 +31,13 @@ class RenderOnlyProvider<T> extends ModelProvider<T, OpenAiToolIO> {
   }
 }
 
-const chatProvider = new RenderOnlyProvider(new OpenAIChatRenderer());
+const chatProvider = new RenderOnlyProvider(new OpenAIChatCodec());
 
-const responsesProvider = new RenderOnlyProvider(new OpenAIResponsesRenderer());
+const responsesProvider = new RenderOnlyProvider(new OpenAIResponsesCodec());
 
 /**
  * Creates a message node with arbitrary PromptPart children.
- * Used for testing renderer behavior with specific part types.
+ * Used for testing codec behavior with specific part types.
  */
 function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",

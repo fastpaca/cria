@@ -8,8 +8,9 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
+import { MessageCodec } from "../message-codec";
 import type { PromptLayout, PromptMessage, ToolCallPart } from "../types";
-import { ModelProvider, PromptRenderer } from "../types";
+import { ModelProvider } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -24,7 +25,7 @@ export interface AnthropicToolIO {
   resultOutput: ToolResultBlockParam["content"];
 }
 
-export class AnthropicRenderer extends PromptRenderer<
+export class AnthropicCodec extends MessageCodec<
   AnthropicRenderResult,
   AnthropicToolIO
 > {
@@ -37,7 +38,9 @@ export class AnthropicRenderer extends PromptRenderer<
     for (const message of layout) {
       const rendered = renderAnthropicMessage(message);
       if (rendered.systemText) {
-        system = appendSystemText(system, rendered.systemText);
+        system = system
+          ? `${system}\n\n${rendered.systemText}`
+          : rendered.systemText;
       }
       if (rendered.message) {
         messages.push(rendered.message);
@@ -45,6 +48,32 @@ export class AnthropicRenderer extends PromptRenderer<
     }
 
     return system ? { system, messages } : { messages };
+  }
+
+  override parse(
+    rendered: AnthropicRenderResult
+  ): PromptLayout<AnthropicToolIO> {
+    const layout: PromptMessage<AnthropicToolIO>[] = [];
+    const toolNameById = new Map<string, string>();
+
+    if (rendered.system) {
+      layout.push({ role: "system", text: rendered.system });
+    }
+
+    for (const message of rendered.messages) {
+      switch (message.role) {
+        case "assistant":
+          layout.push(parseAnthropicAssistantMessage(message, toolNameById));
+          break;
+        case "user":
+          layout.push(...parseAnthropicUserMessage(message, toolNameById));
+          break;
+        default:
+          break;
+      }
+    }
+
+    return layout;
   }
 }
 
@@ -56,104 +85,124 @@ interface RenderedAnthropicMessage {
 function renderAnthropicMessage(
   message: PromptMessage<AnthropicToolIO>
 ): RenderedAnthropicMessage {
-  if (message.role === "system") {
-    return { systemText: (message as { text: string }).text };
+  switch (message.role) {
+    case "system":
+      return { systemText: message.text };
+    case "user":
+      return renderAnthropicUserMessage(message.text);
+    case "assistant":
+      return renderAnthropicAssistantMessage(message);
+    case "tool":
+      return {
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: message.toolCallId,
+              content: message.output,
+            },
+          ],
+        },
+      };
+    default:
+      return {};
   }
-
-  if (message.role === "tool") {
-    const toolMessage = message as Extract<
-      PromptMessage<AnthropicToolIO>,
-      { role: "tool" }
-    >;
-    return { message: renderToolResultMessage(toolMessage) };
-  }
-
-  if (message.role === "assistant") {
-    const assistantMessage = message as Extract<
-      PromptMessage<AnthropicToolIO>,
-      { role: "assistant" }
-    >;
-    const rendered = renderAssistantMessage(assistantMessage);
-    return rendered ? { message: rendered } : {};
-  }
-
-  const rendered = renderUserMessage((message as { text: string }).text);
-  return rendered ? { message: rendered } : {};
 }
 
-function renderUserMessage(text: string): MessageParam | undefined {
-  const content = buildContent(text, undefined, undefined, false);
-  if (content.length === 0) {
-    return undefined;
-  }
-  return { role: "user", content };
+function renderAnthropicUserMessage(text: string): RenderedAnthropicMessage {
+  return text
+    ? { message: { role: "user", content: [{ type: "text", text }] } }
+    : {};
 }
 
-function renderAssistantMessage(
+function renderAnthropicAssistantMessage(
   message: Extract<PromptMessage<AnthropicToolIO>, { role: "assistant" }>
-): MessageParam | undefined {
-  const content = buildContent(
-    message.text,
-    message.reasoning,
-    message.toolCalls,
-    true
-  );
-  if (content.length === 0) {
-    return undefined;
-  }
-  return { role: "assistant", content };
+): RenderedAnthropicMessage {
+  const text =
+    message.text +
+    (message.reasoning ? `<thinking>\n${message.reasoning}\n</thinking>` : "");
+  const content: ContentBlockParam[] = [
+    ...(text ? [{ type: "text", text }] : []),
+    ...(message.toolCalls ?? []).map((tc) => ({
+      type: "tool_use",
+      id: tc.toolCallId,
+      name: tc.toolName,
+      input: tc.input,
+    })),
+  ];
+  return content.length > 0 ? { message: { role: "assistant", content } } : {};
 }
 
-function renderToolResultMessage(
-  message: Extract<PromptMessage<AnthropicToolIO>, { role: "tool" }>
-): MessageParam {
-  const block: ToolResultBlockParam = {
-    type: "tool_result",
-    tool_use_id: message.toolCallId,
-    ...(message.output !== undefined ? { content: message.output } : {}),
-  };
-  return {
-    role: "user",
-    content: [block],
-  };
-}
+function parseAnthropicAssistantMessage(
+  message: MessageParam,
+  toolNameById: Map<string, string>
+): PromptMessage<AnthropicToolIO> {
+  const blocks =
+    typeof message.content === "string"
+      ? [{ type: "text", text: message.content }]
+      : message.content;
+  const toolCalls: ToolCallPart<AnthropicToolIO>[] = [];
+  let text = "";
 
-function appendSystemText(current: string, next: string): string {
-  if (!next) {
-    return current;
-  }
-  return current ? `${current}\n\n${next}` : next;
-}
-
-function buildContent(
-  text: string,
-  reasoning: string | undefined,
-  toolCalls: readonly ToolCallPart<AnthropicToolIO>[] | undefined,
-  includeToolCalls: boolean
-): ContentBlockParam[] {
-  const content: ContentBlockParam[] = [];
-  let textBlock = text;
-
-  if (reasoning) {
-    textBlock += `<thinking>\n${reasoning}\n</thinking>`;
-  }
-
-  if (textBlock) {
-    content.push({ type: "text", text: textBlock });
-  }
-
-  if (includeToolCalls && toolCalls) {
-    for (const tc of toolCalls) {
-      content.push({
-        type: "tool_use",
-        id: tc.toolCallId,
-        name: tc.toolName,
-        input: tc.input,
+  for (const block of blocks) {
+    if (block.type === "text") {
+      text += block.text;
+    } else if (block.type === "tool_use") {
+      toolNameById.set(block.id, block.name);
+      toolCalls.push({
+        type: "tool-call",
+        toolCallId: block.id,
+        toolName: block.name,
+        input: block.input,
       });
     }
   }
 
-  return content;
+  const assistant: PromptMessage<AnthropicToolIO> = {
+    role: "assistant",
+    text,
+  };
+  if (toolCalls.length > 0) {
+    assistant.toolCalls = toolCalls;
+  }
+  return assistant;
+}
+
+function parseAnthropicUserMessage(
+  message: MessageParam,
+  toolNameById: Map<string, string>
+): PromptMessage<AnthropicToolIO>[] {
+  const blocks =
+    typeof message.content === "string"
+      ? [{ type: "text", text: message.content }]
+      : message.content;
+  const layout: PromptMessage<AnthropicToolIO>[] = [];
+  let text = "";
+
+  for (const block of blocks) {
+    if (block.type === "text") {
+      text += block.text;
+    } else if (block.type === "tool_result") {
+      if (text) {
+        layout.push({ role: "user", text });
+        text = "";
+      }
+      const toolName = toolNameById.get(block.tool_use_id) ?? "";
+      layout.push({
+        role: "tool",
+        toolCallId: block.tool_use_id,
+        toolName,
+        output: block.content,
+      });
+    }
+  }
+
+  if (text) {
+    layout.push({ role: "user", text });
+  }
+
+  return layout;
 }
 
 const serializeToolInput = (input: ToolUseBlockParam["input"]): string => {
@@ -202,7 +251,7 @@ export class AnthropicProvider extends ModelProvider<
   AnthropicRenderResult,
   AnthropicToolIO
 > {
-  readonly renderer = new AnthropicRenderer();
+  readonly codec = new AnthropicCodec();
   private readonly client: Anthropic;
   private readonly model: Model;
   private readonly maxTokens: number;

@@ -39,7 +39,10 @@ export { c, type TextInput } from "./templating";
 export type { ResultFormatter } from "./vector-search";
 
 import type {
+  HistoryInput,
+  HistoryLayout,
   ModelProvider,
+  PromptLayout,
   PromptMessageNode,
   PromptRole,
   PromptScope,
@@ -69,6 +72,16 @@ function scope<TToolIO extends ProviderToolIO>(
   opts?: { priority?: number; id?: string }
 ): PromptScope<TToolIO> {
   return createScope(children, opts);
+}
+
+function history<TRendered>(value: TRendered): HistoryInput<TRendered> {
+  return { kind: "history", value };
+}
+
+function historyLayout<TToolIO extends ProviderToolIO>(
+  value: PromptLayout<TToolIO>
+): HistoryLayout<TToolIO> {
+  return { kind: "history-layout", value };
 }
 
 function createPrompt(): PromptBuilder<unknown>;
@@ -117,6 +130,8 @@ export const cria = {
   user: (content: TextInput) => message("user", content),
   system: (content: TextInput) => message("system", content),
   assistant: (content: TextInput) => message("assistant", content),
+  history,
+  historyLayout,
 } as const;
 
 /**
@@ -129,3 +144,5 @@ export const prompt = createPrompt;
  */
 export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
   cria.merge(...builders);
+
+export { history, historyLayout };

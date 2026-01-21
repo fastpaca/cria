@@ -20,14 +20,14 @@ import {
  * Render pipeline:
  * - PromptTree carries provider-bound tool IO types.
  * - layoutPrompt flattens the tree into a PromptLayout and enforces invariants.
- * - The provider's renderer translates that layout into the provider payload.
+ * - The provider's codec translates that layout into the provider payload.
  * - Token counting is provider-owned and happens on rendered output.
  */
 export interface RenderOptions<
   TRendered = unknown,
   TToolIO extends ProviderToolIO = ProviderToolIO,
 > {
-  // Provider that supplies the renderer.
+  // Provider that supplies the codec.
   provider: ModelProvider<TRendered, TToolIO>;
 
   // Token budget. Omit for unlimited. If set, the fit loop will be
@@ -90,7 +90,7 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
   element: MaybePromise<PromptTree<TToolIO>>,
   options: RenderOptions<TRendered, TToolIO>
 ): Promise<TRendered> {
-  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.renderer -> provider.countTokens.
+  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.codec -> provider.countTokens.
   // The fit loop just re-renders and re-counts until we land under budget.
   /*
    * Rendering is budget-agnostic; fitting owns the budget and simply calls
@@ -122,18 +122,18 @@ function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
   root: PromptTree<TToolIO>,
   provider: ModelProvider<TRendered, TToolIO>
 ): TRendered {
-  // Prompt tree composition is resolved before rendering; renderers only see layout.
+  // Prompt tree composition is resolved before rendering; codecs only see layout.
   const layout = layoutPrompt(root);
-  return provider.renderer.render(layout);
+  return provider.codec.render(layout);
 }
 
 function renderAndCount<TRendered, TToolIO extends ProviderToolIO>(
   root: PromptTree<TToolIO>,
   provider: ModelProvider<TRendered, TToolIO>
 ): { output: TRendered; tokens: number } {
-  // Tree -> layout -> renderer output, then provider-owned token counting.
+  // Tree -> layout -> codec output, then provider-owned token counting.
   const layout = layoutPrompt(root);
-  const output = provider.renderer.render(layout);
+  const output = provider.codec.render(layout);
   const tokens = provider.countTokens(output);
   return { output, tokens };
 }
@@ -307,7 +307,7 @@ function resolveProvider<TRendered, TToolIO extends ProviderToolIO>(
   }
 
   if (providers.length === 0) {
-    throw new Error("Rendering requires a provider with a renderer.");
+    throw new Error("Rendering requires a provider with a codec.");
   }
 
   if (providers.length > 1) {
@@ -316,7 +316,7 @@ function resolveProvider<TRendered, TToolIO extends ProviderToolIO>(
 
   const provider = providers[0];
   if (!provider) {
-    throw new Error("Rendering requires a provider with a renderer.");
+    throw new Error("Rendering requires a provider with a codec.");
   }
 
   return provider as ModelProvider<TRendered, TToolIO>;

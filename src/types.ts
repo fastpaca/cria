@@ -17,14 +17,15 @@
  * - Messages are semantic boundaries. They are leaf nodes and only hold parts.
  * - Parts are the smallest typed units (text/reasoning/tool-call/tool-result).
  *
- * PromptLayout intentionally normalizes message shapes so renderers do NOT
+ * PromptLayout intentionally normalizes message shapes so codecs do NOT
  * re-interpret parts or re-check invariants. Some providers (AI SDK, Anthropic)
- * require a parts array, so renderers re-expand assistant/tool data back into
+ * require a parts array, so codecs re-expand assistant/tool data back into
  * parts. That is a translation step for provider compatibility, not a loop in
  * the core model.
  */
 
 import type { z } from "zod";
+import type { MessageCodec } from "./message-codec";
 
 /**
  * Message role used by semantic `kind: "message"` nodes.
@@ -38,7 +39,7 @@ export type PromptRole = "system" | "user" | "assistant" | "tool";
  *
  * Each provider pins the concrete types used for tool-call inputs and
  * tool-result outputs. Those types flow through the prompt tree and layout so
- * renderers can translate without defensive serialization later.
+ * codecs can translate without defensive serialization later.
  */
 export interface ProviderToolIO {
   callInput: unknown;
@@ -74,18 +75,18 @@ type ToolResultOutput<TToolIO extends ProviderToolIO> = TToolIO["resultOutput"];
 /**
  * Provider interface for rendering and execution.
  *
- * - TRendered is the provider-specific payload shape returned by the renderer.
+ * - TRendered is the provider-specific payload shape returned by the codec.
  * - TToolIO anchors tool-call input/output types for the entire pipeline.
  *
  * This is where provider-specific types are introduced and then threaded
- * through the prompt tree, layout, and renderers.
+ * through the prompt tree, layout, and codecs.
  */
 export abstract class ModelProvider<
   TRendered,
   TToolIO extends ProviderToolIO = ProviderToolIO,
 > {
-  /** Renderer that produces provider-specific prompt input. */
-  abstract readonly renderer: PromptRenderer<TRendered, TToolIO>;
+  /** Codec that translates between PromptLayout and provider-native input. */
+  abstract readonly codec: MessageCodec<TRendered, TToolIO>;
 
   /** Count tokens for rendered output (tiktoken-backed). */
   abstract countTokens(rendered: TRendered): number;
@@ -104,6 +105,24 @@ export abstract class ModelProvider<
     rendered: TRendered,
     schema: z.ZodType<T>
   ): MaybePromise<T>;
+}
+
+/**
+ * Wrapper for provider-native history inputs.
+ */
+export interface HistoryInput<TRendered> {
+  kind: "history";
+  value: TRendered;
+}
+
+/**
+ * Wrapper for PromptLayout history inputs.
+ */
+export interface HistoryLayout<
+  TToolIO extends ProviderToolIO = ProviderToolIO,
+> {
+  kind: "history-layout";
+  value: PromptLayout<TToolIO>;
 }
 
 /**
@@ -262,7 +281,7 @@ export interface ToolMessage<TToolIO extends ProviderToolIO = ProviderToolIO> {
  * - System/User messages are text-only.
  * This keeps invalid combinations out of the layout by construction.
  *
- * The layout is the normalized form that renderers consume. It is produced by
+ * The layout is the normalized form that codecs consume. It is produced by
  * flattening the prompt tree and should not require further validation.
  */
 export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
@@ -271,23 +290,19 @@ export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
   | AssistantMessage<TToolIO>
   | ToolMessage<TToolIO>;
 
-/** Flat, role-shaped message list used by renderers and token counting. */
+/** Flat, role-shaped message list used by codecs and token counting. */
 export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
   readonly PromptMessage<TToolIO>[];
 
 /**
- * A renderer that converts a flat prompt layout into provider-specific output.
+ * Provider with a history-capable codec.
  *
- * Renderers are intentionally one-way translators. The layout already encodes
- * the correct tool IO types, so renderers should map shapes without re-checking.
+ * This is equivalent to ModelProvider because codecs are bidirectional.
  */
-export abstract class PromptRenderer<
-  TOutput,
+export type HistoryProvider<
+  TRendered,
   TToolIO extends ProviderToolIO = ProviderToolIO,
-> {
-  /** Render a layout into provider-specific output. */
-  abstract render(layout: PromptLayout<TToolIO>): TOutput;
-}
+> = ModelProvider<TRendered, TToolIO>;
 
 /**
  * Result of applying a strategy to a scope.

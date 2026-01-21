@@ -37,6 +37,8 @@ const prompt = cria
   .user(question);
 ```
 
+Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.history(history)` when passing into `summary()` or other scope helpers.
+
 Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore` (`@fastpaca/cria/memory/redis`) or `PostgresStore` (`@fastpaca/cria/memory/postgres`).
 
 ## When to use Summary vs Last/Truncate

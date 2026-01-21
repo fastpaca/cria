@@ -1,16 +1,17 @@
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
+import type { MessageCodec } from "../message-codec";
 import { render } from "../render";
-import type { PromptMessageNode, PromptRenderer } from "../types";
+import type { PromptMessageNode } from "../types";
 import { ModelProvider } from "../types";
-import { AnthropicRenderer, type AnthropicToolIO } from "./anthropic";
+import { AnthropicCodec, type AnthropicToolIO } from "./anthropic";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, AnthropicToolIO> {
-  readonly renderer: PromptRenderer<T, AnthropicToolIO>;
+  readonly codec: MessageCodec<T, AnthropicToolIO>;
 
-  constructor(renderer: PromptRenderer<T>) {
+  constructor(codec: MessageCodec<T, AnthropicToolIO>) {
     super();
-    this.renderer = renderer;
+    this.codec = codec;
   }
 
   countTokens(): number {
@@ -26,11 +27,11 @@ class RenderOnlyProvider<T> extends ModelProvider<T, AnthropicToolIO> {
   }
 }
 
-const provider = new RenderOnlyProvider(new AnthropicRenderer());
+const provider = new RenderOnlyProvider(new AnthropicCodec());
 
 /**
  * Creates a message node with arbitrary PromptPart children.
- * Used for testing renderer behavior with specific part types.
+ * Used for testing codec behavior with specific part types.
  */
 function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",

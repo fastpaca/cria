@@ -2,8 +2,9 @@ import type { LanguageModel, ModelMessage } from "ai";
 import { generateObject, generateText } from "ai";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import type { PromptLayout, PromptMessage, PromptPart } from "../types";
-import { ModelProvider, PromptRenderer } from "../types";
+import { ListMessageCodec } from "../message-codec";
+import type { PromptMessage } from "../types";
+import { ModelProvider } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -17,64 +18,102 @@ export interface AiSdkToolIO {
   resultOutput: AiToolResultPart["output"];
 }
 
-export class AiSdkRenderer extends PromptRenderer<ModelMessage[], AiSdkToolIO> {
-  override render(layout: PromptLayout<AiSdkToolIO>): ModelMessage[] {
-    /*
-    AI SDK expects message "content" as either a string or a parts array.
-    PromptLayout already normalized our semantic messages, so here we simply
-    re-expand assistant/tool messages into the parts form the SDK requires.
-    */
-    return layout.map(renderModelMessage);
+export class AiSdkCodec extends ListMessageCodec<ModelMessage, AiSdkToolIO> {
+  protected toProviderMessage(
+    message: PromptMessage<AiSdkToolIO>
+  ): readonly ModelMessage[] {
+    switch (message.role) {
+      case "tool":
+        return [
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: message.toolCallId,
+                toolName: message.toolName,
+                output: message.output,
+              },
+            ],
+          },
+        ];
+      case "assistant": {
+        const toolCalls = message.toolCalls ?? [];
+        const content: ModelMessage["content"] =
+          message.reasoning || toolCalls.length > 0
+            ? [
+                ...(message.text ? [{ type: "text", text: message.text }] : []),
+                ...(message.reasoning
+                  ? [{ type: "reasoning", text: message.reasoning }]
+                  : []),
+                ...toolCalls,
+              ]
+            : message.text;
+        return [{ role: "assistant", content }];
+      }
+      default:
+        return [{ role: message.role, content: message.text }];
+    }
+  }
+
+  protected fromProviderMessage(
+    message: ModelMessage
+  ): readonly PromptMessage<AiSdkToolIO>[] {
+    const content = normalizeContent(message.content);
+
+    switch (message.role) {
+      case "tool":
+        return content.flatMap((part) =>
+          part.type === "tool-result"
+            ? [
+                {
+                  role: "tool",
+                  toolCallId: part.toolCallId,
+                  toolName: part.toolName,
+                  output: part.output,
+                },
+              ]
+            : []
+        );
+      case "assistant": {
+        const { text, reasoning, toolCalls } = content.reduce(
+          (acc, part) => {
+            if (part.type === "text") {
+              acc.text += part.text;
+            } else if (part.type === "reasoning") {
+              acc.reasoning += part.text;
+            } else if (part.type === "tool-call") {
+              acc.toolCalls.push(part);
+            }
+            return acc;
+          },
+          { text: "", reasoning: "", toolCalls: [] as AiToolCallPart[] }
+        );
+
+        return [
+          {
+            role: "assistant",
+            text,
+            ...(reasoning ? { reasoning } : {}),
+            ...(toolCalls.length ? { toolCalls } : {}),
+          },
+        ];
+      }
+      default: {
+        const text = content.reduce(
+          (acc, part) => (part.type === "text" ? acc + part.text : acc),
+          ""
+        );
+        return [{ role: message.role, text }];
+      }
+    }
   }
 }
 
-function renderModelMessage(message: PromptMessage<AiSdkToolIO>): ModelMessage {
-  if (message.role === "tool") {
-    return renderToolMessage(message);
-  }
-
-  if (message.role === "assistant") {
-    return renderAssistantMessage(message);
-  }
-
-  return { role: message.role, content: message.text };
-}
-
-function renderToolMessage(
-  message: Extract<PromptMessage<AiSdkToolIO>, { role: "tool" }>
-): ModelMessage {
-  return {
-    role: "tool",
-    content: [
-      {
-        type: "tool-result",
-        toolCallId: message.toolCallId,
-        toolName: message.toolName,
-        output: message.output,
-      },
-    ],
-  };
-}
-
-function renderAssistantMessage(
-  message: Extract<PromptMessage<AiSdkToolIO>, { role: "assistant" }>
-): ModelMessage {
-  const parts: PromptPart<AiSdkToolIO>[] = [];
-  if (message.text) {
-    parts.push({ type: "text", text: message.text });
-  }
-  if (message.reasoning) {
-    parts.push({ type: "reasoning", text: message.reasoning });
-  }
-  if (message.toolCalls) {
-    parts.push(...message.toolCalls);
-  }
-
-  if (parts.length === 1 && parts[0]?.type === "text") {
-    return { role: "assistant", content: parts[0].text };
-  }
-
-  return { role: "assistant", content: parts } as ModelMessage;
+function normalizeContent(content: ModelMessage["content"]): AiContentPart[] {
+  return typeof content === "string"
+    ? [{ type: "text", text: content }]
+    : content;
 }
 
 function countModelMessageTokens(message: ModelMessage): number {
@@ -103,7 +142,7 @@ function countModelMessageTokens(message: ModelMessage): number {
 }
 
 export class AiSdkProvider extends ModelProvider<ModelMessage[], AiSdkToolIO> {
-  readonly renderer = new AiSdkRenderer();
+  readonly codec = new AiSdkCodec();
   private readonly model: LanguageModel;
 
   constructor(model: LanguageModel) {

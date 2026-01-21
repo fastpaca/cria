@@ -1,16 +1,17 @@
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
+import type { MessageCodec } from "../message-codec";
 import { render } from "../render";
-import type { PromptMessageNode, PromptRenderer } from "../types";
+import type { PromptMessageNode } from "../types";
 import { ModelProvider } from "../types";
-import { AiSdkRenderer, type AiSdkToolIO } from "./ai-sdk";
+import { AiSdkCodec, type AiSdkToolIO } from "./ai-sdk";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, AiSdkToolIO> {
-  readonly renderer: PromptRenderer<T, AiSdkToolIO>;
+  readonly codec: MessageCodec<T, AiSdkToolIO>;
 
-  constructor(renderer: PromptRenderer<T>) {
+  constructor(codec: MessageCodec<T, AiSdkToolIO>) {
     super();
-    this.renderer = renderer;
+    this.codec = codec;
   }
 
   countTokens(): number {
@@ -26,11 +27,11 @@ class RenderOnlyProvider<T> extends ModelProvider<T, AiSdkToolIO> {
   }
 }
 
-const provider = new RenderOnlyProvider(new AiSdkRenderer());
+const provider = new RenderOnlyProvider(new AiSdkCodec());
 
 /**
  * Creates a message node with arbitrary PromptPart children.
- * Used for testing renderer behavior with specific part types.
+ * Used for testing codec behavior with specific part types.
  */
 function messageWithParts(
   role: "user" | "assistant" | "system" | "tool",
@@ -39,7 +40,7 @@ function messageWithParts(
   return { kind: "message", role, children };
 }
 
-test("renderer: renders prompt layout to ModelMessage[] (tool call + tool result)", async () => {
+test("codec: renders prompt layout to ModelMessage[] (tool call + tool result)", async () => {
   const prompt = cria.scope([
     cria.user("hi"),
     messageWithParts("assistant", [
