@@ -52,9 +52,7 @@ export class AnthropicAdapter
     >
 {
   /** Convert protocol messages into Anthropic input. */
-  toProvider(
-    input: ChatCompletionsInput<AnthropicToolIO>
-  ): AnthropicRenderResult {
+  to(input: ChatCompletionsInput<AnthropicToolIO>): AnthropicRenderResult {
     const messages: MessageParam[] = [];
     let system = "";
 
@@ -97,9 +95,7 @@ export class AnthropicAdapter
   }
 
   /** Convert Anthropic input back into protocol messages. */
-  fromProvider(
-    input: AnthropicRenderResult
-  ): ChatCompletionsInput<AnthropicToolIO> {
+  from(input: AnthropicRenderResult): ChatCompletionsInput<AnthropicToolIO> {
     const output: ChatMessage<AnthropicToolIO>[] = [];
     const toolNameById = new Map<string, string>();
 
