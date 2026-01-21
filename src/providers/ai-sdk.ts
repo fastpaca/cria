@@ -16,33 +16,50 @@ const countText = (text: string): number => encoder.encode(text).length;
 type AiContentPart = Exclude<ModelMessage["content"], string>[number];
 type AiToolCallPart = Extract<AiContentPart, { type: "tool-call" }>;
 type AiToolResultPart = Extract<AiContentPart, { type: "tool-result" }>;
+type AiAssistantMessage = Extract<
+  ChatMessage<AiSdkToolIO>,
+  { role: "assistant" }
+>;
+type AiAssistantContent = AiAssistantMessage["content"];
+type AiAssistantPart = Exclude<AiAssistantContent, string>[number];
 
+/**
+ * Tool IO contract derived from AI SDK content part shapes.
+ */
 export interface AiSdkToolIO {
   callInput: AiToolCallPart["input"];
   resultOutput: AiToolResultPart["output"];
 }
 
+/**
+ * Adapter between chat-completions protocol messages and AI SDK ModelMessage.
+ */
 export class AiSdkAdapter
   implements ProviderAdapter<ChatCompletionsInput<AiSdkToolIO>, ModelMessage[]>
 {
+  /** Convert protocol messages into AI SDK message array. */
   toProvider(input: ChatCompletionsInput<AiSdkToolIO>): ModelMessage[] {
     return input.map((message) => {
-      if (message.role === "developer") {
-        return { role: "system", content: message.content };
+      switch (message.role) {
+        case "developer":
+          return { role: "system", content: message.content };
+        case "assistant":
+          return {
+            role: "assistant",
+            content:
+              typeof message.content === "string"
+                ? message.content
+                : [...message.content],
+          };
+        case "tool":
+          return { role: "tool", content: [...message.content] };
+        default:
+          return { role: message.role, content: message.content };
       }
-
-      if (message.role === "assistant") {
-        return { role: "assistant", content: message.content };
-      }
-
-      if (message.role === "tool") {
-        return { role: "tool", content: message.content };
-      }
-
-      return { role: message.role, content: message.content };
     });
   }
 
+  /** Convert AI SDK messages into protocol messages. */
   fromProvider(input: ModelMessage[]): ChatCompletionsInput<AiSdkToolIO> {
     return input.flatMap((message) => {
       switch (message.role) {
@@ -50,7 +67,7 @@ export class AiSdkAdapter
           return [
             {
               role: "assistant",
-              content: message.content,
+              content: toAssistantContent(message.content),
             },
           ];
         case "tool":
@@ -67,6 +84,7 @@ export class AiSdkAdapter
   }
 }
 
+/** Expand a tool message into protocol tool content parts. */
 function parseToolMessage(
   message: Extract<ModelMessage, { role: "tool" }>
 ): ChatMessage<AiSdkToolIO>[] {
@@ -79,6 +97,7 @@ function parseToolMessage(
   }));
 }
 
+/** Extract plain text from AI SDK message content. */
 function modelMessageText(content: ModelMessage["content"]): string {
   if (typeof content === "string") {
     return content;
@@ -93,6 +112,28 @@ function modelMessageText(content: ModelMessage["content"]): string {
   return text;
 }
 
+/** Normalize AI SDK assistant content into the chat-completions protocol. */
+function toAssistantContent(
+  content: Extract<ModelMessage, { role: "assistant" }>["content"]
+): AiAssistantContent {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  const parts: AiAssistantPart[] = [];
+  for (const part of content) {
+    if (
+      part.type === "text" ||
+      part.type === "reasoning" ||
+      part.type === "tool-call"
+    ) {
+      parts.push(part);
+    }
+  }
+  return parts;
+}
+
+/** Count tokens for a single AI SDK message. */
 function countModelMessageTokens(message: ModelMessage): number {
   if (typeof message.content === "string") {
     return countText(message.content);
@@ -118,6 +159,9 @@ function countModelMessageTokens(message: ModelMessage): number {
   return tokens;
 }
 
+/**
+ * AI SDK provider implementation using chat-completions protocol.
+ */
 export class AiSdkProvider extends ProtocolProvider<
   ModelMessage[],
   ChatCompletionsInput<AiSdkToolIO>,
@@ -130,15 +174,18 @@ export class AiSdkProvider extends ProtocolProvider<
     this.model = model;
   }
 
+  /** Count tokens for the rendered AI SDK message array. */
   countTokens(messages: ModelMessage[]): number {
     return messages.reduce((n, m) => n + countModelMessageTokens(m), 0);
   }
 
+  /** Generate a text completion using the AI SDK model. */
   async completion(messages: ModelMessage[]): Promise<string> {
     const result = await generateText({ model: this.model, messages });
     return result.text;
   }
 
+  /** Generate a structured object using the AI SDK model. */
   async object<T>(messages: ModelMessage[], schema: z.ZodType<T>): Promise<T> {
     const result = await generateObject({
       model: this.model,
@@ -149,6 +196,7 @@ export class AiSdkProvider extends ProtocolProvider<
   }
 }
 
+/** Convenience creator for the AI SDK provider. */
 export function createProvider(model: LanguageModel): AiSdkProvider {
   return new AiSdkProvider(model);
 }

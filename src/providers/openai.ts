@@ -17,11 +17,17 @@ import { ProtocolProvider } from "../provider-adapter";
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
+/** OpenAI tool IO matches the responses protocol tool IO. */
 export type OpenAiToolIO = ResponsesToolIO;
 
+/** OpenAI responses API item shape. */
 export type OpenAIResponsePart = ResponseInputItem;
+/** OpenAI responses API input array. */
 export type OpenAIResponses = OpenAIResponsePart[];
 
+/**
+ * Adapter between chat-completions protocol messages and OpenAI chat messages.
+ */
 export class OpenAIChatAdapter
   implements
     ProviderAdapter<
@@ -29,6 +35,7 @@ export class OpenAIChatAdapter
       ChatCompletionMessageParam[]
     >
 {
+  /** Convert protocol messages into OpenAI chat messages. */
   toProvider(
     input: ChatCompletionsInput<OpenAiToolIO>
   ): ChatCompletionMessageParam[] {
@@ -48,6 +55,7 @@ export class OpenAIChatAdapter
     });
   }
 
+  /** Convert OpenAI chat messages into protocol messages. */
   fromProvider(
     input: ChatCompletionMessageParam[]
   ): ChatCompletionsInput<OpenAiToolIO> {
@@ -56,6 +64,7 @@ export class OpenAIChatAdapter
     return input.map((message) => {
       switch (message.role) {
         case "assistant": {
+          const text = chatText(message.content);
           const toolCalls = message.tool_calls?.map((tc) => {
             toolNameById.set(tc.id, tc.function.name);
             return {
@@ -66,17 +75,18 @@ export class OpenAIChatAdapter
             };
           });
 
-          if (toolCalls?.length) {
-            const parts = [
-              ...(chatText(message.content)
-                ? [{ type: "text", text: chatText(message.content) }]
-                : []),
-              ...toolCalls,
-            ];
+          if (toolCalls && toolCalls.length > 0) {
+            const parts: Array<
+              { type: "text"; text: string } | (typeof toolCalls)[number]
+            > = [];
+            if (text) {
+              parts.push({ type: "text", text });
+            }
+            parts.push(...toolCalls);
             return { role: "assistant", content: parts };
           }
 
-          return { role: "assistant", content: chatText(message.content) };
+          return { role: "assistant", content: text };
         }
         case "tool": {
           const toolCallId = message.tool_call_id;
@@ -93,6 +103,20 @@ export class OpenAIChatAdapter
             ],
           };
         }
+        case "function": {
+          const toolName = message.name ?? "";
+          return {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result" as const,
+                toolCallId: toolName,
+                toolName,
+                output: chatText(message.content),
+              },
+            ],
+          };
+        }
         default:
           return { role: message.role, content: chatText(message.content) };
       }
@@ -100,18 +124,26 @@ export class OpenAIChatAdapter
   }
 }
 
+/**
+ * Adapter between responses protocol items and OpenAI responses items.
+ */
 export class OpenAIResponsesAdapter
   implements ProviderAdapter<ResponsesInput, OpenAIResponses>
 {
+  /** Convert protocol items into OpenAI responses input. */
   toProvider(input: ResponsesInput): OpenAIResponses {
-    return input.flatMap((item) => mapResponsesItemToOpenAi(item));
+    return input.flatMap((item, index) =>
+      mapResponsesItemToOpenAi(item, index)
+    );
   }
 
+  /** Convert OpenAI responses input into protocol items. */
   fromProvider(input: OpenAIResponses): ResponsesInput {
     return input.flatMap((item) => mapOpenAiItemToResponses(item));
   }
 }
 
+/** Render assistant content into an OpenAI chat message. */
 function renderOpenAiAssistantMessage(
   content: ChatCompletionsInput<OpenAiToolIO>[number]["content"]
 ): ChatCompletionMessageParam {
@@ -138,15 +170,21 @@ function renderOpenAiAssistantMessage(
     }
   }
 
+  if (toolCalls.length === 0) {
+    return { role: "assistant", content: text };
+  }
+
   return {
     role: "assistant",
     ...(text ? { content: text } : {}),
-    ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+    tool_calls: toolCalls,
   };
 }
 
+/** Map a responses protocol item into OpenAI response parts. */
 function mapResponsesItemToOpenAi(
-  item: ResponsesInput[number]
+  item: ResponsesInput[number],
+  index: number
 ): OpenAIResponsePart[] {
   switch (item.type) {
     case "message":
@@ -162,7 +200,7 @@ function mapResponsesItemToOpenAi(
         {
           type: "reasoning",
           summary: item.summary,
-          ...(item.id ? { id: item.id } : {}),
+          id: item.id ?? `reasoning_${index}`,
         },
       ];
     case "function_call":
@@ -194,6 +232,7 @@ function mapResponsesItemToOpenAi(
   }
 }
 
+/** Map an OpenAI response part into protocol items. */
 function mapOpenAiItemToResponses(item: OpenAIResponsePart): ResponsesInput {
   if ("role" in item) {
     return [
@@ -243,6 +282,7 @@ function mapOpenAiItemToResponses(item: OpenAIResponsePart): ResponsesInput {
   }
 }
 
+/** Count tokens for a single OpenAI chat message. */
 function countChatMessageTokens(msg: ChatCompletionMessageParam): number {
   let n = 0;
   if ("content" in msg && typeof msg.content === "string") {
@@ -256,6 +296,7 @@ function countChatMessageTokens(msg: ChatCompletionMessageParam): number {
   return n;
 }
 
+/** Count tokens for a single OpenAI responses item. */
 function countResponseItemTokens(item: ResponseInputItem): number {
   if ("content" in item && typeof item.content === "string") {
     return countText(item.content);
@@ -278,6 +319,7 @@ function countResponseItemTokens(item: ResponseInputItem): number {
   return 0;
 }
 
+/** Extract plain text from OpenAI chat content. */
 function chatText(content: ChatCompletionMessageParam["content"]): string {
   if (content === null || content === undefined) {
     return "";
@@ -296,8 +338,10 @@ function chatText(content: ChatCompletionMessageParam["content"]): string {
   return text;
 }
 
+/** Narrowed response item shape that includes a role. */
 type ResponseMessageItem = Extract<ResponseInputItem, { role: string }>;
 
+/** Extract plain text from OpenAI response message content. */
 function responseText(content: ResponseMessageItem["content"]): string {
   if (typeof content === "string") {
     return content;
@@ -318,6 +362,7 @@ function responseText(content: ResponseMessageItem["content"]): string {
   return "";
 }
 
+/** Extract plain text from protocol responses content parts. */
 function responsesText(content: string | ResponsesContentPart[]): string {
   if (typeof content === "string") {
     return content;
@@ -336,6 +381,9 @@ function responsesText(content: string | ResponsesContentPart[]): string {
   return text;
 }
 
+/**
+ * OpenAI provider using the chat completions protocol.
+ */
 export class OpenAIChatProvider extends ProtocolProvider<
   ChatCompletionMessageParam[],
   ChatCompletionsInput<OpenAiToolIO>,
@@ -350,10 +398,12 @@ export class OpenAIChatProvider extends ProtocolProvider<
     this.model = model;
   }
 
+  /** Count tokens for OpenAI chat messages. */
   countTokens(messages: ChatCompletionMessageParam[]): number {
     return messages.reduce((n, m) => n + countChatMessageTokens(m), 0);
   }
 
+  /** Generate a text completion using chat completions. */
   async completion(messages: ChatCompletionMessageParam[]): Promise<string> {
     const res = await this.client.chat.completions.create({
       model: this.model,
@@ -362,6 +412,7 @@ export class OpenAIChatProvider extends ProtocolProvider<
     return res.choices[0]?.message?.content ?? "";
   }
 
+  /** Generate a structured object using chat completions. */
   async object<T>(
     messages: ChatCompletionMessageParam[],
     schema: z.ZodType<T>
@@ -375,6 +426,9 @@ export class OpenAIChatProvider extends ProtocolProvider<
   }
 }
 
+/**
+ * OpenAI provider using the responses protocol.
+ */
 export class OpenAIResponsesProvider extends ProtocolProvider<
   OpenAIResponses,
   ResponsesInput,
@@ -389,10 +443,12 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
     this.model = model;
   }
 
+  /** Count tokens for OpenAI responses items. */
   countTokens(items: OpenAIResponses): number {
     return items.reduce((n, i) => n + countResponseItemTokens(i), 0);
   }
 
+  /** Generate a text completion using the responses API. */
   async completion(items: OpenAIResponses): Promise<string> {
     const res = await this.client.responses.create({
       model: this.model,
@@ -401,11 +457,13 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
     return res.output_text ?? "";
   }
 
+  /** Generate a structured object using the responses API. */
   async object<T>(items: OpenAIResponses, schema: z.ZodType<T>): Promise<T> {
     return schema.parse(JSON.parse(await this.completion(items)));
   }
 }
 
+/** Convenience creator for the OpenAI chat provider. */
 export function createProvider(
   client: OpenAI,
   model: string
@@ -413,6 +471,7 @@ export function createProvider(
   return new OpenAIChatProvider(client, model);
 }
 
+/** Convenience creator for the OpenAI responses provider. */
 export function createResponsesProvider(
   client: OpenAI,
   model: string

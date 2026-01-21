@@ -7,11 +7,13 @@ import type {
   ToolResultPart,
 } from "../types";
 
+/** Text part used in chat-style assistant content. */
 interface ChatTextPart {
   type: "text";
   text: string;
 }
 
+/** Reasoning part used in chat-style assistant content. */
 interface ChatReasoningPart {
   type: "reasoning";
   text: string;
@@ -25,8 +27,10 @@ type ChatAssistantContentPart<TToolIO extends ProviderToolIO> =
 type ChatToolContentPart<TToolIO extends ProviderToolIO> =
   ToolResultPart<TToolIO>;
 
+/** Roles supported by the chat completions protocol. */
 export type ChatRole = "system" | "developer" | "user" | "assistant" | "tool";
 
+/** Protocol message shape for chat completions. */
 export type ChatMessage<TToolIO extends ProviderToolIO> =
   | {
       role: "system" | "developer" | "user";
@@ -41,18 +45,22 @@ export type ChatMessage<TToolIO extends ProviderToolIO> =
       content: readonly ChatToolContentPart<TToolIO>[];
     };
 
+/** Protocol input for chat completions (ordered message list). */
 export type ChatCompletionsInput<TToolIO extends ProviderToolIO> =
   readonly ChatMessage<TToolIO>[];
 
+/** Protocol codec for chat completions. */
 export class ChatCompletionsProtocol<
   TToolIO extends ProviderToolIO,
 > extends MessageCodec<ChatCompletionsInput<TToolIO>, TToolIO> {
+  /** Render PromptLayout into chat-completions protocol input. */
   override render(
     layout: PromptLayout<TToolIO>
   ): ChatCompletionsInput<TToolIO> {
     return layout.map((message) => renderChatMessage(message));
   }
 
+  /** Parse chat-completions protocol input into PromptLayout. */
   override parse(
     rendered: ChatCompletionsInput<TToolIO>
   ): PromptLayout<TToolIO> {
@@ -60,11 +68,18 @@ export class ChatCompletionsProtocol<
   }
 }
 
+/** Map a PromptLayout message into a protocol message. */
 function renderChatMessage<TToolIO extends ProviderToolIO>(
   message: PromptMessage<TToolIO>
 ): ChatMessage<TToolIO> {
   switch (message.role) {
     case "assistant": {
+      const hasReasoning = Boolean(message.reasoning);
+      const hasToolCalls = Boolean(message.toolCalls?.length);
+      if (!(hasReasoning || hasToolCalls)) {
+        return { role: "assistant", content: message.text };
+      }
+
       const parts: ChatAssistantContentPart<TToolIO>[] = [];
       if (message.text) {
         parts.push({ type: "text", text: message.text });
@@ -76,11 +91,7 @@ function renderChatMessage<TToolIO extends ProviderToolIO>(
         parts.push(...message.toolCalls);
       }
 
-      if (parts.length > 0) {
-        return { role: "assistant", content: parts };
-      }
-
-      return { role: "assistant", content: message.text };
+      return { role: "assistant", content: parts };
     }
     case "tool":
       return {
@@ -99,6 +110,7 @@ function renderChatMessage<TToolIO extends ProviderToolIO>(
   }
 }
 
+/** Map a protocol message into one or more PromptLayout messages. */
 function parseChatMessage<TToolIO extends ProviderToolIO>(
   message: ChatMessage<TToolIO>
 ): readonly PromptMessage<TToolIO>[] {
@@ -112,6 +124,7 @@ function parseChatMessage<TToolIO extends ProviderToolIO>(
   }
 }
 
+/** Convert assistant content into a PromptLayout assistant message. */
 function parseAssistantMessage<TToolIO extends ProviderToolIO>(
   content: string | readonly ChatAssistantContentPart<TToolIO>[]
 ): PromptMessage<TToolIO> {
@@ -143,6 +156,7 @@ function parseAssistantMessage<TToolIO extends ProviderToolIO>(
   return assistant;
 }
 
+/** Convert tool content parts into PromptLayout tool messages. */
 function parseToolMessage<TToolIO extends ProviderToolIO>(
   content: readonly ChatToolContentPart<TToolIO>[]
 ): PromptMessage<TToolIO>[] {

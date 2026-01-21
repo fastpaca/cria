@@ -63,7 +63,7 @@ type PromptTreeFor<P> = PromptTree<ToolIOFor<P>>;
 type ToolResultPartFor<P> = ToolResultPart<ToolIOFor<P>>;
 type TextInputFor<P> = TextInput<ToolIOFor<P>>;
 type InputFor<P> =
-  P extends ModelProvider<infer TRendered, ProviderToolIO>
+  P extends ModelProvider<infer TRendered, infer _TToolIO>
     ? PromptInput<TRendered>
     : never;
 type InputLayoutFor<P> = InputLayout<ToolIOFor<P>>;
@@ -93,8 +93,7 @@ export type BuilderChild<P = unknown> =
 
 type BoundProvider = ModelProvider<unknown, ProviderToolIO>;
 type RenderedForProvider<P> =
-  P extends ModelProvider<infer TOutput, ProviderToolIO> ? TOutput : unknown;
-type BoundProviderFor<P> = P extends BoundProvider ? P : never;
+  P extends ModelProvider<infer TOutput, infer _TToolIO> ? TOutput : unknown;
 
 /**
  * Provider binding helpers:
@@ -250,12 +249,12 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   PromptBuilder<P>,
   P
 > {
-  private readonly boundProvider: BoundProviderFor<P> | undefined;
+  private readonly boundProvider: BoundProvider | undefined;
 
   private constructor(
     children: BuilderChild<P>[] = [],
     context: CriaContext | undefined = undefined,
-    provider: BoundProviderFor<P> | undefined = undefined
+    provider: BoundProvider | undefined = undefined
   ) {
     const existingProvider = context?.provider;
     if (provider && existingProvider && provider !== existingProvider) {
@@ -278,11 +277,11 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   static create<TProvider extends BoundProvider>(
     provider: TProvider
   ): PromptBuilder<TProvider>;
-  static create(provider?: BoundProvider) {
+  static create<TProvider extends BoundProvider>(provider?: TProvider) {
     if (!provider) {
       return new PromptBuilder();
     }
-    return new PromptBuilder([], undefined, provider);
+    return new PromptBuilder<TProvider>([], undefined, provider);
   }
 
   protected create(
@@ -421,7 +420,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     content: TRendered
   ): PromptBuilder<ModelProvider<TRendered, TToolIO>> {
     const provider = this.boundProvider;
-    if (!provider) {
+    if (!hasProvider<TRendered, TToolIO>(provider)) {
       throw new Error("Inputs require a bound provider.");
     }
     const layout = provider.codec.parse(content);
@@ -793,7 +792,7 @@ async function resolveScopeChildren<P>(
 
 async function resolveScopeContent<P>(
   content: ScopeContent<P>,
-  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> | null | undefined
+  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined
 ): Promise<PromptNodeFor<P>[]> {
   if (content instanceof PromptBuilder) {
     const built = await content.build();
@@ -829,6 +828,9 @@ async function resolveScopeContent<P>(
   }
 
   if (isPromptInput<RenderedForProvider<P>>(content)) {
+    if (!isCodecForInput<P>(codec, content)) {
+      throw new Error("Inputs require a provider with a codec.");
+    }
     return resolveInputContent<P>(content, codec);
   }
 
@@ -839,13 +841,17 @@ async function resolveScopeContent<P>(
 
 function resolveInputContent<P>(
   content: PromptInput<RenderedForProvider<P>>,
-  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> | null | undefined
+  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>>
 ): PromptNodeFor<P>[] {
-  if (!codec) {
-    throw new Error("Inputs require a provider with a codec.");
-  }
   const layout = codec.parse(content.value);
   return promptLayoutToNodes(layout);
+}
+
+function isCodecForInput<P>(
+  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined,
+  _content: PromptInput<RenderedForProvider<P>>
+): codec is MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> {
+  return Boolean(codec);
 }
 
 function promptLayoutToNodes<TToolIO extends ProviderToolIO>(
@@ -888,17 +894,23 @@ function promptMessageToNode<TToolIO extends ProviderToolIO>(
 function isInputLayout<TToolIO extends ProviderToolIO>(
   value: unknown
 ): value is InputLayout<TToolIO> {
-  return isObject(value) && value.kind === "input-layout";
+  return hasKind(value) && value.kind === "input-layout";
 }
 
 function isPromptInput<TRendered>(
   value: unknown
 ): value is PromptInput<TRendered> {
-  return isObject(value) && value.kind === "input";
+  return hasKind(value) && value.kind === "input";
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function hasKind(value: unknown): value is { kind: unknown } {
+  return typeof value === "object" && value !== null && "kind" in value;
+}
+
+function hasProvider<TRendered, TToolIO extends ProviderToolIO>(
+  provider: BoundProvider | undefined
+): provider is ModelProvider<TRendered, TToolIO> {
+  return Boolean(provider);
 }
 
 async function resolveBuilderChild<P>(

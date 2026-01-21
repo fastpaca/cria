@@ -1,27 +1,37 @@
 import { MessageCodec } from "../message-codec";
 import type { PromptLayout, PromptMessage } from "../types";
 
+/**
+ * Tool IO contract for the responses protocol.
+ *
+ * OpenAI responses currently use string IO for tool calls/results.
+ */
 export interface ResponsesToolIO {
   callInput: string;
   resultOutput: string;
 }
 
+/** Roles supported by the responses protocol message items. */
 export type ResponsesRole = "system" | "developer" | "user" | "assistant";
 
+/** Text content part used by responses message items. */
 export interface ResponsesTextContent {
   type: "input_text" | "output_text";
   text: string;
 }
 
+/** Refusal content part used by responses message items. */
 export interface ResponsesRefusalContent {
   type: "refusal";
   refusal: string;
 }
 
+/** Message content parts used by responses message items. */
 export type ResponsesContentPart =
   | ResponsesTextContent
   | ResponsesRefusalContent;
 
+/** Responses message item wrapper. */
 export interface ResponsesMessageItem {
   type: "message";
   role: ResponsesRole;
@@ -30,19 +40,23 @@ export interface ResponsesMessageItem {
   status?: string | null;
 }
 
+/** Reasoning summary entry used by reasoning items. */
 export interface ResponsesReasoningSummary {
   type: "summary_text";
   text: string;
 }
 
+/** Reasoning item wrapper. */
 export interface ResponsesReasoningItem {
   type: "reasoning";
   summary: ResponsesReasoningSummary[];
   id?: string | null;
 }
 
+/** Status values for responses items. */
 export type ResponsesItemStatus = "in_progress" | "completed" | "incomplete";
 
+/** Function call item wrapper. */
 export interface ResponsesFunctionCallItem {
   type: "function_call";
   call_id: string;
@@ -52,6 +66,7 @@ export interface ResponsesFunctionCallItem {
   status?: ResponsesItemStatus | null;
 }
 
+/** Function call output item wrapper. */
 export interface ResponsesFunctionCallOutputItem {
   type: "function_call_output";
   call_id: string;
@@ -60,11 +75,13 @@ export interface ResponsesFunctionCallOutputItem {
   status?: ResponsesItemStatus | null;
 }
 
+/** Item reference wrapper. */
 export interface ResponsesItemReference {
   type: "item_reference";
   id: string;
 }
 
+/** Union of responses input items. */
 export type ResponsesItem =
   | ResponsesItemReference
   | ResponsesReasoningItem
@@ -72,12 +89,15 @@ export type ResponsesItem =
   | ResponsesFunctionCallItem
   | ResponsesFunctionCallOutputItem;
 
+/** Protocol input for responses (ordered item list). */
 export type ResponsesInput = ResponsesItem[];
 
+/** Protocol codec for responses. */
 export class ResponsesProtocol extends MessageCodec<
   ResponsesInput,
   ResponsesToolIO
 > {
+  /** Render PromptLayout into responses items. */
   override render(layout: PromptLayout<ResponsesToolIO>): ResponsesInput {
     let reasoningIndex = 0;
     return layout.flatMap((message) => {
@@ -136,11 +156,13 @@ export class ResponsesProtocol extends MessageCodec<
     });
   }
 
+  /** Parse responses items into PromptLayout. */
   override parse(rendered: ResponsesInput): PromptLayout<ResponsesToolIO> {
     return parseResponsesItems(rendered);
   }
 }
 
+/** Build PromptLayout messages from responses items. */
 function parseResponsesItems(
   items: ResponsesInput
 ): PromptLayout<ResponsesToolIO> {
@@ -216,6 +238,7 @@ function parseResponsesItems(
   return layout;
 }
 
+/** Extract concatenated text from responses content parts. */
 function responsesText(content: string | ResponsesContentPart[]): string {
   if (typeof content === "string") {
     return content;
@@ -232,6 +255,7 @@ function responsesText(content: string | ResponsesContentPart[]): string {
   return text;
 }
 
+/** Extract concatenated text from a reasoning item summary. */
 function reasoningText(item: ResponsesReasoningItem): string {
   return item.summary.map((entry) => entry.text).join("");
 }
