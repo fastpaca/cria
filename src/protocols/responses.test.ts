@@ -106,3 +106,50 @@ test("responses: renders reasoning as reasoning item", async () => {
     },
   ]);
 });
+
+test("responses: round-trips items", () => {
+  const input = [
+    { type: "message", role: "user", content: "Hello" },
+    { type: "message", role: "assistant", content: "Let me check." },
+    {
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "Thinking." }],
+      id: "reasoning_custom",
+    },
+    {
+      type: "function_call",
+      call_id: "call_1",
+      name: "getWeather",
+      arguments: '{"city":"Paris"}',
+    },
+    {
+      type: "function_call_output",
+      call_id: "call_1",
+      output: '{"temp":18}',
+    },
+  ];
+
+  const layout = protocolProvider.codec.parse(input);
+  const output = protocolProvider.codec.render(layout);
+
+  expect(output).toEqual([
+    { type: "message", role: "user", content: "Hello" },
+    { type: "message", role: "assistant", content: "Let me check." },
+    {
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "Thinking." }],
+      id: "reasoning_0",
+    },
+    {
+      type: "function_call",
+      call_id: "call_1",
+      name: "getWeather",
+      arguments: '{"city":"Paris"}',
+    },
+    {
+      type: "function_call_output",
+      call_id: "call_1",
+      output: '{"temp":18}',
+    },
+  ]);
+});

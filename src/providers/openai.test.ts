@@ -401,3 +401,81 @@ test("responses: full conversation with reasoning", async () => {
     { type: "message", role: "assistant", content: "The answer is 4." },
   ]);
 });
+
+test("chatCompletions: round-trips messages", () => {
+  const input: ChatCompletionMessageParam[] = [
+    { role: "system", content: "You are a helpful assistant." },
+    { role: "user", content: "Hello!" },
+    {
+      role: "assistant",
+      content: "Let me check.",
+      tool_calls: [
+        {
+          id: "call_1",
+          type: "function",
+          function: {
+            name: "getWeather",
+            arguments: '{"city":"Paris"}',
+          },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      content: '{"temp":18}',
+    },
+  ];
+
+  const layout = chatProvider.codec.parse(input);
+  const output = chatProvider.codec.render(layout);
+
+  expect(output).toEqual(input);
+});
+
+test("responses: round-trips items", () => {
+  const input: OpenAIResponses = [
+    { type: "message", role: "user", content: "Hello" },
+    { type: "message", role: "assistant", content: "Let me check." },
+    {
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "Thinking." }],
+      id: "reasoning_custom",
+    },
+    {
+      type: "function_call",
+      call_id: "call_1",
+      name: "getWeather",
+      arguments: '{"city":"Paris"}',
+    },
+    {
+      type: "function_call_output",
+      call_id: "call_1",
+      output: '{"temp":18}',
+    },
+  ];
+
+  const layout = responsesProvider.codec.parse(input);
+  const output = responsesProvider.codec.render(layout);
+
+  expect(output).toEqual([
+    { type: "message", role: "user", content: "Hello" },
+    { type: "message", role: "assistant", content: "Let me check." },
+    {
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "Thinking." }],
+      id: "reasoning_0",
+    },
+    {
+      type: "function_call",
+      call_id: "call_1",
+      name: "getWeather",
+      arguments: '{"city":"Paris"}',
+    },
+    {
+      type: "function_call_output",
+      call_id: "call_1",
+      output: '{"temp":18}',
+    },
+  ]);
+});

@@ -42,6 +42,7 @@ export class AiSdkAdapter
     return input.map((message) => {
       switch (message.role) {
         case "developer":
+          // AI SDK treats "developer" as system content.
           return { role: "system", content: message.content };
         case "assistant":
           return {
@@ -120,17 +121,13 @@ function toAssistantContent(
     return content;
   }
 
-  const parts: AiAssistantPart[] = [];
-  for (const part of content) {
-    if (
+  // AI SDK assistant content may include files/approvals; drop non-chat parts.
+  return content.filter(
+    (part): part is AiAssistantPart =>
       part.type === "text" ||
       part.type === "reasoning" ||
       part.type === "tool-call"
-    ) {
-      parts.push(part);
-    }
-  }
-  return parts;
+  );
 }
 
 /** Count tokens for a single AI SDK message. */

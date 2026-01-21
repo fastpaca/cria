@@ -118,7 +118,12 @@ function parseChatMessage<TToolIO extends ProviderToolIO>(
     case "assistant":
       return [parseAssistantMessage(message.content)];
     case "tool":
-      return parseToolMessage(message.content);
+      return message.content.map((result) => ({
+        role: "tool",
+        toolCallId: result.toolCallId,
+        toolName: result.toolName,
+        output: result.output,
+      }));
     default:
       return [{ role: message.role, text: message.content }];
   }
@@ -154,16 +159,4 @@ function parseAssistantMessage<TToolIO extends ProviderToolIO>(
     assistant.toolCalls = toolCalls;
   }
   return assistant;
-}
-
-/** Convert tool content parts into PromptLayout tool messages. */
-function parseToolMessage<TToolIO extends ProviderToolIO>(
-  content: readonly ChatToolContentPart<TToolIO>[]
-): PromptMessage<TToolIO>[] {
-  return content.map((result) => ({
-    role: "tool",
-    toolCallId: result.toolCallId,
-    toolName: result.toolName,
-    output: result.output,
-  }));
 }

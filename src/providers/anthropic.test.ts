@@ -248,3 +248,43 @@ test("anthropic: includes reasoning as text with thinking tags", async () => {
     ],
   });
 });
+
+test("anthropic: round-trips rendered input", () => {
+  const input: AnthropicRenderResult = {
+    system: "You are a helpful assistant.",
+    messages: [
+      { role: "user", content: [{ type: "text", text: "Hello" }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Checking weather." },
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "getWeather",
+            input: { city: "Paris" },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call_1",
+            content: '{"temp":18}',
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Paris is 18°C." }],
+      },
+    ],
+  };
+
+  const layout = provider.codec.parse(input);
+  const output = provider.codec.render(layout);
+
+  expect(output).toEqual(input);
+});

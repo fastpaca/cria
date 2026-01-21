@@ -203,7 +203,9 @@ function parseResponsesItems(
       }
       case "reasoning": {
         const assistant = ensureAssistant();
-        assistant.reasoning = `${assistant.reasoning ?? ""}${reasoningText(item)}`;
+        assistant.reasoning = `${assistant.reasoning ?? ""}${item.summary
+          .map((entry) => entry.text)
+          .join("")}`;
         break;
       }
       case "function_call": {
@@ -253,9 +255,4 @@ function responsesText(content: string | ResponsesContentPart[]): string {
     }
   }
   return text;
-}
-
-/** Extract concatenated text from a reasoning item summary. */
-function reasoningText(item: ResponsesReasoningItem): string {
-  return item.summary.map((entry) => entry.text).join("");
 }
