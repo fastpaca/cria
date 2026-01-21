@@ -10,9 +10,9 @@ import { ModelProvider } from "./types";
  */
 export interface ProviderAdapter<TProtocolInput, TProviderInput> {
   /** Convert protocol input into the provider-native input shape. */
-  toProvider(input: TProtocolInput): TProviderInput;
+  to(input: TProtocolInput): TProviderInput;
   /** Convert provider-native input into the protocol input shape. */
-  fromProvider(input: TProviderInput): TProtocolInput;
+  from(input: TProviderInput): TProtocolInput;
 }
 
 /**
@@ -37,12 +37,12 @@ export class CompositeCodec<
 
   /** Render PromptLayout into provider input via protocol + adapter. */
   render(layout: PromptLayout<TToolIO>): TProviderInput {
-    return this.adapter.toProvider(this.protocol.render(layout));
+    return this.adapter.to(this.protocol.render(layout));
   }
 
   /** Parse provider input into PromptLayout via adapter + protocol. */
   parse(input: TProviderInput): PromptLayout<TToolIO> {
-    return this.protocol.parse(this.adapter.fromProvider(input));
+    return this.protocol.parse(this.adapter.from(input));
   }
 }
 

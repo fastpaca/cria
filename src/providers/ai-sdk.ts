@@ -38,7 +38,7 @@ export class AiSdkAdapter
   implements ProviderAdapter<ChatCompletionsInput<AiSdkToolIO>, ModelMessage[]>
 {
   /** Convert protocol messages into AI SDK message array. */
-  toProvider(input: ChatCompletionsInput<AiSdkToolIO>): ModelMessage[] {
+  to(input: ChatCompletionsInput<AiSdkToolIO>): ModelMessage[] {
     return input.map((message) => {
       switch (message.role) {
         case "developer":
@@ -61,7 +61,7 @@ export class AiSdkAdapter
   }
 
   /** Convert AI SDK messages into protocol messages. */
-  fromProvider(input: ModelMessage[]): ChatCompletionsInput<AiSdkToolIO> {
+  from(input: ModelMessage[]): ChatCompletionsInput<AiSdkToolIO> {
     return input.flatMap((message) => {
       switch (message.role) {
         case "assistant":

@@ -36,9 +36,7 @@ export class OpenAIChatAdapter
     >
 {
   /** Convert protocol messages into OpenAI chat messages. */
-  toProvider(
-    input: ChatCompletionsInput<OpenAiToolIO>
-  ): ChatCompletionMessageParam[] {
+  to(input: ChatCompletionsInput<OpenAiToolIO>): ChatCompletionMessageParam[] {
     return input.flatMap((message) => {
       switch (message.role) {
         case "assistant":
@@ -56,7 +54,7 @@ export class OpenAIChatAdapter
   }
 
   /** Convert OpenAI chat messages into protocol messages. */
-  fromProvider(
+  from(
     input: ChatCompletionMessageParam[]
   ): ChatCompletionsInput<OpenAiToolIO> {
     const toolNameById = new Map<string, string>();
@@ -133,14 +131,14 @@ export class OpenAIResponsesAdapter
   implements ProviderAdapter<ResponsesInput, OpenAIResponses>
 {
   /** Convert protocol items into OpenAI responses input. */
-  toProvider(input: ResponsesInput): OpenAIResponses {
+  to(input: ResponsesInput): OpenAIResponses {
     return input.flatMap((item, index) =>
       mapResponsesItemToOpenAi(item, index)
     );
   }
 
   /** Convert OpenAI responses input into protocol items. */
-  fromProvider(input: OpenAIResponses): ResponsesInput {
+  from(input: OpenAIResponses): ResponsesInput {
     return input.flatMap((item) => mapOpenAiItemToResponses(item));
   }
 }
