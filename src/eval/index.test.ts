@@ -6,7 +6,7 @@ import { createPlainTextRenderer } from "../testing/plaintext";
 import { ModelProvider } from "../types";
 import { createJudge } from "./index";
 
-const renderer = createPlainTextRenderer({
+const codec = createPlainTextRenderer({
   includeRolePrefix: true,
   joinMessagesWith: "\n\n",
 });
@@ -14,7 +14,7 @@ const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
 class MockProvider extends ModelProvider<string> {
-  readonly renderer = renderer;
+  readonly codec = codec;
   private readonly completionValue: string;
   private readonly objectValue: unknown | undefined;
 

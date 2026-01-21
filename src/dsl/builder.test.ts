@@ -1,8 +1,17 @@
 import { describe, expect, test } from "vitest";
+import { InMemoryStore } from "../memory";
+import { ListMessageCodec } from "../message-codec";
 import { render } from "../render";
 import { createTestProvider } from "../testing/plaintext";
-import type { PromptMessageNode, PromptNode } from "../types";
+import type {
+  PromptLayout,
+  PromptMessage,
+  PromptMessageNode,
+  PromptNode,
+} from "../types";
+import { ModelProvider } from "../types";
 import { c, cria, PromptBuilder, prompt } from "./index";
+import type { StoredSummary } from "./summary";
 
 const provider = createTestProvider({
   includeRolePrefix: true,
@@ -14,6 +23,58 @@ const renderBuilder = async (
   builder: PromptBuilder<unknown>,
   budget = 10_000
 ): Promise<string> => render(await builder.build(), { provider, budget });
+
+interface FakeToolIO {
+  callInput: string;
+  resultOutput: string;
+}
+
+interface FakeHistoryMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+class FakeHistoryCodec extends ListMessageCodec<
+  FakeHistoryMessage,
+  FakeToolIO
+> {
+  protected toProviderMessage(
+    message: PromptMessage<FakeToolIO>
+  ): readonly FakeHistoryMessage[] {
+    if (message.role === "tool") {
+      return [];
+    }
+    return [{ role: message.role, content: message.text }];
+  }
+
+  protected fromProviderMessage(
+    message: FakeHistoryMessage
+  ): readonly PromptMessage<FakeToolIO>[] {
+    return [{ role: message.role, text: message.content }];
+  }
+}
+
+class FakeHistoryProvider extends ModelProvider<
+  FakeHistoryMessage[],
+  FakeToolIO
+> {
+  readonly codec = new FakeHistoryCodec();
+
+  countTokens(rendered: FakeHistoryMessage[]): number {
+    return rendered.reduce(
+      (total, message) => total + message.content.length,
+      0
+    );
+  }
+
+  completion(): string {
+    return "";
+  }
+
+  object(): never {
+    throw new Error("Not implemented");
+  }
+}
 
 describe("PromptBuilder", () => {
   describe("basic usage", () => {
@@ -118,6 +179,50 @@ describe("PromptBuilder", () => {
       );
 
       expect(result).toBe("user: Hello World");
+    });
+  });
+
+  describe("history", () => {
+    test("historyLayout() appends PromptLayout messages", async () => {
+      const layout: PromptLayout = [
+        { role: "system", text: "System history." },
+        { role: "user", text: "User history." },
+      ];
+
+      const result = await renderBuilder(cria.prompt().historyLayout(layout));
+
+      expect(result).toBe("system: System history.\n\nuser: User history.");
+    });
+
+    test("history() accepts provider-native inputs", async () => {
+      const provider = new FakeHistoryProvider();
+      const history: FakeHistoryMessage[] = [
+        { role: "system", content: "System history." },
+        { role: "user", content: "User history." },
+      ];
+
+      const output = await cria
+        .prompt(provider)
+        .history(history)
+        .render({ budget: 1000 });
+
+      expect(output).toEqual(history);
+    });
+
+    test("summary accepts provider-native history inputs", async () => {
+      const provider = new FakeHistoryProvider();
+      const store = new InMemoryStore<StoredSummary>();
+      const history: FakeHistoryMessage[] = [
+        { role: "system", content: "System history." },
+        { role: "user", content: "User history." },
+      ];
+
+      const output = await cria
+        .prompt(provider)
+        .summary(cria.history(history), { id: "history", store, priority: 1 })
+        .render({ budget: 1000 });
+
+      expect(output).toEqual(history);
     });
   });
 

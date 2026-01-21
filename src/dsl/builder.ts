@@ -3,11 +3,17 @@
  */
 
 import type { KVMemory, VectorMemory } from "../memory";
+import type { MessageCodec } from "../message-codec";
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
   CriaContext,
+  HistoryInput,
+  HistoryLayout,
   ModelProvider,
+  PromptLayout,
+  PromptMessage,
+  PromptMessageNode,
   PromptNode,
   PromptPart,
   PromptRole,
@@ -45,7 +51,7 @@ type AnyPromptBuilder = PromptBuilder<unknown>;
  * - P is the bound provider type (or unknown when unbound).
  * - ToolIOForProvider<P> extracts the provider's tool IO contract.
  * - PromptPart/PromptNode/etc. are all parameterized by that tool IO so tool calls
- *   stay typed from builder → tree → layout → renderer.
+ *   stay typed from builder → tree → layout → codec.
  * - When P is unknown, ToolIOForProvider<P> resolves to "never" for tool IO,
  *   preventing tool parts until a provider is bound.
  */
@@ -56,11 +62,18 @@ type PromptScopeFor<P> = PromptScope<ToolIOFor<P>>;
 type PromptTreeFor<P> = PromptTree<ToolIOFor<P>>;
 type ToolResultPartFor<P> = ToolResultPart<ToolIOFor<P>>;
 type TextInputFor<P> = TextInput<ToolIOFor<P>>;
+type HistoryInputFor<P> =
+  P extends ModelProvider<infer TRendered, ProviderToolIO>
+    ? HistoryInput<TRendered>
+    : never;
+type HistoryLayoutFor<P> = HistoryLayout<ToolIOFor<P>>;
 
 export type ScopeContent<P = unknown> =
   | PromptNodeFor<P>
   | PromptBuilder<P>
   | AnyPromptBuilder
+  | HistoryInputFor<P>
+  | HistoryLayoutFor<P>
   | Promise<PromptNodeFor<P>>
   | readonly ScopeContent<P>[];
 
@@ -85,7 +98,7 @@ type BoundProviderFor<P> = P extends BoundProvider ? P : never;
 
 /**
  * Provider binding helpers:
- * - BoundProvider captures any provider with a renderer + tool IO contract.
+ * - BoundProvider captures any provider with a codec + tool IO contract.
  * - RenderedForProvider ties render() return types to a specific provider.
  * - RenderOptionsWithoutProvider omits provider when the builder is already bound.
  */
@@ -330,12 +343,13 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       id?: string;
     }
   ): PromptBuilder<P> {
-    const node = resolveScopeContent(content).then((children) =>
-      createScope<ToolIOFor<P>>(children, {
-        ...(opts.priority !== undefined && { priority: opts.priority }),
-        strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
-        ...(opts.id && { id: opts.id }),
-      })
+    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
+      (children) =>
+        createScope<ToolIOFor<P>>(children, {
+          ...(opts.priority !== undefined && { priority: opts.priority }),
+          strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
+          ...(opts.id && { id: opts.id }),
+        })
     );
 
     return this.addChild(node);
@@ -348,12 +362,13 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     content: ScopeContent<P>,
     opts?: { priority?: number; id?: string }
   ): PromptBuilder<P> {
-    const node = resolveScopeContent(content).then((children) =>
-      createScope<ToolIOFor<P>>(children, {
-        ...(opts?.priority !== undefined && { priority: opts.priority }),
-        strategy: createOmitStrategy(),
-        ...(opts?.id && { id: opts.id }),
-      })
+    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
+      (children) =>
+        createScope<ToolIOFor<P>>(children, {
+          ...(opts?.priority !== undefined && { priority: opts.priority }),
+          strategy: createOmitStrategy(),
+          ...(opts?.id && { id: opts.id }),
+        })
     );
 
     return this.addChild(node);
@@ -399,6 +414,28 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   /**
+   * Add provider-native history (requires a provider with a codec).
+   */
+  history<TRendered, TToolIO extends ProviderToolIO>(
+    this: PromptBuilder<ModelProvider<TRendered, TToolIO>>,
+    content: TRendered
+  ): PromptBuilder<ModelProvider<TRendered, TToolIO>> {
+    const provider = this.boundProvider;
+    if (!provider) {
+      throw new Error("History inputs require a bound provider.");
+    }
+    const layout = provider.codec.parse(content);
+    return this.addChildren(promptLayoutToNodes(layout));
+  }
+
+  /**
+   * Add a PromptLayout history.
+   */
+  historyLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P> {
+    return this.addChildren(promptLayoutToNodes(content));
+  }
+
+  /**
    * Add vector search results (async, resolved at render time).
    */
   vectorSearch<T = unknown>(opts: {
@@ -434,7 +471,10 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       priority?: number;
     }
   ): PromptBuilder<P> {
-    const element = resolveScopeContent(content).then((children) =>
+    const element = resolveScopeContent(
+      content,
+      this.boundProvider?.codec
+    ).then((children) =>
       Summary({
         id: opts.id,
         store: opts.store,
@@ -733,7 +773,8 @@ async function resolveScopeChildren<P>(
 }
 
 async function resolveScopeContent<P>(
-  content: ScopeContent<P>
+  content: ScopeContent<P>,
+  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> | null | undefined
 ): Promise<PromptNodeFor<P>[]> {
   if (content instanceof PromptBuilder) {
     const built = await content.build();
@@ -750,12 +791,12 @@ async function resolveScopeContent<P>(
 
   if (content instanceof Promise) {
     const value = await content;
-    return await resolveScopeContent(value as ScopeContent<P>);
+    return await resolveScopeContent(value as ScopeContent<P>, codec);
   }
 
   if (Array.isArray(content)) {
     const resolved = await Promise.all(
-      content.map((item) => resolveScopeContent<P>(item))
+      content.map((item) => resolveScopeContent<P>(item, codec))
     );
     return resolved.flat();
   }
@@ -764,7 +805,81 @@ async function resolveScopeContent<P>(
     return [content];
   }
 
-  throw new Error("Scope content must be prompt nodes or prompt builders.");
+  if (isHistoryLayout<ToolIOFor<P>>(content)) {
+    return promptLayoutToNodes(content.value);
+  }
+
+  if (isHistoryInput<RenderedForProvider<P>>(content)) {
+    return resolveHistoryContent<P>(content, codec);
+  }
+
+  throw new Error(
+    "Scope content must be prompt nodes, prompt builders, or history wrappers."
+  );
+}
+
+function resolveHistoryContent<P>(
+  content: HistoryInput<RenderedForProvider<P>>,
+  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> | null | undefined
+): PromptNodeFor<P>[] {
+  if (!codec) {
+    throw new Error("History inputs require a provider with a codec.");
+  }
+  const layout = codec.parse(content.value);
+  return promptLayoutToNodes(layout);
+}
+
+function promptLayoutToNodes<TToolIO extends ProviderToolIO>(
+  layout: PromptLayout<TToolIO>
+): PromptMessageNode<TToolIO>[] {
+  return layout.map((message) => promptMessageToNode(message));
+}
+
+function promptMessageToNode<TToolIO extends ProviderToolIO>(
+  message: PromptMessage<TToolIO>
+): PromptMessageNode<TToolIO> {
+  if (message.role === "tool") {
+    const part: ToolResultPart<TToolIO> = {
+      type: "tool-result",
+      toolCallId: message.toolCallId,
+      toolName: message.toolName,
+      output: message.output,
+    };
+    return createMessage<TToolIO>("tool", [part]);
+  }
+
+  if (message.role === "assistant") {
+    const parts: PromptPart<TToolIO>[] = [];
+    if (message.text) {
+      parts.push(textPart<TToolIO>(message.text));
+    }
+    if (message.reasoning) {
+      parts.push({ type: "reasoning", text: message.reasoning });
+    }
+    if (message.toolCalls) {
+      parts.push(...message.toolCalls);
+    }
+    return createMessage<TToolIO>("assistant", parts);
+  }
+
+  const parts = message.text ? [textPart<TToolIO>(message.text)] : [];
+  return createMessage<TToolIO>(message.role, parts);
+}
+
+function isHistoryLayout<TToolIO extends ProviderToolIO>(
+  value: unknown
+): value is HistoryLayout<TToolIO> {
+  return isObject(value) && value.kind === "history-layout";
+}
+
+function isHistoryInput<TRendered>(
+  value: unknown
+): value is HistoryInput<TRendered> {
+  return isObject(value) && value.kind === "history";
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 async function resolveBuilderChild<P>(

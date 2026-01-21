@@ -31,12 +31,13 @@ export {
   BuilderBase,
   c,
   cria,
+  history,
+  historyLayout,
   MessageBuilder,
   merge,
   PromptBuilder,
   prompt,
 } from "./dsl";
-
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,
@@ -47,6 +48,7 @@ export type {
 } from "./memory";
 // LLM Memory
 export { InMemoryStore } from "./memory";
+export { ListMessageCodec, MessageCodec } from "./message-codec";
 export type {
   FitCompleteEvent,
   FitErrorEvent,
@@ -59,6 +61,9 @@ export type {
 export { render } from "./render";
 export type {
   CriaContext,
+  HistoryInput,
+  HistoryLayout,
+  HistoryProvider,
   MaybePromise,
   MessageChildren,
   PromptLayout,
@@ -80,4 +85,4 @@ export type {
   ToolIOForProvider,
   ToolResultPart,
 } from "./types";
-export { FitError, ModelProvider, PromptRenderer } from "./types";
+export { FitError, ModelProvider } from "./types";
