@@ -8,7 +8,7 @@
  * const result = await cria
  *   .prompt(provider)
  *   .system("You are a helpful assistant.")
- *   .truncate(conversationHistory, { budget: 20000, from: "start", priority: 2 })
+ *   .truncate(cria.input(conversationHistory), { budget: 20000, from: "start", priority: 2 })
  *   .omit(optionalContext, { priority: 3 })
  *   .render({ budget: 128000 });
  * ```
@@ -31,8 +31,8 @@ export {
   BuilderBase,
   c,
   cria,
-  history,
-  historyLayout,
+  input,
+  inputLayout,
   MessageBuilder,
   merge,
   PromptBuilder,
@@ -50,6 +50,29 @@ export type {
 export { InMemoryStore } from "./memory";
 export { ListMessageCodec, MessageCodec } from "./message-codec";
 export type {
+  ChatCompletionsInput,
+  ChatMessage,
+  ChatRole,
+} from "./protocols/chat-completions";
+export { ChatCompletionsProtocol } from "./protocols/chat-completions";
+export type {
+  ResponsesContentPart,
+  ResponsesFunctionCallItem,
+  ResponsesFunctionCallOutputItem,
+  ResponsesInput,
+  ResponsesItem,
+  ResponsesMessageItem,
+  ResponsesReasoningItem,
+  ResponsesRole,
+  ResponsesToolIO,
+} from "./protocols/responses";
+export { ResponsesProtocol } from "./protocols/responses";
+export {
+  CompositeCodec,
+  ProtocolProvider,
+  type ProviderAdapter,
+} from "./provider-adapter";
+export type {
   FitCompleteEvent,
   FitErrorEvent,
   FitIterationEvent,
@@ -61,11 +84,10 @@ export type {
 export { render } from "./render";
 export type {
   CriaContext,
-  HistoryInput,
-  HistoryLayout,
-  HistoryProvider,
+  InputLayout,
   MaybePromise,
   MessageChildren,
+  PromptInput,
   PromptLayout,
   PromptMessage,
   PromptMessageNode,

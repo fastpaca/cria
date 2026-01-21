@@ -2,9 +2,13 @@ import type { LanguageModel, ModelMessage } from "ai";
 import { generateObject, generateText } from "ai";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { ListMessageCodec } from "../message-codec";
-import type { PromptMessage } from "../types";
-import { ModelProvider } from "../types";
+import type {
+  ChatCompletionsInput,
+  ChatMessage,
+} from "../protocols/chat-completions";
+import { ChatCompletionsProtocol } from "../protocols/chat-completions";
+import type { ProviderAdapter } from "../provider-adapter";
+import { ProtocolProvider } from "../provider-adapter";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -18,102 +22,75 @@ export interface AiSdkToolIO {
   resultOutput: AiToolResultPart["output"];
 }
 
-export class AiSdkCodec extends ListMessageCodec<ModelMessage, AiSdkToolIO> {
-  protected toProviderMessage(
-    message: PromptMessage<AiSdkToolIO>
-  ): readonly ModelMessage[] {
-    switch (message.role) {
-      case "tool":
-        return [
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolCallId: message.toolCallId,
-                toolName: message.toolName,
-                output: message.output,
-              },
-            ],
-          },
-        ];
-      case "assistant": {
-        const toolCalls = message.toolCalls ?? [];
-        const content: ModelMessage["content"] =
-          message.reasoning || toolCalls.length > 0
-            ? [
-                ...(message.text ? [{ type: "text", text: message.text }] : []),
-                ...(message.reasoning
-                  ? [{ type: "reasoning", text: message.reasoning }]
-                  : []),
-                ...toolCalls,
-              ]
-            : message.text;
-        return [{ role: "assistant", content }];
+export class AiSdkAdapter
+  implements ProviderAdapter<ChatCompletionsInput<AiSdkToolIO>, ModelMessage[]>
+{
+  toProvider(input: ChatCompletionsInput<AiSdkToolIO>): ModelMessage[] {
+    return input.map((message) => {
+      if (message.role === "developer") {
+        return { role: "system", content: message.content };
       }
-      default:
-        return [{ role: message.role, content: message.text }];
-    }
+
+      if (message.role === "assistant") {
+        return { role: "assistant", content: message.content };
+      }
+
+      if (message.role === "tool") {
+        return { role: "tool", content: message.content };
+      }
+
+      return { role: message.role, content: message.content };
+    });
   }
 
-  protected fromProviderMessage(
-    message: ModelMessage
-  ): readonly PromptMessage<AiSdkToolIO>[] {
-    const content = normalizeContent(message.content);
-
-    switch (message.role) {
-      case "tool":
-        return content.flatMap((part) =>
-          part.type === "tool-result"
-            ? [
-                {
-                  role: "tool",
-                  toolCallId: part.toolCallId,
-                  toolName: part.toolName,
-                  output: part.output,
-                },
-              ]
-            : []
-        );
-      case "assistant": {
-        const { text, reasoning, toolCalls } = content.reduce(
-          (acc, part) => {
-            if (part.type === "text") {
-              acc.text += part.text;
-            } else if (part.type === "reasoning") {
-              acc.reasoning += part.text;
-            } else if (part.type === "tool-call") {
-              acc.toolCalls.push(part);
-            }
-            return acc;
-          },
-          { text: "", reasoning: "", toolCalls: [] as AiToolCallPart[] }
-        );
-
-        return [
-          {
-            role: "assistant",
-            text,
-            ...(reasoning ? { reasoning } : {}),
-            ...(toolCalls.length ? { toolCalls } : {}),
-          },
-        ];
+  fromProvider(input: ModelMessage[]): ChatCompletionsInput<AiSdkToolIO> {
+    return input.flatMap((message) => {
+      switch (message.role) {
+        case "assistant":
+          return [
+            {
+              role: "assistant",
+              content: message.content,
+            },
+          ];
+        case "tool":
+          return parseToolMessage(message);
+        default:
+          return [
+            {
+              role: message.role,
+              content: modelMessageText(message.content),
+            },
+          ];
       }
-      default: {
-        const text = content.reduce(
-          (acc, part) => (part.type === "text" ? acc + part.text : acc),
-          ""
-        );
-        return [{ role: message.role, text }];
-      }
-    }
+    });
   }
 }
 
-function normalizeContent(content: ModelMessage["content"]): AiContentPart[] {
-  return typeof content === "string"
-    ? [{ type: "text", text: content }]
-    : content;
+function parseToolMessage(
+  message: Extract<ModelMessage, { role: "tool" }>
+): ChatMessage<AiSdkToolIO>[] {
+  const parts = message.content.filter(
+    (part): part is AiToolResultPart => part.type === "tool-result"
+  );
+  return parts.map((part) => ({
+    role: "tool",
+    content: [part],
+  }));
+}
+
+function modelMessageText(content: ModelMessage["content"]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  let text = "";
+  for (const part of content) {
+    if (part.type === "text") {
+      text += part.text;
+    }
+  }
+  return text;
 }
 
 function countModelMessageTokens(message: ModelMessage): number {
@@ -141,12 +118,15 @@ function countModelMessageTokens(message: ModelMessage): number {
   return tokens;
 }
 
-export class AiSdkProvider extends ModelProvider<ModelMessage[], AiSdkToolIO> {
-  readonly codec = new AiSdkCodec();
+export class AiSdkProvider extends ProtocolProvider<
+  ModelMessage[],
+  ChatCompletionsInput<AiSdkToolIO>,
+  AiSdkToolIO
+> {
   private readonly model: LanguageModel;
 
   constructor(model: LanguageModel) {
-    super();
+    super(new ChatCompletionsProtocol<AiSdkToolIO>(), new AiSdkAdapter());
     this.model = model;
   }
 

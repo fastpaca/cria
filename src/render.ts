@@ -258,6 +258,10 @@ function buildTextMessage<TToolIO extends ProviderToolIO>(
     return { role: "system", text };
   }
 
+  if (role === "developer") {
+    return { role: "developer", text };
+  }
+
   if (role === "user") {
     return { role: "user", text };
   }

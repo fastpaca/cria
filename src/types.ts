@@ -30,9 +30,10 @@ import type { MessageCodec } from "./message-codec";
 /**
  * Message role used by semantic `kind: "message"` nodes.
  *
- * This is intentionally compatible with common LLM SDKs (system/user/assistant/tool).
+ * This is intentionally compatible with common LLM SDKs
+ * (system/developer/user/assistant/tool).
  */
-export type PromptRole = "system" | "user" | "assistant" | "tool";
+export type PromptRole = "system" | "developer" | "user" | "assistant" | "tool";
 
 /**
  * Provider-specific tool IO contract.
@@ -108,20 +109,18 @@ export abstract class ModelProvider<
 }
 
 /**
- * Wrapper for provider-native history inputs.
+ * Wrapper for provider-native inputs.
  */
-export interface HistoryInput<TRendered> {
-  kind: "history";
+export interface PromptInput<TRendered> {
+  kind: "input";
   value: TRendered;
 }
 
 /**
- * Wrapper for PromptLayout history inputs.
+ * Wrapper for PromptLayout inputs.
  */
-export interface HistoryLayout<
-  TToolIO extends ProviderToolIO = ProviderToolIO,
-> {
-  kind: "history-layout";
+export interface InputLayout<TToolIO extends ProviderToolIO = ProviderToolIO> {
+  kind: "input-layout";
   value: PromptLayout<TToolIO>;
 }
 
@@ -245,6 +244,12 @@ export interface SystemMessage {
   text: string;
 }
 
+/** Developer messages are plain text and carry no tool information. */
+export interface DeveloperMessage {
+  role: "developer";
+  text: string;
+}
+
 /** User messages are plain text and carry no tool information. */
 export interface UserMessage {
   role: "user";
@@ -286,6 +291,7 @@ export interface ToolMessage<TToolIO extends ProviderToolIO = ProviderToolIO> {
  */
 export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
   | SystemMessage
+  | DeveloperMessage
   | UserMessage
   | AssistantMessage<TToolIO>
   | ToolMessage<TToolIO>;
@@ -293,16 +299,6 @@ export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
 /** Flat, role-shaped message list used by codecs and token counting. */
 export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
   readonly PromptMessage<TToolIO>[];
-
-/**
- * Provider with a history-capable codec.
- *
- * This is equivalent to ModelProvider because codecs are bidirectional.
- */
-export type HistoryProvider<
-  TRendered,
-  TToolIO extends ProviderToolIO = ProviderToolIO,
-> = ModelProvider<TRendered, TToolIO>;
 
 /**
  * Result of applying a strategy to a scope.

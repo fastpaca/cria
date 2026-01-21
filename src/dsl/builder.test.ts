@@ -29,18 +29,15 @@ interface FakeToolIO {
   resultOutput: string;
 }
 
-interface FakeHistoryMessage {
+interface FakeInputMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-class FakeHistoryCodec extends ListMessageCodec<
-  FakeHistoryMessage,
-  FakeToolIO
-> {
+class FakeInputCodec extends ListMessageCodec<FakeInputMessage, FakeToolIO> {
   protected toProviderMessage(
     message: PromptMessage<FakeToolIO>
-  ): readonly FakeHistoryMessage[] {
+  ): readonly FakeInputMessage[] {
     if (message.role === "tool") {
       return [];
     }
@@ -48,19 +45,16 @@ class FakeHistoryCodec extends ListMessageCodec<
   }
 
   protected fromProviderMessage(
-    message: FakeHistoryMessage
+    message: FakeInputMessage
   ): readonly PromptMessage<FakeToolIO>[] {
     return [{ role: message.role, text: message.content }];
   }
 }
 
-class FakeHistoryProvider extends ModelProvider<
-  FakeHistoryMessage[],
-  FakeToolIO
-> {
-  readonly codec = new FakeHistoryCodec();
+class FakeInputProvider extends ModelProvider<FakeInputMessage[], FakeToolIO> {
+  readonly codec = new FakeInputCodec();
 
-  countTokens(rendered: FakeHistoryMessage[]): number {
+  countTokens(rendered: FakeInputMessage[]): number {
     return rendered.reduce(
       (total, message) => total + message.content.length,
       0
@@ -182,47 +176,47 @@ describe("PromptBuilder", () => {
     });
   });
 
-  describe("history", () => {
-    test("historyLayout() appends PromptLayout messages", async () => {
+  describe("input", () => {
+    test("inputLayout() appends PromptLayout messages", async () => {
       const layout: PromptLayout = [
         { role: "system", text: "System history." },
         { role: "user", text: "User history." },
       ];
 
-      const result = await renderBuilder(cria.prompt().historyLayout(layout));
+      const result = await renderBuilder(cria.prompt().inputLayout(layout));
 
       expect(result).toBe("system: System history.\n\nuser: User history.");
     });
 
-    test("history() accepts provider-native inputs", async () => {
-      const provider = new FakeHistoryProvider();
-      const history: FakeHistoryMessage[] = [
+    test("input() accepts provider-native inputs", async () => {
+      const provider = new FakeInputProvider();
+      const input: FakeInputMessage[] = [
         { role: "system", content: "System history." },
         { role: "user", content: "User history." },
       ];
 
       const output = await cria
         .prompt(provider)
-        .history(history)
+        .input(input)
         .render({ budget: 1000 });
 
-      expect(output).toEqual(history);
+      expect(output).toEqual(input);
     });
 
-    test("summary accepts provider-native history inputs", async () => {
-      const provider = new FakeHistoryProvider();
+    test("summary accepts provider-native inputs", async () => {
+      const provider = new FakeInputProvider();
       const store = new InMemoryStore<StoredSummary>();
-      const history: FakeHistoryMessage[] = [
+      const input: FakeInputMessage[] = [
         { role: "system", content: "System history." },
         { role: "user", content: "User history." },
       ];
 
       const output = await cria
         .prompt(provider)
-        .summary(cria.history(history), { id: "history", store, priority: 1 })
+        .summary(cria.input(input), { id: "history", store, priority: 1 })
         .render({ budget: 1000 });
 
-      expect(output).toEqual(history);
+      expect(output).toEqual(input);
     });
   });
 

@@ -1,21 +1,27 @@
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
-import type { MessageCodec } from "../message-codec";
+import type { ChatCompletionsInput } from "../protocols/chat-completions";
+import { ChatCompletionsProtocol } from "../protocols/chat-completions";
+import type { ResponsesInput } from "../protocols/responses";
+import { ResponsesProtocol } from "../protocols/responses";
+import { ProtocolProvider } from "../provider-adapter";
 import { render } from "../render";
 import type { PromptMessageNode } from "../types";
-import { ModelProvider } from "../types";
 import {
-  OpenAIChatCodec,
-  OpenAIResponsesCodec,
+  OpenAIChatAdapter,
+  type OpenAIResponses,
+  OpenAIResponsesAdapter,
   type OpenAiToolIO,
 } from "./openai";
 
-class RenderOnlyProvider<T> extends ModelProvider<T, OpenAiToolIO> {
-  readonly codec: MessageCodec<T, OpenAiToolIO>;
-
-  constructor(codec: MessageCodec<T, OpenAiToolIO>) {
-    super();
-    this.codec = codec;
+class RenderOnlyChatProvider extends ProtocolProvider<
+  ChatCompletionMessageParam[],
+  ChatCompletionsInput<OpenAiToolIO>,
+  OpenAiToolIO
+> {
+  constructor() {
+    super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
   }
 
   countTokens(): number {
@@ -31,9 +37,31 @@ class RenderOnlyProvider<T> extends ModelProvider<T, OpenAiToolIO> {
   }
 }
 
-const chatProvider = new RenderOnlyProvider(new OpenAIChatCodec());
+class RenderOnlyResponsesProvider extends ProtocolProvider<
+  OpenAIResponses,
+  ResponsesInput,
+  OpenAiToolIO
+> {
+  constructor() {
+    super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
+  }
 
-const responsesProvider = new RenderOnlyProvider(new OpenAIResponsesCodec());
+  countTokens(): number {
+    return 0;
+  }
+
+  completion(): string {
+    return "";
+  }
+
+  object(): never {
+    throw new Error("Not implemented");
+  }
+}
+
+const chatProvider = new RenderOnlyChatProvider();
+
+const responsesProvider = new RenderOnlyResponsesProvider();
 
 /**
  * Creates a message node with arbitrary PromptPart children.
@@ -218,7 +246,7 @@ test("chatCompletions: full conversation flow", async () => {
   ]);
 });
 
-test("responses: renders messages as EasyInputMessage", async () => {
+test("responses: renders messages as message items", async () => {
   const prompt = cria.scope([
     cria.system("You are a helpful assistant."),
     cria.user("Hello!"),
@@ -229,8 +257,12 @@ test("responses: renders messages as EasyInputMessage", async () => {
   });
 
   expect(input).toEqual([
-    { role: "system", content: "You are a helpful assistant." },
-    { role: "user", content: "Hello!" },
+    {
+      type: "message",
+      role: "system",
+      content: "You are a helpful assistant.",
+    },
+    { type: "message", role: "user", content: "Hello!" },
   ]);
 });
 
@@ -325,7 +357,7 @@ test("responses: emits text before reasoning and tool calls", async () => {
   });
 
   expect(input).toEqual([
-    { role: "assistant", content: "BeforeAfter" },
+    { type: "message", role: "assistant", content: "BeforeAfter" },
     {
       id: "reasoning_0",
       type: "reasoning",
@@ -355,13 +387,17 @@ test("responses: full conversation with reasoning", async () => {
   });
 
   expect(input).toEqual([
-    { role: "system", content: "You are a helpful assistant." },
-    { role: "user", content: "What is 2+2?" },
+    {
+      type: "message",
+      role: "system",
+      content: "You are a helpful assistant.",
+    },
+    { type: "message", role: "user", content: "What is 2+2?" },
     {
       id: "reasoning_0",
       type: "reasoning",
       summary: [{ type: "summary_text", text: "This is basic arithmetic." }],
     },
-    { role: "assistant", content: "The answer is 4." },
+    { type: "message", role: "assistant", content: "The answer is 4." },
   ]);
 });

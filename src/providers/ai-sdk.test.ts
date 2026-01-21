@@ -1,17 +1,20 @@
+import type { ModelMessage } from "ai";
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
-import type { MessageCodec } from "../message-codec";
+import type { ChatCompletionsInput } from "../protocols/chat-completions";
+import { ChatCompletionsProtocol } from "../protocols/chat-completions";
+import { ProtocolProvider } from "../provider-adapter";
 import { render } from "../render";
 import type { PromptMessageNode } from "../types";
-import { ModelProvider } from "../types";
-import { AiSdkCodec, type AiSdkToolIO } from "./ai-sdk";
+import { AiSdkAdapter, type AiSdkToolIO } from "./ai-sdk";
 
-class RenderOnlyProvider<T> extends ModelProvider<T, AiSdkToolIO> {
-  readonly codec: MessageCodec<T, AiSdkToolIO>;
-
-  constructor(codec: MessageCodec<T, AiSdkToolIO>) {
-    super();
-    this.codec = codec;
+class RenderOnlyProvider extends ProtocolProvider<
+  ModelMessage[],
+  ChatCompletionsInput<AiSdkToolIO>,
+  AiSdkToolIO
+> {
+  constructor() {
+    super(new ChatCompletionsProtocol<AiSdkToolIO>(), new AiSdkAdapter());
   }
 
   countTokens(): number {
@@ -27,7 +30,7 @@ class RenderOnlyProvider<T> extends ModelProvider<T, AiSdkToolIO> {
   }
 }
 
-const provider = new RenderOnlyProvider(new AiSdkCodec());
+const provider = new RenderOnlyProvider();
 
 /**
  * Creates a message node with arbitrary PromptPart children.
