@@ -110,6 +110,9 @@ export abstract class ModelProvider<
 
 /**
  * Wrapper for provider-native inputs.
+ *
+ * These are decoded back into PromptLayout via the bound provider codec when
+ * used inside scopes (e.g., history passed into summary/fit).
  */
 export interface PromptInput<TRendered> {
   kind: "input";

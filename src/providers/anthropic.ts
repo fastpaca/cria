@@ -59,17 +59,38 @@ export class AnthropicAdapter
     let system = "";
 
     for (const message of input) {
-      if (message.role === "system" || message.role === "developer") {
-        system = appendSystemContent(system, message.content);
-        continue;
+      switch (message.role) {
+        case "system":
+        case "developer":
+          // Anthropic uses a single system string; merge system + developer.
+          system = system ? `${system}\n\n${message.content}` : message.content;
+          break;
+        case "tool":
+          // Tool results are represented as user tool_result blocks.
+          for (const result of message.content) {
+            messages.push({
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: result.toolCallId,
+                  content: result.output ?? "",
+                },
+              ],
+            });
+          }
+          break;
+        case "user":
+        case "assistant": {
+          const rendered = renderAnthropicMessage(message);
+          if (rendered.message) {
+            messages.push(rendered.message);
+          }
+          break;
+        }
+        default:
+          break;
       }
-
-      if (message.role === "tool") {
-        appendToolResults(messages, message);
-        continue;
-      }
-
-      appendRenderedMessage(messages, renderAnthropicMessage(message));
     }
 
     return system ? { system, messages } : { messages };
@@ -101,37 +122,6 @@ export class AnthropicAdapter
 
 interface RenderedAnthropicMessage {
   message?: MessageParam;
-}
-
-function appendSystemContent(current: string, content: string): string {
-  return current ? `${current}\n\n${content}` : content;
-}
-
-function appendToolResults(
-  messages: MessageParam[],
-  message: Extract<ChatMessage<AnthropicToolIO>, { role: "tool" }>
-): void {
-  for (const result of message.content) {
-    messages.push({
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: result.toolCallId,
-          content: result.output ?? "",
-        },
-      ],
-    });
-  }
-}
-
-function appendRenderedMessage(
-  messages: MessageParam[],
-  rendered: RenderedAnthropicMessage
-): void {
-  if (rendered.message) {
-    messages.push(rendered.message);
-  }
 }
 
 /** Render a single protocol message into an Anthropic message if supported. */
@@ -192,6 +182,7 @@ function renderAnthropicAssistantMessage(
   const combinedText = reasoning
     ? `${text}<thinking>\n${reasoning}\n</thinking>`
     : text;
+  // Anthropic encodes reasoning in <thinking> blocks within assistant text.
 
   const contentBlocks: ContentBlockParam[] = [];
   if (combinedText) {

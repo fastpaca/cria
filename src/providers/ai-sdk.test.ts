@@ -94,3 +94,39 @@ test("codec: renders prompt layout to ModelMessage[] (tool call + tool result)",
     },
   ]);
 });
+
+test("ai-sdk: round-trips model messages", () => {
+  const input: ModelMessage[] = [
+    { role: "system", content: "System" },
+    { role: "user", content: "Hello" },
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Checking weather." },
+        { type: "reasoning", text: "Need to call a tool." },
+        {
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: "getWeather",
+          input: { city: "Paris" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "call_1",
+          toolName: "getWeather",
+          output: { tempC: 18 },
+        },
+      ],
+    },
+  ];
+
+  const layout = provider.codec.parse(input);
+  const output = provider.codec.render(layout);
+
+  expect(output).toEqual(input);
+});

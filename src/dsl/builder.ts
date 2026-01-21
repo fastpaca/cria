@@ -62,6 +62,7 @@ type PromptScopeFor<P> = PromptScope<ToolIOFor<P>>;
 type PromptTreeFor<P> = PromptTree<ToolIOFor<P>>;
 type ToolResultPartFor<P> = ToolResultPart<ToolIOFor<P>>;
 type TextInputFor<P> = TextInput<ToolIOFor<P>>;
+// Provider-native inputs flow through the bound provider codec into PromptLayout.
 type InputFor<P> =
   P extends ModelProvider<infer TRendered, infer _TToolIO>
     ? PromptInput<TRendered>
@@ -92,6 +93,7 @@ export type BuilderChild<P = unknown> =
   | Promise<PromptNodeFor<P> | PromptPartFor<P> | string | number | boolean>;
 
 type BoundProvider = ModelProvider<unknown, ProviderToolIO>;
+// Tie a builder's provider type to the codec render output for that provider.
 type RenderedForProvider<P> =
   P extends ModelProvider<infer TOutput, infer _TToolIO> ? TOutput : unknown;
 
@@ -794,6 +796,8 @@ async function resolveScopeContent<P>(
   content: ScopeContent<P>,
   codec: MessageCodec<unknown, ProviderToolIO> | null | undefined
 ): Promise<PromptNodeFor<P>[]> {
+  // Scope content can be trees, builders, layouts, or provider-native inputs.
+  // Provider-native inputs are decoded back into PromptLayout via the codec.
   if (content instanceof PromptBuilder) {
     const built = await content.build();
     const nodes: PromptNodeFor<P>[] = [];
@@ -847,6 +851,7 @@ function resolveInputContent<P>(
   return promptLayoutToNodes(layout);
 }
 
+// Type-only narrowing: codec comes from the bound provider.
 function isCodecForInput<P>(
   codec: MessageCodec<unknown, ProviderToolIO> | null | undefined,
   _content: PromptInput<RenderedForProvider<P>>
@@ -907,6 +912,7 @@ function hasKind(value: unknown): value is { kind: unknown } {
   return typeof value === "object" && value !== null && "kind" in value;
 }
 
+// Narrow a bound provider so codec usage preserves render/tool IO types.
 function hasProvider<TRendered, TToolIO extends ProviderToolIO>(
   provider: BoundProvider | undefined
 ): provider is ModelProvider<TRendered, TToolIO> {

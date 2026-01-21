@@ -65,17 +65,18 @@ export class OpenAIChatAdapter
       switch (message.role) {
         case "assistant": {
           const text = chatText(message.content);
-          const toolCalls = message.tool_calls?.map((tc) => {
-            toolNameById.set(tc.id, tc.function.name);
-            return {
-              type: "tool-call" as const,
-              toolCallId: tc.id,
-              toolName: tc.function.name,
-              input: tc.function.arguments,
-            };
-          });
+          const toolCalls =
+            message.tool_calls?.map((tc) => {
+              toolNameById.set(tc.id, tc.function.name);
+              return {
+                type: "tool-call" as const,
+                toolCallId: tc.id,
+                toolName: tc.function.name,
+                input: tc.function.arguments,
+              };
+            }) ?? [];
 
-          if (toolCalls && toolCalls.length > 0) {
+          if (toolCalls.length > 0) {
             const parts: Array<
               { type: "text"; text: string } | (typeof toolCalls)[number]
             > = [];
@@ -104,6 +105,7 @@ export class OpenAIChatAdapter
           };
         }
         case "function": {
+          // Legacy function messages are treated as tool results in the IR.
           const toolName = message.name ?? "";
           return {
             role: "tool",
