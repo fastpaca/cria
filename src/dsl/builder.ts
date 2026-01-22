@@ -491,6 +491,40 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   /**
+   * Keep only the last N messages from the content.
+   *
+   * @example
+   * ```typescript
+   * cria.prompt()
+   *   .system("You are helpful.")
+   *   .last(conversationHistory, { n: 20 })
+   *   .user("What's next?")
+   * ```
+   */
+  last(
+    content: ScopeContent<P>,
+    opts: { n: number; id?: string }
+  ): PromptBuilder<P> {
+    const element = resolveScopeContent(
+      content,
+      this.boundProvider?.codec
+    ).then((children) => {
+      // Filter to only message nodes and take the last N
+      const messages = children.filter(
+        (child): child is PromptMessageNode<ToolIOFor<P>> =>
+          child.kind === "message"
+      );
+      const lastN = messages.slice(-opts.n);
+      return createScope<ToolIOFor<P>>(
+        lastN,
+        opts.id ? { id: opts.id } : undefined
+      );
+    });
+
+    return this.addChild(element);
+  }
+
+  /**
    * Add a raw PromptNode (escape hatch for advanced usage).
    */
   raw(element: PromptNodeFor<P> | Promise<PromptNodeFor<P>>): PromptBuilder<P> {
