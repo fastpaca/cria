@@ -1,8 +1,7 @@
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { MessageCodec } from "../message-codec";
+import { MessageCodec, ModelProvider } from "../provider";
 import type { PromptLayout, PromptMessage } from "../types";
-import { ModelProvider } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;

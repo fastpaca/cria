@@ -2,8 +2,9 @@ import { z } from "zod";
 import type { TextInput } from "../dsl";
 import { cria } from "../dsl";
 import { normalizeTextInput } from "../dsl/templating";
+import type { ModelProvider } from "../provider";
 import { render } from "../render";
-import type { ModelProvider, PromptTree, ProviderToolIO } from "../types";
+import type { PromptTree, ProviderToolIO } from "../types";
 
 export const DEFAULT_THRESHOLD = 0.8;
 

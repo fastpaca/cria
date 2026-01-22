@@ -3,14 +3,16 @@
  */
 
 import type { KVMemory, VectorMemory } from "../memory";
-import type { MessageCodec } from "../message-codec";
+import type {
+  InputLayout,
+  MessageCodec,
+  ModelProvider,
+  PromptInput,
+} from "../provider";
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
   CriaContext,
-  InputLayout,
-  ModelProvider,
-  PromptInput,
   PromptLayout,
   PromptMessage,
   PromptMessageNode,

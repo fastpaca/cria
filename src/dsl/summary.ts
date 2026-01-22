@@ -3,10 +3,10 @@
  */
 
 import type { KVMemory } from "../memory";
+import type { ModelProvider } from "../provider";
 import { render } from "../render";
 import type {
   MaybePromise,
-  ModelProvider,
   PromptRole,
   PromptScope,
   ProviderToolIO,
