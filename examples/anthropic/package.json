@@ -7,12 +7,12 @@
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.71.2",
     "@fastpaca/cria": "link:../..",
     "tiktoken": "^1.0.22"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.0.10",
     "tsx": "^4.21.0"
   }
 }

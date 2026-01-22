@@ -7,14 +7,14 @@
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "chromadb": "^2.0.0",
-    "openai": "^4.104.0",
-    "tiktoken": "^1.0.0",
-    "zod": "^4.1.0",
+    "chromadb": "^3.2.2",
+    "openai": "^6.16.0",
+    "tiktoken": "^1.0.22",
+    "zod": "^4.3.5",
     "@fastpaca/cria": "link:../.."
   },
   "devDependencies": {
     "tsx": "^4.21.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^25.0.10"
   }
 }
