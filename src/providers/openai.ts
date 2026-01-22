@@ -63,15 +63,23 @@ export class OpenAIChatAdapter
         case "assistant": {
           const text = chatText(message.content);
           const toolCalls =
-            message.tool_calls?.map((tc) => {
-              toolNameById.set(tc.id, tc.function.name);
-              return {
-                type: "tool-call" as const,
-                toolCallId: tc.id,
-                toolName: tc.function.name,
-                input: tc.function.arguments,
-              };
-            }) ?? [];
+            message.tool_calls
+              ?.filter(
+                (
+                  tc
+                ): tc is typeof tc & {
+                  function: { name: string; arguments: string };
+                } => "function" in tc
+              )
+              .map((tc) => {
+                toolNameById.set(tc.id, tc.function.name);
+                return {
+                  type: "tool-call" as const,
+                  toolCallId: tc.id,
+                  toolName: tc.function.name,
+                  input: tc.function.arguments,
+                };
+              }) ?? [];
 
           if (toolCalls.length > 0) {
             const parts: Array<
@@ -266,7 +274,7 @@ function mapOpenAiItemToResponses(item: OpenAIResponsePart): ResponsesInput {
         {
           type: "function_call_output",
           call_id: item.call_id,
-          output: item.output,
+          output: convertFunctionOutput(item.output),
         },
       ];
     case "item_reference":
@@ -289,7 +297,9 @@ function countChatMessageTokens(msg: ChatCompletionMessageParam): number {
   }
   if ("tool_calls" in msg && msg.tool_calls) {
     for (const c of msg.tool_calls) {
-      n += countText(c.function.name + c.function.arguments);
+      if ("function" in c) {
+        n += countText(c.function.name + c.function.arguments);
+      }
     }
   }
   return n;
@@ -313,7 +323,13 @@ function countResponseItemTokens(item: ResponseInputItem): number {
     return countText(item.name + item.arguments);
   }
   if (item.type === "function_call_output") {
-    return countText(item.output);
+    if (typeof item.output === "string") {
+      return countText(item.output);
+    }
+    return item.output.reduce(
+      (n, c) => n + ("text" in c && c.text ? countText(c.text) : 0),
+      0
+    );
   }
   return 0;
 }
@@ -359,6 +375,30 @@ function responseText(content: ResponseMessageItem["content"]): string {
     return text;
   }
   return "";
+}
+
+/** Convert OpenAI function output to protocol format. */
+function convertFunctionOutput(
+  output: string | unknown[]
+): string | ResponsesContentPart[] {
+  if (typeof output === "string") {
+    return output;
+  }
+
+  // Extract text from OpenAI's response output items
+  const parts: ResponsesContentPart[] = [];
+  for (const item of output) {
+    if (
+      typeof item === "object" &&
+      item !== null &&
+      "type" in item &&
+      "text" in item &&
+      typeof item.text === "string"
+    ) {
+      parts.push({ type: "output_text", text: item.text });
+    }
+  }
+  return parts.length > 0 ? parts : "";
 }
 
 /** Extract plain text from protocol responses content parts. */

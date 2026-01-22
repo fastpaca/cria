@@ -110,7 +110,7 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
   async get(key: string): Promise<MemoryEntry<T> | null> {
     const response = await this.collection.get({
       ids: [key],
-      include: [IncludeEnum.Documents, IncludeEnum.Metadatas],
+      include: [IncludeEnum.documents, IncludeEnum.metadatas],
     });
 
     if (!response.ids.length) {
@@ -180,9 +180,9 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
       queryEmbeddings: [queryVector],
       nResults: limit,
       include: [
-        IncludeEnum.Documents,
-        IncludeEnum.Metadatas,
-        IncludeEnum.Distances,
+        IncludeEnum.documents,
+        IncludeEnum.metadatas,
+        IncludeEnum.distances,
       ],
     });
 
