@@ -7,13 +7,13 @@
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "ai": "^6.0.0",
-    "@ai-sdk/openai": "^3.0.0",
-    "tiktoken": "^1.0.0",
+    "ai": "^6.0.45",
+    "@ai-sdk/openai": "^3.0.14",
+    "tiktoken": "^1.0.22",
     "@fastpaca/cria": "link:../.."
   },
   "devDependencies": {
     "tsx": "^4.21.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^25.0.10"
   }
 }
