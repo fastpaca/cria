@@ -6,19 +6,19 @@ const mockData = new Map<string, string>();
 
 vi.mock("ioredis", () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
-      get: vi.fn((key: string) => Promise.resolve(mockData.get(key) ?? null)),
-      set: vi.fn((key: string, value: string) => {
+    default: class MockRedis {
+      get = vi.fn((key: string) => Promise.resolve(mockData.get(key) ?? null));
+      set = vi.fn((key: string, value: string) => {
         mockData.set(key, value);
         return Promise.resolve("OK");
-      }),
-      del: vi.fn((key: string) => {
+      });
+      del = vi.fn((key: string) => {
         const existed = mockData.has(key);
         mockData.delete(key);
         return Promise.resolve(existed ? 1 : 0);
-      }),
-      quit: vi.fn(() => Promise.resolve("OK")),
-    })),
+      });
+      quit = vi.fn(() => Promise.resolve("OK"));
+    },
   };
 });
 

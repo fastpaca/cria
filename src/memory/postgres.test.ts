@@ -28,8 +28,8 @@ const normalizeTableName = (identifier: string): string =>
 // Mock pg
 vi.mock("pg", () => {
   return {
-    Pool: vi.fn().mockImplementation(() => ({
-      query: vi.fn(
+    Pool: class MockPool {
+      query = vi.fn(
         (
           text: string,
           values?: unknown[]
@@ -101,9 +101,9 @@ vi.mock("pg", () => {
 
           return Promise.resolve({ rows: [], rowCount: 0 });
         }
-      ),
-      end: vi.fn(() => Promise.resolve()),
-    })),
+      );
+      end = vi.fn(() => Promise.resolve());
+    },
   };
 });
 
