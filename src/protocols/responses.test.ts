@@ -1,9 +1,8 @@
 import { expect, test } from "vitest";
 import { cria } from "../dsl";
-import type { MessageCodec } from "../message-codec";
+import { type MessageCodec, ModelProvider } from "../provider";
 import { render } from "../render";
 import type { PromptMessageNode } from "../types";
-import { ModelProvider } from "../types";
 import { ResponsesProtocol, type ResponsesToolIO } from "./responses";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {

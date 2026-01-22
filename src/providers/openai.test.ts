@@ -5,7 +5,7 @@ import type { ChatCompletionsInput } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
 import type { ResponsesInput } from "../protocols/responses";
 import { ResponsesProtocol } from "../protocols/responses";
-import { ProtocolProvider } from "../provider-adapter";
+import { ProtocolProvider } from "../provider";
 import { render } from "../render";
 import type { PromptMessageNode } from "../types";
 import {

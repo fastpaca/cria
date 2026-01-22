@@ -24,8 +24,7 @@
  * the core model.
  */
 
-import type { z } from "zod";
-import type { MessageCodec } from "./message-codec";
+import type { ModelProvider } from "./provider";
 
 /**
  * Message role used by semantic `kind: "message"` nodes.
@@ -72,60 +71,6 @@ export type ToolIOForProvider<P> =
 // Typed accessors for tool IO fields; keeps index access localized and clear.
 type ToolCallInput<TToolIO extends ProviderToolIO> = TToolIO["callInput"];
 type ToolResultOutput<TToolIO extends ProviderToolIO> = TToolIO["resultOutput"];
-
-/**
- * Provider interface for rendering and execution.
- *
- * - TRendered is the provider-specific payload shape returned by the codec.
- * - TToolIO anchors tool-call input/output types for the entire pipeline.
- *
- * This is where provider-specific types are introduced and then threaded
- * through the prompt tree, layout, and codecs.
- */
-export abstract class ModelProvider<
-  TRendered,
-  TToolIO extends ProviderToolIO = ProviderToolIO,
-> {
-  /** Codec that translates between PromptLayout and provider-native input. */
-  abstract readonly codec: MessageCodec<TRendered, TToolIO>;
-
-  /** Count tokens for rendered output (tiktoken-backed). */
-  abstract countTokens(rendered: TRendered): number;
-
-  /** Generate a text completion from rendered prompt input. */
-  abstract completion(rendered: TRendered): MaybePromise<string>;
-
-  /**
-   * Generate a structured object validated against the schema.
-   *
-   * Implementations should use native structured output when available
-   * (e.g., AI SDK's generateObject, OpenAI's json_schema response_format),
-   * falling back to completion + JSON.parse + schema.parse internally.
-   */
-  abstract object<T>(
-    rendered: TRendered,
-    schema: z.ZodType<T>
-  ): MaybePromise<T>;
-}
-
-/**
- * Wrapper for provider-native inputs.
- *
- * These are decoded back into PromptLayout via the bound provider codec when
- * used inside scopes (e.g., history passed into summary/fit).
- */
-export interface PromptInput<TRendered> {
-  kind: "input";
-  value: TRendered;
-}
-
-/**
- * Wrapper for PromptLayout inputs.
- */
-export interface InputLayout<TToolIO extends ProviderToolIO = ProviderToolIO> {
-  kind: "input-layout";
-  value: PromptLayout<TToolIO>;
-}
 
 /**
  * Context that can be provided through the component tree.

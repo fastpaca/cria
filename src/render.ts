@@ -1,9 +1,9 @@
+import type { ModelProvider } from "./provider";
 import {
   type AssistantMessage,
   type CriaContext,
   FitError,
   type MaybePromise,
-  type ModelProvider,
   type PromptLayout,
   type PromptMessage,
   type PromptNode,

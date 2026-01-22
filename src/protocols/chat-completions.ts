@@ -1,4 +1,4 @@
-import { MessageCodec } from "../message-codec";
+import { MessageCodec } from "../provider";
 import type {
   PromptLayout,
   PromptMessage,

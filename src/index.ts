@@ -48,7 +48,6 @@ export type {
 } from "./memory";
 // LLM Memory
 export { InMemoryStore } from "./memory";
-export { ListMessageCodec, MessageCodec } from "./message-codec";
 export type {
   ChatCompletionsInput,
   ChatMessage,
@@ -69,9 +68,14 @@ export type {
 export { ResponsesProtocol } from "./protocols/responses";
 export {
   CompositeCodec,
+  type InputLayout,
+  ListMessageCodec,
+  MessageCodec,
+  ModelProvider,
+  type PromptInput,
   ProtocolProvider,
   type ProviderAdapter,
-} from "./provider-adapter";
+} from "./provider";
 export type {
   FitCompleteEvent,
   FitErrorEvent,
@@ -84,10 +88,8 @@ export type {
 export { render } from "./render";
 export type {
   CriaContext,
-  InputLayout,
   MaybePromise,
   MessageChildren,
-  PromptInput,
   PromptLayout,
   PromptMessage,
   PromptMessageNode,
@@ -107,4 +109,4 @@ export type {
   ToolIOForProvider,
   ToolResultPart,
 } from "./types";
-export { FitError, ModelProvider } from "./types";
+export { FitError } from "./types";

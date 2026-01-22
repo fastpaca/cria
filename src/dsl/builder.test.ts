@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { InMemoryStore } from "../memory";
-import { ListMessageCodec } from "../message-codec";
+import { ListMessageCodec, ModelProvider } from "../provider";
 import { render } from "../render";
 import { createTestProvider } from "../testing/plaintext";
 import type {
@@ -9,7 +9,6 @@ import type {
   PromptMessageNode,
   PromptNode,
 } from "../types";
-import { ModelProvider } from "../types";
 import { c, cria, PromptBuilder, prompt } from "./index";
 import type { StoredSummary } from "./summary";
 

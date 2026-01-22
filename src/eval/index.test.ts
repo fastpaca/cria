@@ -2,8 +2,8 @@ import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
 import { c, cria } from "../dsl";
+import { ModelProvider } from "../provider";
 import { createPlainTextCodec } from "../testing/plaintext";
-import { ModelProvider } from "../types";
 import { createJudge } from "./index";
 
 const codec = createPlainTextCodec({

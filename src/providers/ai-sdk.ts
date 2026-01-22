@@ -7,8 +7,7 @@ import type {
   ChatMessage,
 } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
-import type { ProviderAdapter } from "../provider-adapter";
-import { ProtocolProvider } from "../provider-adapter";
+import { ProtocolProvider, type ProviderAdapter } from "../provider";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
