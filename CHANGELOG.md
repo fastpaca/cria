@@ -1,3 +1,16 @@
+# [1.6.0](https://github.com/fastpaca/cria/compare/v1.5.0...v1.6.0) (2026-01-23)
+
+
+### Bug Fixes
+
+* **examples:** align OpenAI and zod versions across examples ([6331845](https://github.com/fastpaca/cria/commit/63318456f98aecd1d9cd87af7f0ebc1f7f781fdf))
+* update dependencies for zod 4 compatibility ([bcf95d7](https://github.com/fastpaca/cria/commit/bcf95d74bfb598bf8071f2886c2ef5c35bd38057))
+
+
+### Features
+
+* **dsl:** add .last() method for keeping last N messages ([122ca7c](https://github.com/fastpaca/cria/commit/122ca7c88ded89dac4367fb219e4e17828e142a2))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

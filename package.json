@@ -1,6 +1,6 @@
 {
   "name": "@fastpaca/cria",
-  "version": "0.0.1",
+  "version": "1.6.0",
   "description": "Lightweight, fast, and tiny LLM Context & Memory layout renderer to enforce token budgets in long running agents.",
   "license": "MIT",
   "author": "seb@fastpaca.com",
