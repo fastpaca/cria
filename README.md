@@ -3,11 +3,7 @@
 > **Note:** Cria is under active development. We're iterating heavily and the API may change before 2.0. Use in production at your own discretion.
 
 <p align="center">
-  <i>Your prompts deserve the same structure as your code.</i>
-</p>
-
-<p align="center">
-  <b><i>Cria turns prompts into composable components with explicit roles and strategies, and works with your existing environment & frameworks.</i></b>
+  <b><i>Explicit prompt architecture for production LLM apps.</i></b>
 </p>
 
 <p align="center">
@@ -22,7 +18,13 @@
   </a>
 </p>
 
-Cria is a lightweight prompt composition library for structured prompt engineering. Build prompts as components, keep behavior predictable, and reuse the same structure across providers. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
+Cria composes prompts, memory, and retrieval into one explicit pipeline. Keep behavior predictable, make changes locally, and render to any provider without rewriting your prompt stack. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
+
+**One prompt pipeline. Any provider.**
+
+## The 20-second demo
+
+Build a single pipeline that assembles policy -> tools -> working state -> summary -> retrieval -> final prompt.
 
 ```ts
 const messages = await cria
@@ -33,6 +35,21 @@ const messages = await cria
   .user(question)
   .render({ budget: 200_000 });
 ```
+
+## What you can do with Cria
+
+- Compose prompts like code: reusable policies, tool instructions, style guides, task modules.
+- Build real memory layouts: working context + summaries + retrieval, wired intentionally.
+- Stay provider-agnostic: OpenAI, Anthropic, or Vercel AI SDK via adapters.
+- Debug what matters: inspect exactly what prompt you sent (and why).
+- Regression-test behavior: eval helpers to catch drift before prod does.
+
+## Use cases
+
+- Tool-using agents with stable policies
+- RAG apps that don't turn into prompt spaghetti
+- Long-running assistants where memory needs structure
+- Multi-provider deployments that want one prompt architecture
 
 Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.md)** to jump to the right how-to.
 
