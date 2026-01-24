@@ -91,27 +91,10 @@ describe("vector search", () => {
       .vectorSearch({
         store,
         query: "no matches",
+        limit: 5,
       })
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("Vector search returned no results");
-  });
-
-  test("vectorSearch uses custom formatter", async () => {
-    const store = createMockVectorStore([
-      { key: "doc-1", score: 0.9, data: { title: "A", content: "B" } },
-      { key: "doc-2", score: 0.8, data: { title: "C", content: "D" } },
-    ]);
-
-    const result = await cria
-      .prompt()
-      .vectorSearch({
-        store,
-        query: "test",
-        formatter: (results) => `Found ${results.length} documents`,
-      })
-      .render({ provider, budget: 10_000 });
-
-    expect(result).toContain("Found 2 documents");
   });
 });

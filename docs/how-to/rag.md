@@ -30,11 +30,11 @@ const store = new ChromaStore<string>({
 const prompt = cria
   .prompt()
   .system("Answer using the retrieved context. If missing, say you don't know.")
-  .vectorSearch({ store, query: userQuestion, limit: 5, priority: 2 })
+  .vectorSearch({ store, query: userQuestion, limit: 5 })
   .user(userQuestion);
 ```
 
 ## Notes
 
-- `VectorSearch` resolves its query at render time (children text, explicit `query`, or last user message depending on options).
-- If no results are found, the default formatter throws. Provide a custom `formatResults` if you want empty results to be allowed.
+- `VectorSearch` performs retrieval at render time using the provided query.
+- If no results are found, the default formatter emits a placeholder message.
