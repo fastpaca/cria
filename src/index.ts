@@ -20,7 +20,6 @@
 export type {
   BuilderChild,
   Prompt,
-  ResultFormatter,
   ScopeContent,
   StoredSummary,
   Summarizer,

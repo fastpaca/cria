@@ -35,9 +35,6 @@ export type {
 } from "./summary";
 export { c, type TextInput } from "./templating";
 
-// Re-export vector search types
-export type { ResultFormatter } from "./vector-search";
-
 import type { InputLayout, ModelProvider, PromptInput } from "../provider";
 import type {
   PromptLayout,

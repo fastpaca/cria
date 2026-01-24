@@ -40,7 +40,6 @@ import {
   type TextInput,
   textPart,
 } from "./templating";
-import type { ResultFormatter } from "./vector-search";
 import { VectorSearch } from "./vector-search";
 
 /**
@@ -205,16 +204,12 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
   vectorSearch<T = unknown>(opts: {
     store: VectorMemory<T>;
     query: string;
-    limit?: number;
-    threshold?: number;
-    formatter?: ResultFormatter<T>;
+    limit: number;
   }): MessageBuilder<P> {
     const asyncPart = VectorSearch<T, ToolIOFor<P>>({
       store: opts.store,
       query: opts.query,
-      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-      ...(opts.threshold !== undefined ? { threshold: opts.threshold } : {}),
-      ...(opts.formatter ? { formatResults: opts.formatter } : {}),
+      limit: opts.limit,
     }).then((scope) => {
       const message = scope.children[0];
       if (!message || message.kind !== "message") {
@@ -444,20 +439,12 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   vectorSearch<T = unknown>(opts: {
     store: VectorMemory<T>;
     query: string;
-    limit?: number;
-    threshold?: number;
-    formatter?: ResultFormatter<T>;
-    priority?: number;
-    id?: string;
+    limit: number;
   }): PromptBuilder<P> {
     const asyncElement = VectorSearch<T, ToolIOFor<P>>({
       store: opts.store,
       query: opts.query,
-      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
-      ...(opts.threshold !== undefined ? { threshold: opts.threshold } : {}),
-      ...(opts.formatter ? { formatResults: opts.formatter } : {}),
-      ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-      ...(opts.id !== undefined ? { id: opts.id } : {}),
+      limit: opts.limit,
     });
     return this.addChild(asyncElement);
   }

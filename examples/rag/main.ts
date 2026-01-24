@@ -57,7 +57,7 @@ const prompt = cria
   .prompt(provider)
   .system("Answer using the provided context. Be concise.")
   // vectorSearch retrieves relevant docs at render time
-  .vectorSearch({ store, query: "Berlin", limit: 3, id: "retrieval" })
+  .vectorSearch({ store, query: "Berlin", limit: 3 })
   .user("What can you tell me about Berlin?");
 
 // --- Render and Call the Model ---
