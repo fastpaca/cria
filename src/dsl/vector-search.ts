@@ -46,7 +46,7 @@ export async function VectorSearch<
   store,
   query,
   limit,
-}: VectorSearchProps<T, TToolIO>): Promise<PromptScope<TToolIO>> {
+}: VectorSearchProps<T>): Promise<PromptScope<TToolIO>> {
   const finalQuery = query.trim();
   if (finalQuery.length === 0) {
     throw new Error("VectorSearch: query must be a non-empty string.");
