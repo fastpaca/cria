@@ -27,10 +27,7 @@ function defaultFormatter<T>(results: VectorSearchResult<T>[]): string {
     .join("\n\n");
 }
 
-interface VectorSearchProps<
-  T = unknown,
-  TToolIO extends ProviderToolIO = ProviderToolIO,
-> {
+interface VectorSearchProps<T = unknown> {
   /** Vector memory store to search */
   store: VectorMemory<T>;
   /** Query string */
