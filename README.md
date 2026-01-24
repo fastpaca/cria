@@ -1,9 +1,16 @@
 <h1 align="center">Cria</h1>
 
-> **Note:** Cria is under active development. We're iterating heavily and the API may change before 2.0. Use in production at your own discretion.
+<p align="center">
+  <b>Stop writing prompt spaghetti.</b>
+</p>
 
 <p align="center">
-  <b><i>Explicit prompt architecture for production LLM apps.</i></b>
+  Your LLM app started simple. Then you added conversation history. Then RAG. Then tool outputs. Then summaries.
+  Now you have a 400-line function that builds a prompt and nobody knows what's actually getting sent to the model.
+</p>
+
+<p align="center">
+  <b>Cria gives you prompt architecture.</b>
 </p>
 
 <p align="center">
@@ -18,48 +25,140 @@
   </a>
 </p>
 
-Cria composes prompts, memory, and retrieval into one explicit pipeline. Keep behavior predictable, make changes locally, and render to any provider without rewriting your prompt stack. Runs on Node, Deno, Bun, and Edge; adapters require their SDKs.
-
-**One prompt pipeline. Any provider.**
-
-## The 20-second demo
-
-Build a single pipeline that assembles policy -> tools -> working state -> summary -> retrieval -> final prompt.
+Cria is a lightweight TypeScript toolkit for building prompts as an explicit pipeline.
+Compose reusable prompt blocks, wire in memory + retrieval, and **inspect exactly what gets sent** — across OpenAI, Anthropic, or Vercel AI SDK.
 
 ```ts
 const messages = await cria
   .prompt(provider)
   .system("You are a research assistant.")
-  .vectorSearch({ store, query: question, limit: 10 })
-  .summary(conversation, { id: "history", store: memory, priority: 2 })
-  .user(question)
-  .render({ budget: 200_000 });
+  .vectorSearch({ store, query, limit: 10 })
+  .summary(conversation, { id: "history", store: memory })
+  .user(query)
+  .render({ budget: 128_000 });
 ```
 
-## What you can do with Cria
+Start with **[Quickstart](docs/quickstart.md)** or keep reading.
 
-- Compose prompts like code: reusable policies, tool instructions, style guides, task modules.
-- Build real memory layouts: working context + summaries + retrieval, wired intentionally.
-- Stay provider-agnostic: OpenAI, Anthropic, or Vercel AI SDK via adapters.
-- Debug what matters: inspect exactly what prompt you sent (and why).
-- Regression-test behavior: eval helpers to catch drift before prod does.
+## The usual prompt spaghetti in production
+
+Every production LLM app eventually ends up with a function like this. You know the one.
+It started as 10 lines, and now it's the scariest file in your codebase. You poke at it and you need to run your entire eval suite and pray.
+
+<details>
+<summary><strong>The function you've definitely written before</strong></summary>
+
+```ts
+async function buildPrompt(user, query, tools) {
+  const messages = [];
+
+  messages.push({ role: "system", content: SYSTEM_PROMPT });
+
+  // Get conversation history, but not too much
+  const history = await getHistory(user.id);
+  const truncatedHistory = history.slice(-20); // magic number, hope it fits
+  messages.push(...truncatedHistory);
+
+  // Maybe add a summary if history is long?
+  if (history.length > 50) {
+    const summary = await getSummary(user.id);
+    if (summary) {
+      messages.splice(1, 0, { role: "system", content: `Previous context: ${summary}` });
+    }
+  }
+
+  // RAG results, if we have them
+  const docs = await vectorSearch(query);
+  if (docs.length > 0) {
+    let context = docs.map((d) => d.content).join("\n\n");
+
+    // but wait, is this too long? let's check tokens maybe?
+    const tokens = countTokens(context);
+    if (tokens > 4000) {
+      // truncate somehow???
+      context = context.slice(0, 12000); // characters aren't tokens but whatever
+    }
+
+    messages.push({ role: "system", content: `Relevant information:\n${context}` });
+  }
+
+  messages.push({ role: "user", content: query });
+
+  // Did we blow the context window? Who knows!
+  return messages;
+}
+```
+
+</details>
+
+You've written this function. You've debugged it at 2am. You've wondered what actually got sent to the model when a user reported weird behavior.
+
+## The fix
+
+With Cria, the same intent becomes:
+
+```ts
+const messages = await cria
+  .prompt(provider)
+  .system(SYSTEM_PROMPT)
+  .summary(conversation, { id: "history", store: memory, priority: 2 })
+  .vectorSearch({ store, query, limit: 10 })
+  .last(conversation, { n: 20 })
+  .user(query)
+  .render({ budget: 128_000 });
+```
+
+Explicit structure. You can inspect what's in the prompt and why — which is exactly what you want at 2am.
+
+## What you get
+
+* **Compose prompts like code** — Build reusable pieces (policies, tool instructions, retrieval blocks) that snap together predictably.
+* **Real memory layouts** — Working context, summaries, and retrieval wired together intentionally, not duct-taped.
+* **Provider-agnostic** — Render through adapters for OpenAI, Anthropic, or Vercel AI SDK. Switch without rewriting.
+* **Debug what matters** — Inspect exactly what prompt you sent (and why each piece is there).
+* **Regression-test prompts** — Eval helpers catch prompt drift before prod does.
+
+## Quick start
+
+```bash
+npm install @fastpaca/cria
+```
+
+```ts
+import { cria } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/openai";
+import OpenAI from "openai";
+
+const client = new OpenAI();
+const provider = createProvider(client, "gpt-4o-mini");
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a helpful assistant.")
+  .user("What is the capital of France?")
+  .render({ budget: 128_000 });
+
+const response = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages,
+});
+```
 
 ## Use cases
 
-- Tool-using agents with stable policies
-- RAG apps that don't turn into prompt spaghetti
-- Long-running assistants where memory needs structure
-- Multi-provider deployments that want one prompt architecture
+* **Tool-using agents** with stable policies that don't drift
+* **RAG apps** that don't turn into unmaintainable prompt spaghetti
+* **Long-running assistants** where memory needs actual structure
+* **Multi-provider deployments** that want one prompt architecture
 
-Start with **[Quickstart](docs/quickstart.md)**, then use **[Docs](docs/README.md)** to jump to the right how-to.
+## Docs
 
-## Use Cria when you need...
-
-- **Need RAG?** Call `.vectorSearch({ store, query })`.
-- **Need a summary for long conversations?** Use `.summary(...)`.
-- **Need to cap history but keep structure?** Use `.last(...)`.
-- **Need to drop optional context when the context window is full?** Use `.omit(...)`.
-- **Using AI SDK?** Plug and play with `@fastpaca/cria/ai-sdk`!
+* [Quickstart](docs/quickstart.md)
+* [RAG / vector search](docs/how-to/rag.md)
+* [Summarize long history](docs/how-to/summarize-history.md)
+* [Fit & compaction](docs/how-to/fit-and-compaction.md)
+* [Prompt evaluation](docs/how-to/prompt-evaluation.md)
+* [Full documentation](docs/README.md)
 
 ## Providers
 
@@ -73,13 +172,19 @@ import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
 const provider = createProvider(client, "gpt-4o-mini");
+
 const messages = await cria
   .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget });
-const response = await client.chat.completions.create({ model: "gpt-4o-mini", messages });
+
+const response = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages,
+});
 ```
+
 </details>
 
 <details>
@@ -91,14 +196,20 @@ import { createResponsesProvider } from "@fastpaca/cria/openai";
 import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const provider = createResponsesProvider(client, "gpt-5-nano");
+const provider = createResponsesProvider(client, "gpt-4o");
+
 const input = await cria
   .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget });
-const response = await client.responses.create({ model: "gpt-5-nano", input });
+
+const response = await client.responses.create({
+  model: "gpt-4o",
+  input,
+});
 ```
+
 </details>
 
 <details>
@@ -110,14 +221,21 @@ import { createProvider } from "@fastpaca/cria/anthropic";
 import { cria } from "@fastpaca/cria";
 
 const client = new Anthropic();
-const provider = createProvider(client, "claude-haiku-4-5");
+const provider = createProvider(client, "claude-sonnet-4-20250514");
+
 const { system, messages } = await cria
   .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget });
-const response = await client.messages.create({ model: "claude-haiku-4-5", system, messages });
+
+const response = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  system,
+  messages,
+});
 ```
+
 </details>
 
 <details>
@@ -129,18 +247,39 @@ import { cria } from "@fastpaca/cria";
 import { generateText } from "ai";
 
 const provider = createProvider(model);
+
 const messages = await cria
   .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget });
+
 const { text } = await generateText({ model, messages });
 ```
+
 </details>
 
-## Evaluation (LLM-as-a-judge)
+## Memory & retrieval
 
-Use the `@fastpaca/cria/eval` entrypoint for judge-style evaluation helpers.
+Cria has built-in support for the patterns you actually need:
+
+```ts
+// Summarize old conversation, keep recent messages
+.summary(conversation, { id: "conv", store: redis, priority: 2 })
+.last(conversation, { n: 20 })
+
+// Vector search with automatic context injection
+.vectorSearch({ store: qdrant, query, limit: 10 })
+
+// Drop optional context when budget is tight
+.omit(examples, { priority: 3 })
+```
+
+Supported stores: Redis, Postgres, Chroma, Qdrant. Or bring your own.
+
+## Evaluation
+
+Test your prompts like you test your code:
 
 ```ts
 import { c, cria } from "@fastpaca/cria";
@@ -159,52 +298,50 @@ const prompt = await cria
   .user("How do I update my payment method?")
   .build();
 
-await judge(prompt).toPass(c`Helpfulness in addressing the user's question`);
+await judge(prompt).toPass(c`Provides clear, actionable steps`);
 ```
+
+Use it in your favorite test runner (we like vitest) and relax.
 
 ## Roadmap
 
 **Done**
 
-- [x] Fluent DSL and priority-based eviction
-- [x] Providers/Integrations
-  - [x] OpenAI (Chat Completions + Responses)
-  - [x] Anthropic
-  - [x] AI SDK
-- [x] Memory:
-  - [x] Key Value Stores for Summaries
-    - [x] Redis
-    - [x] Postgres
-  - [x] Vector Store / RAG
-    - [x] Chroma
-    - [x] Qdrant
-- [x] Observability
-  - [x] render hooks
-  - [x] OpenTelemetry
-- [x] Prompt eval / testing functionality
+* [x] Fluent DSL and compaction controls
+* [x] Providers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
+* [x] Stores: Redis, Postgres, Chroma, Qdrant
+* [x] Observability: render hooks, OpenTelemetry
+* [x] Prompt eval / testing functionality
 
 **Planned**
 
-- [ ] Next.js adapter
-- [ ] Visualization tool
-- [ ] Seamless provider integration (type system, no hoops)
+* [ ] Next.js adapter
+* [ ] Visualization tool
+* [ ] Seamless provider integration (type system, no hoops)
 
-## Contributing
+## Why we built Cria
 
-- Issues and PRs are welcome.
-- Keep changes small and focused.
-- If you add a feature, include a short example or doc note.
+We spent months [benchmarking memory systems](https://fastpaca.com/blog/memory-isnt-one-thing) for production LLM apps (Mem0, Zep, etc).
+What we found: they were often dramatically more expensive than naive long-context and sometimes less accurate in recall.
 
-## Support
+The problem wasn't "memory." It was everything underneath — the prompt construction layer everyone treats as an afterthought.
+RAG gets bolted on. Summaries get hacked in. Token windows get enforced with magic numbers and hope.
 
-- Open a GitHub issue for bugs or feature requests.
-- For quick questions, include a minimal repro or snippet.
+Cria is the architecture we needed: explicit structure for prompts, memory, and retrieval. Composable. Debuggable. Provider-agnostic.
+
+— [fastpaca](https://fastpaca.com)
 
 ## FAQ
 
-- **Does this replace my LLM SDK?** No - Cria builds prompt structures. You still use your SDK to call the model.
-- **How do I tune token budgets?** Pass `budget` to `render()` and set priorities on regions; see [docs/how-to/fit-and-compaction.md](docs/how-to/fit-and-compaction.md).
-- **Is this production-ready?** Not yet! It is a work in progress and you should test it out before you run this in production.
+**Does this replace my LLM SDK?**
+No — Cria builds prompt structures. You still use your SDK to call the model.
+
+**Is this production-ready?**
+We're using it in production, but the API may change before 2.0. Test thoroughly.
+
+## Contributing
+
+Issues and PRs welcome. Keep changes small and focused.
 
 ## License
 
