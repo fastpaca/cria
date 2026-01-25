@@ -7,7 +7,7 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import type { RenderHooks } from "../render";
-import type { PromptNode, PromptScope } from "../types";
+import type { PromptNode, PromptPart, PromptScope } from "../types";
 
 interface OtelRenderHooksOptions {
   tracer: Tracer;
@@ -182,6 +182,7 @@ function emitPromptStructureSpans(
           "cria.message.index": index,
           "cria.message.role": child.role,
           "cria.message.scope_path": nextPath.join("/"),
+          ...renderMessageParts(child.children),
         });
         setOptionalAttribute(span, "cria.message.id", child.id);
         span.end();
@@ -194,6 +195,66 @@ function emitPromptStructureSpans(
   };
 
   walkMessages(root, []);
+}
+
+function renderMessageParts(
+  parts: readonly PromptPart[]
+): Record<string, string | number | boolean> {
+  let text = "";
+  let reasoning = "";
+  const toolCalls: unknown[] = [];
+  const toolResults: unknown[] = [];
+
+  for (const part of parts) {
+    if (part.type === "text") {
+      text += part.text;
+      continue;
+    }
+
+    if (part.type === "reasoning") {
+      reasoning += part.text;
+      continue;
+    }
+
+    if (part.type === "tool-call") {
+      toolCalls.push({
+        toolCallId: part.toolCallId,
+        toolName: part.toolName,
+        input: part.input,
+      });
+      continue;
+    }
+
+    toolResults.push({
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      output: part.output,
+    });
+  }
+
+  const attrs: Record<string, string | number | boolean> = {};
+  if (text) {
+    attrs["cria.message.text"] = text;
+  }
+  if (reasoning) {
+    attrs["cria.message.reasoning"] = reasoning;
+  }
+  if (toolCalls.length > 0) {
+    attrs["cria.message.tool_calls"] = safeStringify(toolCalls);
+  }
+  if (toolResults.length > 0) {
+    attrs["cria.message.tool_results"] = safeStringify(toolResults);
+  }
+
+  return attrs;
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "[unserializable]";
+  }
 }
 
 function formatScopeSegment(scope: PromptScope): string {
