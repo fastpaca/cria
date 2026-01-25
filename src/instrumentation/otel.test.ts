@@ -110,6 +110,8 @@ describe("createOtelRenderHooks", () => {
     const names = tracer.spans.map((span) => span.name);
     expect(names).toEqual([
       "cria.fit",
+      "cria.fit.prompt.message",
+      "cria.fit.prompt.message",
       "cria.fit.iteration",
       "cria.fit.strategy",
     ]);
@@ -133,7 +135,10 @@ describe("createOtelRenderHooks", () => {
       })
     ).rejects.toThrow(FIT_ERROR);
 
-    const errorSpan = tracer.spans.at(-1) as StubSpan;
+    const fitSpan = tracer.spans.find((span) => span.name === "cria.fit");
+    expect(fitSpan).toBeDefined();
+
+    const errorSpan = fitSpan as StubSpan;
     expect(errorSpan.status?.code).toBeDefined();
     expect(errorSpan.exceptions).toHaveLength(1);
   });
