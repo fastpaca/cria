@@ -1,5 +1,6 @@
 import {
   type Attributes,
+  type Context,
   context,
   type Span,
   SpanStatusCode,
@@ -14,6 +15,8 @@ interface OtelRenderHooksOptions {
   spanName?: string;
   /** Static attributes applied to all spans. */
   attributes?: Attributes;
+  /** Emit per-message prompt structure spans at fit start. */
+  emitPromptStructure?: boolean;
 }
 
 /**
@@ -27,6 +30,7 @@ export function createOtelRenderHooks({
   tracer,
   spanName = "cria.fit",
   attributes = {},
+  emitPromptStructure = false,
 }: OtelRenderHooksOptions): RenderHooks {
   let fitSpan: Span | null = null;
 
@@ -48,6 +52,16 @@ export function createOtelRenderHooks({
         "cria.total_tokens": event.totalTokens,
       });
       setElementAttributes(fitSpan, event.element);
+
+      if (emitPromptStructure) {
+        emitPromptStructureSpans(
+          tracer,
+          context.active(),
+          `${spanName}.prompt.message`,
+          attributes,
+          event.element
+        );
+      }
     },
 
     onFitIteration: (event) => {
@@ -154,6 +168,43 @@ function setOptionalAttribute(span: Span, key: string, value: unknown): void {
     return;
   }
   span.setAttribute(key, value as never);
+}
+
+function emitPromptStructureSpans(
+  tracer: Tracer,
+  activeContext: Context,
+  spanName: string,
+  baseAttributes: Attributes,
+  root: PromptScope
+): void {
+  let index = 0;
+
+  const walkMessages = (scope: PromptScope, path: readonly string[]): void => {
+    const segment = scope.id
+      ? `p${scope.priority}:${scope.id}`
+      : `p${scope.priority}`;
+    const nextPath = [...path, segment];
+
+    for (const child of scope.children) {
+      if (child.kind === "message") {
+        const span = tracer.startSpan(spanName, undefined, activeContext);
+        setAttributes(span, {
+          ...baseAttributes,
+          "cria.message.index": index,
+          "cria.message.role": child.role,
+          ...(child.id ? { "cria.message.id": child.id } : {}),
+          "cria.message.scope_path": nextPath.join("/"),
+        });
+        span.end();
+        index += 1;
+        continue;
+      }
+
+      walkMessages(child, nextPath);
+    }
+  };
+
+  walkMessages(root, []);
 }
 
 function setAttributes(span: Span, attrs: Attributes): void {
