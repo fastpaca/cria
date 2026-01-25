@@ -33,9 +33,6 @@ export function createOtelRenderHooks({
 
   const startChildSpan = (name: string, attrs: Attributes): Span => {
     const span = tracer.startSpan(name, undefined, context.active());
-    if (fitSpan) {
-      span.setAttribute("cria.fit.trace_id", fitSpan.spanContext().traceId);
-    }
     setAttributes(span, { ...attributes, ...attrs });
     return span;
   };
@@ -91,20 +88,27 @@ export function createOtelRenderHooks({
     },
 
     onFitError: (event) => {
-      const span =
-        fitSpan ?? tracer.startSpan(spanName, undefined, context.active());
-      setAttributes(span, {
+      if (!fitSpan) {
+        fitSpan = tracer.startSpan(spanName, undefined, context.active());
+        setAttributes(fitSpan, {
+          ...attributes,
+          "cria.budget": event.error.budget,
+          "cria.total_tokens": event.totalTokens,
+        });
+      }
+
+      setAttributes(fitSpan, {
         ...attributes,
         "cria.iteration": event.iteration,
         "cria.priority": event.priority,
         "cria.total_tokens": event.totalTokens,
       });
-      span.setStatus({
+      fitSpan.setStatus({
         code: SpanStatusCode.ERROR,
         message: event.error.message,
       });
-      span.recordException(event.error);
-      span.end();
+      fitSpan.recordException(event.error);
+      fitSpan.end();
       fitSpan = null;
     },
   };
