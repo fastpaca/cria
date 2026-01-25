@@ -112,9 +112,7 @@ function setElementAttributes(span: Span, element: PromptNode): void {
     span.setAttribute("cria.node.priority", element.priority);
 
     span.setAttribute("cria.scope.priority", element.priority);
-    if (element.id) {
-      span.setAttribute("cria.scope.id", element.id);
-    }
+    setOptionalAttribute(span, "cria.scope.id", element.id);
 
     const stats = countScopeStats(element);
     span.setAttribute("cria.scope.child_count", element.children.length);
@@ -127,37 +125,39 @@ function setElementAttributes(span: Span, element: PromptNode): void {
 
   span.setAttribute("cria.node.role", element.role);
   span.setAttribute("cria.message.role", element.role);
-  if (element.id) {
-    span.setAttribute("cria.message.id", element.id);
-  }
+  setOptionalAttribute(span, "cria.message.id", element.id);
 }
 
 function countScopeStats(scope: PromptScope): {
   messageCount: number;
   scopeCount: number;
 } {
-  let messageCount = 0;
-  let scopeCount = 0;
+  return scope.children.reduce(
+    (acc, child) => {
+      if (child.kind === "message") {
+        acc.messageCount += 1;
+        return acc;
+      }
 
-  for (const child of scope.children) {
-    if (child.kind === "message") {
-      messageCount += 1;
-      continue;
-    }
+      acc.scopeCount += 1;
+      const nested = countScopeStats(child);
+      acc.messageCount += nested.messageCount;
+      acc.scopeCount += nested.scopeCount;
+      return acc;
+    },
+    { messageCount: 0, scopeCount: 0 }
+  );
+}
 
-    scopeCount += 1;
-    const nested = countScopeStats(child);
-    messageCount += nested.messageCount;
-    scopeCount += nested.scopeCount;
+function setOptionalAttribute(span: Span, key: string, value: unknown): void {
+  if (value === undefined) {
+    return;
   }
-
-  return { messageCount, scopeCount };
+  span.setAttribute(key, value as never);
 }
 
 function setAttributes(span: Span, attrs: Attributes): void {
   for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) {
-      span.setAttribute(key, value);
-    }
+    setOptionalAttribute(span, key, value);
   }
 }
