@@ -15,8 +15,6 @@ interface OtelRenderHooksOptions {
   spanName?: string;
   /** Static attributes applied to all spans. */
   attributes?: Attributes;
-  /** Emit per-message prompt structure spans at fit start. */
-  emitPromptStructure?: boolean;
 }
 
 /**
@@ -30,7 +28,6 @@ export function createOtelRenderHooks({
   tracer,
   spanName = "cria.fit",
   attributes = {},
-  emitPromptStructure = false,
 }: OtelRenderHooksOptions): RenderHooks {
   let fitSpan: Span | null = null;
 
@@ -53,15 +50,13 @@ export function createOtelRenderHooks({
       });
       setElementAttributes(fitSpan, event.element);
 
-      if (emitPromptStructure) {
-        emitPromptStructureSpans(
-          tracer,
-          context.active(),
-          `${spanName}.prompt.message`,
-          attributes,
-          event.element
-        );
-      }
+      emitPromptStructureSpans(
+        tracer,
+        context.active(),
+        `${spanName}.prompt.message`,
+        attributes,
+        event.element
+      );
     },
 
     onFitIteration: (event) => {
