@@ -6,7 +6,7 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import type { RenderHooks } from "../render";
-import type { PromptNode } from "../types";
+import type { PromptNode, PromptScope } from "../types";
 
 interface OtelRenderHooksOptions {
   tracer: Tracer;
@@ -110,10 +110,48 @@ function setElementAttributes(span: Span, element: PromptNode): void {
 
   if (element.kind === "scope") {
     span.setAttribute("cria.node.priority", element.priority);
+
+    span.setAttribute("cria.scope.priority", element.priority);
+    if (element.id) {
+      span.setAttribute("cria.scope.id", element.id);
+    }
+
+    const stats = countScopeStats(element);
+    span.setAttribute("cria.scope.child_count", element.children.length);
+    span.setAttribute("cria.scope.message_count", stats.messageCount);
+    span.setAttribute("cria.scope.scope_count", stats.scopeCount);
+    span.setAttribute("cria.scope.has_strategy", Boolean(element.strategy));
+
     return;
   }
 
   span.setAttribute("cria.node.role", element.role);
+  span.setAttribute("cria.message.role", element.role);
+  if (element.id) {
+    span.setAttribute("cria.message.id", element.id);
+  }
+}
+
+function countScopeStats(scope: PromptScope): {
+  messageCount: number;
+  scopeCount: number;
+} {
+  let messageCount = 0;
+  let scopeCount = 0;
+
+  for (const child of scope.children) {
+    if (child.kind === "message") {
+      messageCount += 1;
+      continue;
+    }
+
+    scopeCount += 1;
+    const nested = countScopeStats(child);
+    messageCount += nested.messageCount;
+    scopeCount += nested.scopeCount;
+  }
+
+  return { messageCount, scopeCount };
 }
 
 function setAttributes(span: Span, attrs: Attributes): void {
