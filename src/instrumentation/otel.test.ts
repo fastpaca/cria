@@ -114,12 +114,20 @@ describe("createOtelRenderHooks", () => {
       "cria.fit.prompt.message",
       "cria.fit.iteration",
       "cria.fit.strategy",
+      "cria.fit.prompt.message",
     ]);
 
     const rootSpan = tracer.spans[0];
     expect(rootSpan).toBeDefined();
     expect(rootSpan?.attributes["cria.budget"]).toBe(1);
     expect(typeof rootSpan?.attributes["cria.total_tokens"]).toBe("number");
+
+    const messageSpans = tracer.spans.filter(
+      (span) => span.name === "cria.fit.prompt.message"
+    ) as StubSpan[];
+    expect(
+      messageSpans.map((span) => span.attributes["cria.prompt.phase"])
+    ).toEqual(["before", "before", "after"]);
   });
 
   test("records errors on fit failure", async () => {
@@ -160,5 +168,19 @@ describe("createOtelRenderHooks", () => {
         hooks,
       })
     ).rejects.toThrow("boom");
+  });
+
+  test("skips after prompt spans when fit result is null", async () => {
+    const tracer = new StubTracer();
+    const hooks = createOtelRenderHooks({ tracer });
+    const element = omitScope([cria.user("A")], { priority: 0 });
+
+    await render(element, { provider, budget: 0, hooks });
+
+    const messageSpans = tracer.spans.filter(
+      (span) => span.name === "cria.fit.prompt.message"
+    ) as StubSpan[];
+    expect(messageSpans).toHaveLength(1);
+    expect(messageSpans[0]?.attributes["cria.prompt.phase"]).toBe("before");
   });
 });
