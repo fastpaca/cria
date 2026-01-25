@@ -163,13 +163,6 @@ function countScopeStats(scope: PromptScope): {
   );
 }
 
-function setOptionalAttribute(span: Span, key: string, value: unknown): void {
-  if (value === undefined) {
-    return;
-  }
-  span.setAttribute(key, value as never);
-}
-
 function emitPromptStructureSpans(
   tracer: Tracer,
   activeContext: Context,
@@ -180,10 +173,7 @@ function emitPromptStructureSpans(
   let index = 0;
 
   const walkMessages = (scope: PromptScope, path: readonly string[]): void => {
-    const segment = scope.id
-      ? `p${scope.priority}:${scope.id}`
-      : `p${scope.priority}`;
-    const nextPath = [...path, segment];
+    const nextPath = [...path, formatScopeSegment(scope)];
 
     for (const child of scope.children) {
       if (child.kind === "message") {
@@ -192,9 +182,9 @@ function emitPromptStructureSpans(
           ...baseAttributes,
           "cria.message.index": index,
           "cria.message.role": child.role,
-          ...(child.id ? { "cria.message.id": child.id } : {}),
           "cria.message.scope_path": nextPath.join("/"),
         });
+        setOptionalAttribute(span, "cria.message.id", child.id);
         span.end();
         index += 1;
         continue;
@@ -205,6 +195,17 @@ function emitPromptStructureSpans(
   };
 
   walkMessages(root, []);
+}
+
+function formatScopeSegment(scope: PromptScope): string {
+  return scope.id ? `p${scope.priority}:${scope.id}` : `p${scope.priority}`;
+}
+
+function setOptionalAttribute(span: Span, key: string, value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  span.setAttribute(key, value as never);
 }
 
 function setAttributes(span: Span, attrs: Attributes): void {
