@@ -52,7 +52,8 @@ export function createOtelRenderHooks({
         context.active(),
         `${spanName}.prompt.message`,
         attributes,
-        event.element
+        event.element,
+        "before"
       );
     },
 
@@ -83,6 +84,16 @@ export function createOtelRenderHooks({
         "cria.iterations": event.iterations,
         "cria.total_tokens": event.totalTokens,
       });
+      if (event.result) {
+        emitPromptStructureSpans(
+          tracer,
+          context.active(),
+          `${spanName}.prompt.message`,
+          attributes,
+          event.result,
+          "after"
+        );
+      }
       fitSpan.end();
       fitSpan = null;
     },
@@ -167,7 +178,8 @@ function emitPromptStructureSpans(
   activeContext: Context,
   spanName: string,
   baseAttributes: Attributes,
-  root: PromptScope
+  root: PromptScope,
+  phase: "before" | "after"
 ): void {
   let index = 0;
 
@@ -179,6 +191,7 @@ function emitPromptStructureSpans(
         const span = tracer.startSpan(spanName, undefined, activeContext);
         setAttributes(span, {
           ...baseAttributes,
+          "cria.prompt.phase": phase,
           "cria.message.index": index,
           "cria.message.role": child.role,
           "cria.message.scope_path": nextPath.join("/"),

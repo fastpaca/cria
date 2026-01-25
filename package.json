@@ -97,6 +97,7 @@
     "build": "tsc",
     "check": "ultracite check",
     "fix": "ultracite fix",
+    "lint": "ultracite check",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "husky"
