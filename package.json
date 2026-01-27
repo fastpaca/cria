@@ -95,6 +95,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "bench": "vitest bench",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "lint": "ultracite check",
