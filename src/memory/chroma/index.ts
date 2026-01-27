@@ -1,4 +1,5 @@
 import { type Collection, IncludeEnum, type Metadata } from "chromadb";
+import type { ZodType } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
   VectorMemory,
@@ -14,27 +15,46 @@ export type EmbeddingFunction = (text: string) => Promise<number[]>;
 /**
  * Options for creating a ChromaStore.
  */
-export interface ChromaStoreOptions {
+export interface ChromaStoreOptions<T> {
   /** The Chroma collection to use */
   collection: Collection;
   /** Function to generate embeddings from text */
   embed: EmbeddingFunction;
+  /** Schema used to validate stored data at read boundaries. */
+  schema: ZodType<T>;
 }
 
 /**
  * Parse a document string. Tries JSON.parse first, returns raw string on failure.
  * Throws if document is missing.
  */
-function parseDocument<T>(document: string | null | undefined): T {
+function parseDocument<T>(
+  document: string | null | undefined,
+  schema: ZodType<T>,
+  context: string
+): T {
   if (!document) {
     throw new Error("ChromaStore: document is missing from entry");
   }
 
   try {
-    return JSON.parse(document) as T;
-  } catch {
-    // Document was stored as a raw string (T is string)
-    return document as T;
+    const parsed: unknown = JSON.parse(document);
+    return schema.parse(parsed);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      try {
+        return schema.parse(document);
+      } catch (schemaError) {
+        throw new Error(
+          `ChromaStore: stored value failed schema validation during ${context}`,
+          { cause: schemaError }
+        );
+      }
+    }
+    throw new Error(
+      `ChromaStore: stored value failed schema validation during ${context}`,
+      { cause: error }
+    );
   }
 }
 
@@ -67,6 +87,7 @@ function extractTimestamp(
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * import { ChromaClient } from "chromadb";
  * import { ChromaStore } from "@fastpaca/cria/memory/chroma";
  * import { VectorSearch } from "@fastpaca/cria";
@@ -80,6 +101,7 @@ function extractTimestamp(
  *     // Use your embedding model (OpenAI, Cohere, etc.)
  *     return await getEmbedding(text);
  *   },
+ *   schema: z.string(),
  * });
  *
  * // Use with VectorSearch
@@ -91,10 +113,12 @@ function extractTimestamp(
 export class ChromaStore<T = unknown> implements VectorMemory<T> {
   private readonly collection: Collection;
   private readonly embedFn: EmbeddingFunction;
+  private readonly schema: ZodType<T>;
 
-  constructor(options: ChromaStoreOptions) {
+  constructor(options: ChromaStoreOptions<T>) {
     this.collection = options.collection;
     this.embedFn = options.embed;
+    this.schema = options.schema;
   }
 
   private async embed(text: string, context: string): Promise<number[]> {
@@ -121,10 +145,10 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     const metadata = response.metadatas?.[0];
 
     return {
-      data: parseDocument<T>(document),
+      data: parseDocument<T>(document, this.schema, `get("${key}")`),
       createdAt: extractTimestamp(metadata, "_createdAt"),
       updatedAt: extractTimestamp(metadata, "_updatedAt"),
-      ...(metadata && { metadata: metadata as Record<string, unknown> }),
+      ...(metadata && { metadata }),
     };
   }
 
@@ -228,10 +252,10 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
         key: id,
         score,
         entry: {
-          data: parseDocument<T>(documents[i]),
+          data: parseDocument<T>(documents[i], this.schema, `search("${id}")`),
           createdAt: extractTimestamp(metadata, "_createdAt"),
           updatedAt: extractTimestamp(metadata, "_updatedAt"),
-          ...(metadata && { metadata: metadata as Record<string, unknown> }),
+          ...(metadata && { metadata }),
         },
       });
     }

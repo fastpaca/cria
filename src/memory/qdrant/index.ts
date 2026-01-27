@@ -1,4 +1,5 @@
 import type { QdrantClient } from "@qdrant/js-client-rest";
+import type { ZodType } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
   VectorMemory,
@@ -14,7 +15,7 @@ export type EmbeddingFunction = (text: string) => Promise<number[]>;
 /**
  * Options for creating a QdrantStore.
  */
-export interface QdrantStoreOptions {
+export interface QdrantStoreOptions<T> {
   /** The Qdrant client instance */
   client: QdrantClient;
   /** The name of the collection to use */
@@ -23,6 +24,8 @@ export interface QdrantStoreOptions {
   embed: EmbeddingFunction;
   /** Optional: the name of the vector field (for collections with named vectors) */
   vectorName?: string;
+  /** Schema used to validate stored data at read boundaries. */
+  schema: ZodType<T>;
 }
 
 /**
@@ -47,6 +50,54 @@ function payloadToEntry<T>(payload: QdrantPayload<T>): MemoryEntry<T> {
   };
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+function parsePayload<T>(
+  payload: unknown,
+  schema: ZodType<T>,
+  context: string
+): QdrantPayload<T> | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const createdAt = payload.createdAt;
+  const updatedAt = payload.updatedAt;
+
+  if (typeof createdAt !== "number" || typeof updatedAt !== "number") {
+    throw new Error(
+      `QdrantStore: payload is missing createdAt/updatedAt during ${context}`
+    );
+  }
+
+  let data: T;
+  try {
+    data = schema.parse(payload.data);
+  } catch (error) {
+    throw new Error(
+      `QdrantStore: payload failed schema validation during ${context}`,
+      {
+        cause: error,
+      }
+    );
+  }
+
+  const metadata = payload.metadata;
+  if (metadata !== undefined && metadata !== null && !isRecord(metadata)) {
+    throw new Error(
+      `QdrantStore: payload metadata must be an object if present during ${context}`
+    );
+  }
+
+  return {
+    data,
+    createdAt,
+    updatedAt,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
 /**
  * VectorMemory implementation backed by Qdrant.
  *
@@ -57,6 +108,7 @@ function payloadToEntry<T>(payload: QdrantPayload<T>): MemoryEntry<T> {
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * import { QdrantClient } from "@qdrant/js-client-rest";
  * import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
  * import { VectorSearch } from "@fastpaca/cria";
@@ -70,6 +122,7 @@ function payloadToEntry<T>(payload: QdrantPayload<T>): MemoryEntry<T> {
  *     // Use your embedding model (OpenAI, Cohere, etc.)
  *     return await getEmbedding(text);
  *   },
+ *   schema: z.string(),
  * });
  *
  * // Use with VectorSearch
@@ -83,12 +136,14 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
   private readonly collectionName: string;
   private readonly embedFn: EmbeddingFunction;
   private readonly vectorName: string | undefined;
+  private readonly schema: ZodType<T>;
 
-  constructor(options: QdrantStoreOptions) {
+  constructor(options: QdrantStoreOptions<T>) {
     this.client = options.client;
     this.collectionName = options.collectionName;
     this.embedFn = options.embed;
     this.vectorName = options.vectorName;
+    this.schema = options.schema;
   }
 
   private async embed(text: string, context: string): Promise<number[]> {
@@ -112,7 +167,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
       return null;
     }
 
-    const payload = point.payload as QdrantPayload<T> | undefined;
+    const payload = parsePayload(point.payload, this.schema, `get("${key}")`);
 
     return payload ? payloadToEntry(payload) : null;
   }
@@ -141,7 +196,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
         {
           id: key,
           vector: this.vectorName ? { [this.vectorName]: vector } : vector,
-          payload: payload as unknown as Record<string, unknown>,
+          payload,
         },
       ],
     });
@@ -180,7 +235,11 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
     const results: VectorSearchResult<T>[] = [];
 
     for (const point of response) {
-      const payload = point.payload as QdrantPayload<T> | undefined;
+      const payload = parsePayload(
+        point.payload,
+        this.schema,
+        `search("${query}")`
+      );
 
       if (!payload) {
         continue;

@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
+import { z } from "zod";
 import { RedisStore } from "./redis";
 
 // Mock ioredis
@@ -27,13 +28,15 @@ beforeEach(() => {
 });
 
 test("RedisStore: get returns null for missing key", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
   const result = await store.get("nonexistent");
   expect(result).toBeNull();
 });
 
 test("RedisStore: set and get", async () => {
-  const store = new RedisStore<{ value: number }>();
+  const store = new RedisStore({
+    schema: z.object({ value: z.number() }),
+  });
 
   await store.set("key1", { value: 42 });
 
@@ -45,7 +48,7 @@ test("RedisStore: set and get", async () => {
 });
 
 test("RedisStore: set with metadata", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
 
   await store.set("key", "value", { source: "test", priority: 1 });
 
@@ -54,7 +57,9 @@ test("RedisStore: set with metadata", async () => {
 });
 
 test("RedisStore: update preserves createdAt, updates updatedAt", async () => {
-  const store = new RedisStore<{ count: number }>();
+  const store = new RedisStore({
+    schema: z.object({ count: z.number() }),
+  });
 
   await store.set("key", { count: 1 });
   const first = await store.get("key");
@@ -71,7 +76,7 @@ test("RedisStore: update preserves createdAt, updates updatedAt", async () => {
 });
 
 test("RedisStore: delete removes entry", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
 
   await store.set("key", "value");
   expect(await store.get("key")).not.toBeNull();
@@ -82,13 +87,14 @@ test("RedisStore: delete removes entry", async () => {
 });
 
 test("RedisStore: delete returns false for missing key", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
   const result = await store.delete("nonexistent");
   expect(result).toBe(false);
 });
 
 test("RedisStore: uses custom prefix", async () => {
-  const store = new RedisStore<string>({
+  const store = new RedisStore({
+    schema: z.string(),
     keyPrefix: "myapp:",
   });
 
@@ -100,7 +106,7 @@ test("RedisStore: uses custom prefix", async () => {
 });
 
 test("RedisStore: uses default prefix", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
 
   await store.set("key", "value");
 
@@ -111,14 +117,14 @@ const INVALID_JSON_REGEX = /invalid JSON/;
 const MISSING_CREATED_AT_REGEX = /missing createdAt/;
 
 test("RedisStore: rejects invalid JSON payloads", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
   mockData.set("cria:kv:bad", "{this is not json");
 
   await expect(store.get("bad")).rejects.toThrow(INVALID_JSON_REGEX);
 });
 
 test("RedisStore: rejects malformed stored shapes", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
   mockData.set("cria:kv:bad-shape", JSON.stringify({ data: "x" }));
 
   await expect(store.get("bad-shape")).rejects.toThrow(
@@ -127,7 +133,7 @@ test("RedisStore: rejects malformed stored shapes", async () => {
 });
 
 test("RedisStore: disconnect calls quit", async () => {
-  const store = new RedisStore<string>();
+  const store = new RedisStore({ schema: z.string() });
   await store.disconnect();
   // If no error, the test passes
 });
