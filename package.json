@@ -96,6 +96,9 @@
   "scripts": {
     "build": "tsc",
     "bench": "vitest bench",
+    "bench:baseline": "vitest bench --outputJson bench/baseline.json",
+    "bench:compare": "vitest bench --compare bench/baseline.json",
+    "bench:json": "vitest bench --outputJson bench/latest.json",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "lint": "ultracite check",

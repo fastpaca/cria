@@ -4,6 +4,8 @@ import {
   InMemoryStore,
   type PromptNode,
   type PromptPart,
+  type PromptTree,
+  type RenderHooks,
   render,
   type StoredSummary,
   type SummarizerContext,
@@ -16,15 +18,6 @@ const provider = createTestProvider({
   includeRolePrefix: true,
 });
 
-const HISTORY_MESSAGES = 120;
-const EXAMPLE_MESSAGES = 48;
-const OPTIONAL_MESSAGES = 24;
-const TRUNCATE_BUDGET = 400;
-const SUMMARY_PRIORITY = 3;
-const OMIT_PRIORITY = 2;
-const TRUNCATE_PRIORITY = 1;
-const SUMMARY_WINDOW = 16;
-const SUMMARY_MAX_CHARS = 600;
 const ROLE_SEPARATOR = ": ";
 const WHITESPACE_RE = /\s+/g;
 
@@ -34,52 +27,51 @@ const developerPrompt =
   "Prefer correctness over creativity. When trimming context, keep the most recent and most actionable details.";
 const latestUserPrompt =
   "Given the conversation and retrieved context, propose the next best tool call and a concise assistant message.";
-const exampleBody =
-  "Input and output examples that are helpful but expendable when the budget is tight. ".repeat(
-    2
-  );
-const optionalBody =
-  "Low-priority supporting information that should be dropped early in the fit loop. ".repeat(
-    2
-  );
 
-const historyMessages: readonly PromptNode[] =
-  buildHistoryMessages(HISTORY_MESSAGES);
-const exampleMessages: readonly PromptNode[] =
-  buildExampleMessages(EXAMPLE_MESSAGES);
-const optionalMessages: readonly PromptNode[] =
-  buildOptionalMessages(OPTIONAL_MESSAGES);
+interface BodyBase {
+  historyUser: string;
+  historyAssistant: string;
+  example: string;
+  optional: string;
+}
 
-function buildHistoryMessages(count: number): readonly PromptNode[] {
+const DEFAULT_BODY_BASE: BodyBase = {
+  historyUser: "The user describes steps, constraints, and notes. ",
+  historyAssistant:
+    "The assistant reflects context, proposes a plan, and adds rationale. ",
+  example: "Helpful example content that can be trimmed. ",
+  optional: "Low-priority context that should drop early. ",
+};
+
+function buildHistoryMessages(
+  count: number,
+  userBody: string,
+  assistantBody: string
+): readonly PromptNode[] {
   return Array.from({ length: count }, (_, index) => {
     const turn = index + 1;
     if (turn % 2 === 1) {
-      const userBody =
-        "The user describes a multi-step workflow with constraints, edge cases, and a few long-form notes. ".repeat(
-          3
-        );
-      const userText = `User turn ${turn}. ${userBody}`;
-      return cria.user(userText);
+      return cria.user(`User turn ${turn}. ${userBody}`);
     }
-
-    const assistantBody =
-      "The assistant reflects prior context, proposes a plan, and includes detailed rationale that can often be summarized. ".repeat(
-        3
-      );
-    const assistantText = `Assistant turn ${turn}. ${assistantBody}`;
-    return cria.assistant(assistantText);
+    return cria.assistant(`Assistant turn ${turn}. ${assistantBody}`);
   });
 }
 
-function buildExampleMessages(count: number): readonly PromptNode[] {
+function buildExampleMessages(
+  count: number,
+  body: string
+): readonly PromptNode[] {
   return Array.from({ length: count }, (_, index) =>
-    cria.user(`Example ${index + 1}: ${exampleBody}`)
+    cria.user(`Example ${index + 1}: ${body}`)
   );
 }
 
-function buildOptionalMessages(count: number): readonly PromptNode[] {
+function buildOptionalMessages(
+  count: number,
+  body: string
+): readonly PromptNode[] {
   return Array.from({ length: count }, (_, index) =>
-    cria.user(`Optional context ${index + 1}: ${optionalBody}`)
+    cria.user(`Optional context ${index + 1}: ${body}`)
   );
 }
 
@@ -87,11 +79,9 @@ function renderPart(part: PromptPart): string {
   if (part.type === "text" || part.type === "reasoning") {
     return part.text;
   }
-
   if (part.type === "tool-call") {
     return `[tool-call:${part.toolName}]${String(part.input)}`;
   }
-
   return `[tool-result:${part.toolName}]${String(part.output)}`;
 }
 
@@ -122,93 +112,583 @@ function compact(text: string): string {
   return text.replace(WHITESPACE_RE, " ").trim();
 }
 
-function clampSummary(text: string): string {
-  if (text.length <= SUMMARY_MAX_CHARS) {
+function clampSummary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
     return text;
   }
-  return `${text.slice(0, SUMMARY_MAX_CHARS)}...`;
+  return `${text.slice(0, maxChars)}...`;
 }
 
-function summarizeHistory(ctx: SummarizerContext): string {
-  const lines = collectMessages(ctx.target);
-  const windowed = lines.slice(-SUMMARY_WINDOW);
-  const recentSummary = clampSummary(compact(windowed.join("\n")));
+interface FitExpectation {
+  minIterations: number;
+  requiredPriorities: readonly number[];
+  requireFitLoop?: boolean;
+}
 
-  if (ctx.existingSummary === null) {
-    return `Summary: ${recentSummary}`;
+interface FitMetrics {
+  fitStarted: boolean;
+  iterations: number;
+  priorities: Map<number, number>;
+  startTokens: number | null;
+  endTokens: number | null;
+}
+
+function createFitMetrics(): {
+  metrics: FitMetrics;
+  hooks: RenderHooks;
+} {
+  const metrics: FitMetrics = {
+    fitStarted: false,
+    iterations: 0,
+    priorities: new Map<number, number>(),
+    startTokens: null,
+    endTokens: null,
+  };
+
+  const hooks: RenderHooks = {
+    onFitStart(event) {
+      metrics.fitStarted = true;
+      metrics.startTokens = event.totalTokens;
+    },
+    onFitIteration() {
+      metrics.iterations += 1;
+    },
+    onStrategyApplied(event) {
+      const current = metrics.priorities.get(event.priority) ?? 0;
+      metrics.priorities.set(event.priority, current + 1);
+    },
+    onFitComplete(event) {
+      metrics.endTokens = event.totalTokens;
+    },
+    onFitError(event) {
+      throw event.error;
+    },
+  };
+
+  return { metrics, hooks };
+}
+
+function assertExpectation(params: {
+  name: string;
+  baselineTokens: number;
+  budget: number;
+  tokens: number;
+  metrics: FitMetrics;
+  expectation: FitExpectation;
+}): void {
+  const { name, baselineTokens, budget, tokens, metrics, expectation } = params;
+  const requireFitLoop = expectation.requireFitLoop ?? true;
+  const fitNeeded = baselineTokens > budget;
+
+  if (fitNeeded && requireFitLoop && !metrics.fitStarted) {
+    throw new Error(`${name}: expected fit loop to start.`);
   }
 
-  const combined = clampSummary(
-    compact(`${ctx.existingSummary}\nUpdate: ${recentSummary}`)
+  if (
+    fitNeeded &&
+    requireFitLoop &&
+    metrics.iterations < expectation.minIterations
+  ) {
+    throw new Error(
+      `${name}: expected at least ${expectation.minIterations} fit iterations, got ${metrics.iterations}.`
+    );
+  }
+
+  if (tokens > budget) {
+    throw new Error(`${name}: render exceeded budget (${tokens} > ${budget}).`);
+  }
+
+  for (const priority of expectation.requiredPriorities) {
+    if (!metrics.priorities.has(priority)) {
+      throw new Error(
+        `${name}: expected strategy at priority ${priority} to apply.`
+      );
+    }
+  }
+}
+
+interface ScenarioConfig {
+  name: string;
+  counts: {
+    history: number;
+    examples: number;
+    optional: number;
+  };
+  bodies: {
+    historyRepeat: number;
+    exampleRepeat: number;
+    optionalRepeat: number;
+  };
+  bodyBase?: Partial<BodyBase>;
+  truncateBudget: number;
+  priorities: {
+    summary: number;
+    omit: number;
+    truncate: number;
+  };
+  summary: {
+    window: number;
+    maxChars: number;
+  };
+  ids: {
+    summary: string;
+    examples: string;
+    optional: string;
+  };
+  budgets: {
+    fit: number;
+    tight: number;
+  };
+  expectations?: {
+    fit?: FitExpectation;
+    tight?: FitExpectation;
+  };
+  benchOptions?: {
+    time?: number;
+    iterations?: number;
+  };
+}
+
+interface ScenarioResult {
+  name: string;
+  summaryId: string;
+  baselineTokens: number;
+  budgets: ScenarioConfig["budgets"];
+  expectations: Required<NonNullable<ScenarioConfig["expectations"]>>;
+  prebuiltColdStore: InMemoryStore<StoredSummary>;
+  prebuiltElement: PromptTree;
+  prebuiltWarmElement: PromptTree;
+  benchOptions?: {
+    time?: number;
+    iterations?: number;
+  };
+  renderColdBaseline: () => Promise<number>;
+  renderPrebuiltBaseline: () => Promise<number>;
+  renderPrebuiltFitCold: () => Promise<number>;
+  renderPrebuiltTightWarm: () => Promise<number>;
+}
+
+async function createScenario(config: ScenarioConfig): Promise<ScenarioResult> {
+  const base: BodyBase = { ...DEFAULT_BODY_BASE, ...config.bodyBase };
+  const userBody = base.historyUser.repeat(config.bodies.historyRepeat);
+  const assistantBody = base.historyAssistant.repeat(
+    config.bodies.historyRepeat
   );
-  return `Summary: ${combined}`;
-}
+  const exampleBody = base.example.repeat(config.bodies.exampleRepeat);
+  const optionalBody = base.optional.repeat(config.bodies.optionalRepeat);
 
-function buildPrompt(store: InMemoryStore<StoredSummary>) {
-  return cria
-    .prompt(provider)
-    .system(systemPrompt)
-    .developer(developerPrompt)
-    .summary(historyMessages, {
-      id: "bench-history",
-      store,
-      summarize: summarizeHistory,
-      priority: SUMMARY_PRIORITY,
-    })
-    .truncate(exampleMessages, {
-      budget: TRUNCATE_BUDGET,
-      from: "start",
-      priority: TRUNCATE_PRIORITY,
-      id: "bench-examples",
-    })
-    .omit(optionalMessages, {
-      priority: OMIT_PRIORITY,
-      id: "bench-optional",
-    })
-    .user(latestUserPrompt);
-}
+  const historyMessages = buildHistoryMessages(
+    config.counts.history,
+    userBody,
+    assistantBody
+  );
+  const exampleMessages = buildExampleMessages(
+    config.counts.examples,
+    exampleBody
+  );
+  const optionalMessages = buildOptionalMessages(
+    config.counts.optional,
+    optionalBody
+  );
 
-async function renderOnce(budget?: number): Promise<number> {
-  const store = new InMemoryStore<StoredSummary>();
-  const prompt = buildPrompt(store);
-  const element = await prompt.build();
+  function summarizeHistory(ctx: SummarizerContext): string {
+    const lines = collectMessages(ctx.target);
+    const windowed = lines.slice(-config.summary.window);
+    const recentSummary = clampSummary(
+      compact(windowed.join("\n")),
+      config.summary.maxChars
+    );
 
-  const rendered =
-    budget === undefined
-      ? await render(element, { provider })
-      : await render(element, { provider, budget });
+    if (ctx.existingSummary === null) {
+      return `Summary: ${recentSummary}`;
+    }
 
-  return provider.countTokens(rendered);
-}
+    const combined = clampSummary(
+      compact(`${ctx.existingSummary}\nUpdate: ${recentSummary}`),
+      config.summary.maxChars
+    );
+    return `Summary: ${combined}`;
+  }
 
-async function findFittingBudget(baselineTokens: number): Promise<number> {
-  const ratios = [0.35, 0.45, 0.55, 0.65, 0.75];
+  function buildPrompt(store: InMemoryStore<StoredSummary>) {
+    return cria
+      .prompt(provider)
+      .system(systemPrompt)
+      .developer(developerPrompt)
+      .summary(historyMessages, {
+        id: config.ids.summary,
+        store,
+        summarize: summarizeHistory,
+        priority: config.priorities.summary,
+      })
+      .truncate(exampleMessages, {
+        budget: config.truncateBudget,
+        from: "start",
+        priority: config.priorities.truncate,
+        id: config.ids.examples,
+      })
+      .omit(optionalMessages, {
+        priority: config.priorities.omit,
+        id: config.ids.optional,
+      })
+      .user(latestUserPrompt);
+  }
 
-  for (const ratio of ratios) {
-    const budget = Math.max(1, Math.floor(baselineTokens * ratio));
+  const prebuiltColdStore = new InMemoryStore<StoredSummary>();
+  const prebuiltElement = await buildPrompt(prebuiltColdStore).build();
+
+  const baselineRendered = await render(prebuiltElement, { provider });
+  const baselineTokens = provider.countTokens(baselineRendered);
+
+  const warmSummaryStore = new InMemoryStore<StoredSummary>();
+  warmSummaryStore.set(config.ids.summary, {
+    content:
+      "Seed summary for warm-store benchmarking so the summary strategy can update an existing entry.",
+  });
+  const prebuiltWarmElement = await buildPrompt(warmSummaryStore).build();
+
+  const expectations: Required<NonNullable<ScenarioConfig["expectations"]>> =
+    config.expectations ?? {
+      fit: {
+        minIterations: 1,
+        requiredPriorities: [config.priorities.summary],
+      },
+      tight: {
+        minIterations: 1,
+        requiredPriorities: [config.priorities.summary],
+      },
+    };
+
+  async function renderWithBudget(params: {
+    element: PromptTree;
+    store: InMemoryStore<StoredSummary>;
+    budgetKey: keyof ScenarioConfig["budgets"];
+    resetSummary?: boolean;
+  }): Promise<number> {
+    const { element, store, budgetKey, resetSummary } = params;
+    if (resetSummary) {
+      store.delete(config.ids.summary);
+    }
+
+    const budget = config.budgets[budgetKey];
+    const expectation = expectations[budgetKey];
+    const { hooks, metrics } = createFitMetrics();
+
     try {
-      await renderOnce(budget);
-      return budget;
+      const rendered = await render(element, { provider, budget, hooks });
+      const tokens = provider.countTokens(rendered);
+      assertExpectation({
+        name: `${config.name}:${budgetKey}`,
+        baselineTokens,
+        budget,
+        tokens,
+        metrics,
+        expectation,
+      });
+      return tokens;
     } catch (error) {
       if (error instanceof FitError) {
-        continue;
+        throw error;
       }
       throw error;
     }
   }
 
-  return baselineTokens;
+  async function renderColdBaseline(): Promise<number> {
+    const store = new InMemoryStore<StoredSummary>();
+    const element = await buildPrompt(store).build();
+    const rendered = await render(element, { provider });
+    return provider.countTokens(rendered);
+  }
+
+  async function renderPrebuiltBaseline(): Promise<number> {
+    const rendered = await render(prebuiltElement, { provider });
+    return provider.countTokens(rendered);
+  }
+
+  function renderPrebuiltFitCold(): Promise<number> {
+    return renderWithBudget({
+      element: prebuiltElement,
+      store: prebuiltColdStore,
+      budgetKey: "fit",
+      resetSummary: true,
+    });
+  }
+
+  function renderPrebuiltTightWarm(): Promise<number> {
+    return renderWithBudget({
+      element: prebuiltWarmElement,
+      store: warmSummaryStore,
+      budgetKey: "tight",
+      resetSummary: false,
+    });
+  }
+
+  return {
+    name: config.name,
+    summaryId: config.ids.summary,
+    baselineTokens,
+    budgets: config.budgets,
+    expectations,
+    prebuiltColdStore,
+    prebuiltElement,
+    prebuiltWarmElement,
+    benchOptions: config.benchOptions,
+    renderColdBaseline,
+    renderPrebuiltBaseline,
+    renderPrebuiltFitCold,
+    renderPrebuiltTightWarm,
+  };
 }
 
-const baselineTokens = await renderOnce();
-const fittingBudget = await findFittingBudget(baselineTokens);
+const standardScenario = await createScenario({
+  name: "standard-summary-first",
+  counts: {
+    history: 120,
+    examples: 48,
+    optional: 24,
+  },
+  bodies: {
+    historyRepeat: 3,
+    exampleRepeat: 2,
+    optionalRepeat: 2,
+  },
+  truncateBudget: 400,
+  priorities: {
+    summary: 3,
+    omit: 2,
+    truncate: 1,
+  },
+  summary: {
+    window: 16,
+    maxChars: 600,
+  },
+  ids: {
+    summary: "bench-history",
+    examples: "bench-examples",
+    optional: "bench-optional",
+  },
+  budgets: {
+    fit: 3000,
+    tight: 1800,
+  },
+  expectations: {
+    fit: {
+      minIterations: 1,
+      requiredPriorities: [3],
+    },
+    tight: {
+      minIterations: 2,
+      requiredPriorities: [3, 2],
+    },
+  },
+});
 
-describe("render loop e2e", () => {
-  bench("render baseline (no fit loop)", async () => {
-    await renderOnce();
+const stressScenario = await createScenario({
+  name: "standard-multi-strategy-stress",
+  counts: {
+    history: 120,
+    examples: 48,
+    optional: 24,
+  },
+  bodies: {
+    historyRepeat: 3,
+    exampleRepeat: 2,
+    optionalRepeat: 2,
+  },
+  truncateBudget: 400,
+  priorities: {
+    summary: 1,
+    omit: 3,
+    truncate: 2,
+  },
+  summary: {
+    window: 24,
+    maxChars: 1000,
+  },
+  ids: {
+    summary: "bench-history-stress",
+    examples: "bench-examples-stress",
+    optional: "bench-optional-stress",
+  },
+  budgets: {
+    fit: 5000,
+    tight: 3000,
+  },
+  expectations: {
+    fit: {
+      minIterations: 3,
+      requiredPriorities: [3, 2, 1],
+    },
+    tight: {
+      minIterations: 3,
+      requiredPriorities: [3, 2, 1],
+    },
+  },
+});
+
+const hugeScenario = await createScenario({
+  name: "huge-summary-first",
+  counts: {
+    history: 720,
+    examples: 240,
+    optional: 120,
+  },
+  bodies: {
+    historyRepeat: 3,
+    exampleRepeat: 2,
+    optionalRepeat: 2,
+  },
+  truncateBudget: 1600,
+  priorities: {
+    summary: 3,
+    omit: 2,
+    truncate: 1,
+  },
+  summary: {
+    window: 32,
+    maxChars: 1200,
+  },
+  ids: {
+    summary: "bench-history-huge",
+    examples: "bench-examples-huge",
+    optional: "bench-optional-huge",
+  },
+  budgets: {
+    fit: 15_000,
+    tight: 8000,
+  },
+  expectations: {
+    fit: {
+      minIterations: 1,
+      requiredPriorities: [3],
+    },
+    tight: {
+      minIterations: 2,
+      requiredPriorities: [3, 2],
+    },
+  },
+});
+
+const longScenario = await createScenario({
+  name: "long-20k-summary-first",
+  counts: {
+    history: 20_000,
+    examples: 80,
+    optional: 40,
+  },
+  bodies: {
+    historyRepeat: 1,
+    exampleRepeat: 1,
+    optionalRepeat: 1,
+  },
+  bodyBase: {
+    historyUser: "User context. ",
+    historyAssistant: "Assistant context. ",
+    example: "Example context. ",
+    optional: "Optional context. ",
+  },
+  truncateBudget: 1200,
+  priorities: {
+    summary: 3,
+    omit: 2,
+    truncate: 1,
+  },
+  summary: {
+    window: 24,
+    maxChars: 800,
+  },
+  ids: {
+    summary: "bench-history-20k",
+    examples: "bench-examples-20k",
+    optional: "bench-optional-20k",
+  },
+  budgets: {
+    fit: 140_000,
+    tight: 70_000,
+  },
+  expectations: {
+    fit: {
+      minIterations: 1,
+      requiredPriorities: [3],
+    },
+    tight: {
+      minIterations: 1,
+      requiredPriorities: [3],
+    },
+  },
+  benchOptions: {
+    time: 800,
+    iterations: 5,
+  },
+});
+
+describe("golden render loop (standard summary-first)", () => {
+  bench("build + render baseline (no fit loop)", async () => {
+    await standardScenario.renderColdBaseline();
   });
 
-  bench("render with fit loop and strategies", async () => {
-    await renderOnce(fittingBudget);
+  bench("render prebuilt baseline (no fit loop)", async () => {
+    await standardScenario.renderPrebuiltBaseline();
   });
+
+  bench("render prebuilt fit budget (cold summary store)", async () => {
+    await standardScenario.renderPrebuiltFitCold();
+  });
+
+  bench("render prebuilt tight budget (warm summary store)", async () => {
+    await standardScenario.renderPrebuiltTightWarm();
+  });
+});
+
+describe("golden render loop (multi-strategy stress)", () => {
+  bench("render prebuilt fit budget (cold summary store)", async () => {
+    await stressScenario.renderPrebuiltFitCold();
+  });
+});
+
+describe("golden render loop (huge trees)", () => {
+  bench("build + render baseline (huge, no fit loop)", async () => {
+    await hugeScenario.renderColdBaseline();
+  });
+
+  bench("render prebuilt baseline (huge, no fit loop)", async () => {
+    await hugeScenario.renderPrebuiltBaseline();
+  });
+
+  bench("render prebuilt fit budget (huge, cold summary store)", async () => {
+    await hugeScenario.renderPrebuiltFitCold();
+  });
+
+  bench("render prebuilt tight budget (huge, warm summary store)", async () => {
+    await hugeScenario.renderPrebuiltTightWarm();
+  });
+});
+
+describe("golden render loop (20k messages)", () => {
+  const options = longScenario.benchOptions;
+
+  bench(
+    "render prebuilt baseline (20k, no fit loop)",
+    async () => {
+      await longScenario.renderPrebuiltBaseline();
+    },
+    options
+  );
+
+  bench(
+    "render prebuilt fit budget (20k, cold summary store)",
+    async () => {
+      await longScenario.renderPrebuiltFitCold();
+    },
+    options
+  );
+
+  bench(
+    "render prebuilt tight budget (20k, warm summary store)",
+    async () => {
+      await longScenario.renderPrebuiltTightWarm();
+    },
+    options
+  );
 });
