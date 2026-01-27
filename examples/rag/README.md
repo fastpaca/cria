@@ -30,7 +30,7 @@ The example uses a simple in-memory store. For production, use:
 // ChromaDB
 import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 
-const store = new ChromaStore<string>({
+const store = new ChromaStore({
   collection,
   embed: async (text) => {
     const response = await openai.embeddings.create({
@@ -39,6 +39,7 @@ const store = new ChromaStore<string>({
     });
     return response.data[0].embedding;
   },
+  schema: z.string(),
 });
 
 // Or Qdrant

@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
+import { z } from "zod";
 import { PostgresStore } from "./postgres";
 
 // Mock data storage
@@ -25,6 +26,26 @@ const INVALID_TABLE_REGEX = /Invalid table name/;
 const normalizeTableName = (identifier: string): string =>
   identifier.replace(/"/g, "");
 
+const requireString = (value: unknown, context: string): string => {
+  if (typeof value !== "string") {
+    throw new Error(`${context} must be a string`);
+  }
+  return value;
+};
+
+const requireDate = (value: unknown, context: string): Date => {
+  if (!(value instanceof Date)) {
+    throw new Error(`${context} must be a Date`);
+  }
+  return value;
+};
+
+const parseJson = (value: unknown, context: string): unknown => {
+  const raw = requireString(value, context);
+  const parsed: unknown = JSON.parse(raw);
+  return parsed;
+};
+
 // Mock pg
 vi.mock("pg", () => {
   return {
@@ -47,7 +68,7 @@ vi.mock("pg", () => {
           if (selectMatch) {
             const tableName = normalizeTableName(selectMatch[1]);
             const table = mockTables.get(tableName);
-            const key = values?.[0] as string;
+            const key = requireString(values?.[0], "select key");
             const row = table?.get(key);
 
             if (row) {
@@ -65,18 +86,18 @@ vi.mock("pg", () => {
               mockTables.set(tableName, table);
             }
 
-            const key = values?.[0] as string;
-            const data = JSON.parse(values?.[1] as string);
-            const timestamp = values?.[2] as Date;
+            const key = requireString(values?.[0], "insert key");
+            const data = parseJson(values?.[1], "insert data");
+            const timestamp = requireDate(values?.[2], "insert timestamp");
             const metadata = values?.[3]
-              ? JSON.parse(values?.[3] as string)
+              ? parseJson(values?.[3], "insert metadata")
               : null;
 
             // Check for existing entry (upsert behavior)
             const existing = table.get(key);
-            const createdAt = existing
-              ? (existing.created_at as Date)
-              : timestamp;
+            const existingCreatedAt = existing?.created_at;
+            const createdAt =
+              existingCreatedAt instanceof Date ? existingCreatedAt : timestamp;
 
             table.set(key, {
               key,
@@ -93,7 +114,7 @@ vi.mock("pg", () => {
           if (deleteMatch) {
             const tableName = normalizeTableName(deleteMatch[1]);
             const table = mockTables.get(tableName);
-            const key = values?.[0] as string;
+            const key = requireString(values?.[0], "delete key");
             const existed = table?.delete(key) ?? false;
 
             return Promise.resolve({ rows: [], rowCount: existed ? 1 : 0 });
@@ -112,13 +133,15 @@ beforeEach(() => {
 });
 
 test("PostgresStore: get returns null for missing key", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
   const result = await store.get("nonexistent");
   expect(result).toBeNull();
 });
 
 test("PostgresStore: set and get", async () => {
-  const store = new PostgresStore<{ value: number }>();
+  const store = new PostgresStore({
+    schema: z.object({ value: z.number() }),
+  });
 
   await store.set("key1", { value: 42 });
 
@@ -130,7 +153,7 @@ test("PostgresStore: set and get", async () => {
 });
 
 test("PostgresStore: set with metadata", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
 
   await store.set("key", "value", { source: "test", priority: 1 });
 
@@ -139,7 +162,9 @@ test("PostgresStore: set with metadata", async () => {
 });
 
 test("PostgresStore: update preserves createdAt, updates updatedAt", async () => {
-  const store = new PostgresStore<{ count: number }>();
+  const store = new PostgresStore({
+    schema: z.object({ count: z.number() }),
+  });
 
   await store.set("key", { count: 1 });
   const first = await store.get("key");
@@ -156,7 +181,7 @@ test("PostgresStore: update preserves createdAt, updates updatedAt", async () =>
 });
 
 test("PostgresStore: delete removes entry", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
 
   await store.set("key", "value");
   expect(await store.get("key")).not.toBeNull();
@@ -167,13 +192,14 @@ test("PostgresStore: delete removes entry", async () => {
 });
 
 test("PostgresStore: delete returns false for missing key", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
   const result = await store.delete("nonexistent");
   expect(result).toBe(false);
 });
 
 test("PostgresStore: uses custom table name", async () => {
-  const store = new PostgresStore<string>({
+  const store = new PostgresStore({
+    schema: z.string(),
     tableName: "my_custom_table",
   });
 
@@ -187,6 +213,7 @@ test("PostgresStore: uses custom table name", async () => {
 test("PostgresStore: rejects unsafe table names", () => {
   expect(() => {
     return new PostgresStore({
+      schema: z.string(),
       tableName: 'users; DROP TABLE "users"; --',
       autoCreateTable: false,
     });
@@ -194,7 +221,8 @@ test("PostgresStore: rejects unsafe table names", () => {
 });
 
 test("PostgresStore: supports schema-qualified table names", async () => {
-  const store = new PostgresStore<string>({
+  const store = new PostgresStore({
+    schema: z.string(),
     tableName: "public.my_table",
   });
 
@@ -205,7 +233,7 @@ test("PostgresStore: supports schema-qualified table names", async () => {
 });
 
 test("PostgresStore: uses default table name", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
 
   await store.set("key", "value");
 
@@ -213,7 +241,7 @@ test("PostgresStore: uses default table name", async () => {
 });
 
 test("PostgresStore: auto-creates table on first operation", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
 
   // Table shouldn't exist yet
   expect(mockTables.has("cria_kv_store")).toBe(false);
@@ -225,7 +253,7 @@ test("PostgresStore: auto-creates table on first operation", async () => {
 });
 
 test("PostgresStore: end closes the pool", async () => {
-  const store = new PostgresStore<string>();
+  const store = new PostgresStore({ schema: z.string() });
   await store.end();
   // If no error, the test passes
 });

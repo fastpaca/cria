@@ -215,7 +215,10 @@ test("render: onFitError fires before FitError throws", async () => {
   ).rejects.toThrow(FIT_ERROR_PATTERN);
 
   expect(errorEvent).not.toBeNull();
-  expect((errorEvent as FitErrorEvent | null)?.priority).toBe(-1);
+  if (!errorEvent) {
+    throw new Error("Expected errorEvent to be set");
+  }
+  expect(errorEvent.priority).toBe(-1);
 });
 
 test("render: hook errors bubble (sync error)", async () => {

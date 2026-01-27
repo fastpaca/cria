@@ -16,15 +16,17 @@ This example requires a running vector DB (Chroma) and an embedding provider key
 
 ```ts
 import { ChromaClient } from "chromadb";
+import { z } from "zod";
 import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 import { cria } from "@fastpaca/cria";
 
 const chroma = new ChromaClient({ path: "http://localhost:8000" });
 const collection = await chroma.getOrCreateCollection({ name: "docs" });
 
-const store = new ChromaStore<string>({
+const store = new ChromaStore({
   collection,
   embed: async (text) => embed(text), // supply your embedding function
+  schema: z.string(),
 });
 
 const prompt = cria

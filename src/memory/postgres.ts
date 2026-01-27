@@ -1,5 +1,6 @@
 import type { PoolConfig } from "pg";
 import { Pool } from "pg";
+import type { ZodType } from "zod";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -27,7 +28,11 @@ const sanitizeIdentifier = (identifier: string): string => {
 /**
  * Configuration options for the Postgres store.
  */
-export interface PostgresStoreOptions extends PoolConfig {
+export interface PostgresStoreOptions<T> extends PoolConfig {
+  /**
+   * Schema used to validate stored data at read boundaries.
+   */
+  schema: ZodType<T>;
   /**
    * Table name for storing entries.
    * The table will be created automatically if it doesn't exist.
@@ -64,13 +69,17 @@ interface KVRow {
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * import { PostgresStore } from "@fastpaca/cria/memory/postgres";
  *
  * // Connect using environment variables (PG* env vars)
- * const store = new PostgresStore<{ content: string }>();
+ * const store = new PostgresStore({
+ *   schema: z.object({ content: z.string() }),
+ * });
  *
  * // Connect with options
- * const store = new PostgresStore<{ content: string }>({
+ * const store = new PostgresStore({
+ *   schema: z.object({ content: z.string() }),
  *   connectionString: "postgres://user:pass@localhost/mydb",
  * });
  *
@@ -80,8 +89,10 @@ interface KVRow {
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * // With custom table name
- * const store = new PostgresStore<string>({
+ * const store = new PostgresStore({
+ *   schema: z.string(),
  *   host: "localhost",
  *   database: "myapp",
  *   tableName: "my_app_memory",
@@ -92,15 +103,17 @@ export class PostgresStore<T = unknown> implements KVMemory<T> {
   private readonly pool: Pool;
   private readonly tableName: string;
   private readonly autoCreateTable: boolean;
+  private readonly schema: ZodType<T>;
   private tableCreated = false;
 
-  constructor(options: PostgresStoreOptions = {}) {
-    const { tableName, autoCreateTable, ...poolConfig } = options;
+  constructor(options: PostgresStoreOptions<T>) {
+    const { tableName, autoCreateTable, schema, ...poolConfig } = options;
 
     const sanitizedTableName = sanitizeIdentifier(tableName ?? "cria_kv_store");
     this.tableName = sanitizedTableName;
     this.pool = new Pool(poolConfig);
     this.autoCreateTable = autoCreateTable ?? true;
+    this.schema = schema;
   }
 
   private async ensureTable(): Promise<void> {
@@ -135,8 +148,18 @@ export class PostgresStore<T = unknown> implements KVMemory<T> {
       return null;
     }
 
+    let data: T;
+    try {
+      data = this.schema.parse(row.data);
+    } catch (error) {
+      throw new Error(
+        `PostgresStore: stored value for key "${key}" failed schema validation`,
+        { cause: error }
+      );
+    }
+
     return {
-      data: row.data as T,
+      data,
       createdAt: new Date(row.created_at).getTime(),
       updatedAt: new Date(row.updated_at).getTime(),
       ...(row.metadata && { metadata: row.metadata }),

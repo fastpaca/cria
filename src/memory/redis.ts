@@ -1,11 +1,16 @@
 import type { RedisOptions } from "ioredis";
 import Redis from "ioredis";
+import type { ZodType } from "zod";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
  * Configuration options for the Redis store.
  */
-export interface RedisStoreOptions extends RedisOptions {
+export interface RedisStoreOptions<T> extends RedisOptions {
+  /**
+   * Schema used to validate stored data at read boundaries.
+   */
+  schema: ZodType<T>;
   /**
    * Key prefix for all entries stored by this instance.
    * Useful for namespacing multiple stores in the same Redis instance.
@@ -35,7 +40,11 @@ interface StoredEntry<T> {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
+const parseStoredEntry = <T>(
+  raw: string,
+  key: string,
+  schema: ZodType<T>
+): StoredEntry<T> => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -51,7 +60,7 @@ const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
     );
   }
 
-  const { data, createdAt, updatedAt, metadata } = parsed;
+  const { data: rawData, createdAt, updatedAt, metadata } = parsed;
 
   if (typeof createdAt !== "number" || typeof updatedAt !== "number") {
     throw new Error(
@@ -65,8 +74,18 @@ const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
     );
   }
 
+  let data: T;
+  try {
+    data = schema.parse(rawData);
+  } catch (error) {
+    throw new Error(
+      `RedisStore: stored value for key "${key}" failed schema validation`,
+      { cause: error }
+    );
+  }
+
   return {
-    data: data as T,
+    data,
     createdAt,
     updatedAt,
     ...(metadata ? { metadata } : {}),
@@ -82,13 +101,17 @@ const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * import { RedisStore } from "@fastpaca/cria/memory/redis";
  *
  * // Connect to localhost:6379
- * const store = new RedisStore<{ content: string }>();
+ * const store = new RedisStore({
+ *   schema: z.object({ content: z.string() }),
+ * });
  *
  * // Connect with options
- * const store = new RedisStore<{ content: string }>({
+ * const store = new RedisStore({
+ *   schema: z.object({ content: z.string() }),
  *   host: "redis.example.com",
  *   port: 6379,
  *   password: "secret",
@@ -100,8 +123,10 @@ const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * // With TTL and custom prefix
- * const store = new RedisStore<string>({
+ * const store = new RedisStore({
+ *   schema: z.string(),
  *   keyPrefix: "myapp:memory:",
  *   ttlSeconds: 3600, // 1 hour TTL
  * });
@@ -111,12 +136,14 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
   private readonly client: Redis;
   private readonly prefix: string;
   private readonly ttlSeconds?: number;
+  private readonly schema: ZodType<T>;
 
-  constructor(options: RedisStoreOptions = {}) {
-    const { keyPrefix, ttlSeconds, ...redisOptions } = options;
+  constructor(options: RedisStoreOptions<T>) {
+    const { keyPrefix, ttlSeconds, schema, ...redisOptions } = options;
 
     this.client = new Redis(redisOptions);
     this.prefix = keyPrefix ?? "cria:kv:";
+    this.schema = schema;
 
     if (ttlSeconds !== undefined) {
       this.ttlSeconds = ttlSeconds;
@@ -135,7 +162,7 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
       return null;
     }
 
-    const stored = parseStoredEntry<T>(raw, prefixedKey);
+    const stored = parseStoredEntry<T>(raw, prefixedKey, this.schema);
 
     return {
       data: stored.data,
@@ -158,7 +185,11 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
     let createdAt = now;
 
     if (existingRaw !== null) {
-      const existing = parseStoredEntry<T>(existingRaw, prefixedKey);
+      const existing = parseStoredEntry<T>(
+        existingRaw,
+        prefixedKey,
+        this.schema
+      );
       createdAt = existing.createdAt;
     }
 
