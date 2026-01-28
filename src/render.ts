@@ -357,43 +357,6 @@ interface FitTokenCaches<TToolIO extends ProviderToolIO> {
   summaries: WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
 }
 
-const providerMessageTokenCaches = new WeakMap<
-  ModelProvider<unknown, ProviderToolIO>,
-  WeakMap<PromptMessageNode<ProviderToolIO>, number>
->();
-
-const providerSummaryCaches = new WeakMap<
-  ModelProvider<unknown, ProviderToolIO>,
-  WeakMap<PromptNode<ProviderToolIO>, SubtreeSummary<ProviderToolIO>>
->();
-
-function getProviderMessageTokenCache<TToolIO extends ProviderToolIO>(
-  provider: ModelProvider<unknown, TToolIO>
-): WeakMap<PromptMessageNode<TToolIO>, number> {
-  const providerKey = provider as ModelProvider<unknown, ProviderToolIO>;
-  let cache = providerMessageTokenCaches.get(providerKey);
-  if (!cache) {
-    cache = new WeakMap<PromptMessageNode<ProviderToolIO>, number>();
-    providerMessageTokenCaches.set(providerKey, cache);
-  }
-  return cache as WeakMap<PromptMessageNode<TToolIO>, number>;
-}
-
-function getProviderSummaryCache<TToolIO extends ProviderToolIO>(
-  provider: ModelProvider<unknown, TToolIO>
-): WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>> {
-  const providerKey = provider as ModelProvider<unknown, ProviderToolIO>;
-  let cache = providerSummaryCaches.get(providerKey);
-  if (!cache) {
-    cache = new WeakMap<
-      PromptNode<ProviderToolIO>,
-      SubtreeSummary<ProviderToolIO>
-    >();
-    providerSummaryCaches.set(providerKey, cache);
-  }
-  return cache as WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
-}
-
 function summarizeNode<TToolIO extends ProviderToolIO>(
   node: PromptNode<TToolIO>,
   provider: ModelProvider<unknown, TToolIO>,
@@ -478,8 +441,8 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   let current: PromptScope<TToolIO> | null = element;
   let iteration = 0;
   const caches: FitTokenCaches<TToolIO> = {
-    messageTokens: getProviderMessageTokenCache(provider),
-    summaries: getProviderSummaryCache(provider),
+    messageTokens: new WeakMap<PromptMessageNode<TToolIO>, number>(),
+    summaries: new WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>(),
   };
   let currentSummary = summarizeNode(current, provider, caches);
   let totalTokens = currentSummary.totalTokens;
