@@ -25,8 +25,13 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
 
   constructor(options: PlainTextCodecOptions = {}) {
     super();
-    this.joinMessagesWith = options.joinMessagesWith ?? "";
+    this.joinMessagesWith = options.joinMessagesWith ?? "\n\n";
     this.includeRolePrefix = options.includeRolePrefix ?? false;
+    if (this.joinMessagesWith.length === 0) {
+      throw new Error(
+        "PlainTextCodec requires a non-empty joinMessagesWith separator."
+      );
+    }
     this.separatorTokens = this.joinMessagesWith
       ? countText(this.joinMessagesWith)
       : 0;
@@ -84,10 +89,6 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
 
   separatorTokenCount(): number {
     return this.separatorTokens;
-  }
-
-  supportsMessageTokenCounting(): boolean {
-    return this.includeRolePrefix || this.joinMessagesWith.length > 0;
   }
 }
 
@@ -157,10 +158,6 @@ export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
     this.codec = codec;
   }
 
-  tokenCountingMode(): "message" | "rendered" {
-    return this.codec.supportsMessageTokenCounting() ? "message" : "rendered";
-  }
-
   countMessageTokens(message: PromptMessage<PlainTextToolIO>): number {
     const renderedMessage = this.codec.renderMessage(message);
     return countText(renderedMessage);
@@ -174,7 +171,19 @@ export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
   }
 
   countTokens(rendered: string): number {
-    return countText(rendered);
+    const layout = this.codec.parse(rendered);
+    let totalTokens = 0;
+    let previous: PromptMessage<PlainTextToolIO> | null = null;
+
+    for (const message of layout) {
+      totalTokens += this.countMessageTokens(message);
+      if (previous) {
+        totalTokens += this.countBoundaryTokens(previous, message);
+      }
+      previous = message;
+    }
+
+    return totalTokens;
   }
 
   completion(rendered: string): string {
