@@ -11,7 +11,7 @@ import {
   type OpenAiToolIO,
 } from "@fastpaca/cria/providers/openai";
 import { render } from "@fastpaca/cria/render";
-import type { PromptMessageNode } from "@fastpaca/cria/types";
+import type { PromptMessage, PromptMessageNode } from "@fastpaca/cria/types";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { expect, test } from "vitest";
 
@@ -22,6 +22,10 @@ class RenderOnlyChatProvider extends ProtocolProvider<
 > {
   constructor() {
     super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
+  }
+
+  countMessageTokens(_message: PromptMessage<OpenAiToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {
@@ -44,6 +48,10 @@ class RenderOnlyResponsesProvider extends ProtocolProvider<
 > {
   constructor() {
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
+  }
+
+  countMessageTokens(_message: PromptMessage<OpenAiToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

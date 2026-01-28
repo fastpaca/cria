@@ -6,6 +6,7 @@ import {
   type MaybePromise,
   type PromptLayout,
   type PromptMessage,
+  type PromptMessageNode,
   type PromptNode,
   type PromptPart,
   type PromptScope,
@@ -103,7 +104,7 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
     return renderOutput(resolvedElement, provider);
   }
 
-  const fitted = await fitToBudget(
+  const fitResult = await fitToBudget(
     resolvedElement,
     options.budget,
     provider,
@@ -111,11 +112,7 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
     { provider }
   );
 
-  if (!fitted) {
-    return renderOutput({ kind: "scope", priority: 0, children: [] }, provider);
-  }
-
-  return renderOutput(fitted, provider);
+  return fitResult.output;
 }
 
 function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
@@ -351,18 +348,149 @@ function collectProviders<TToolIO extends ProviderToolIO>(
   return found;
 }
 
-async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
+interface FitResult<TRendered, TToolIO extends ProviderToolIO> {
+  scope: PromptScope<TToolIO> | null;
+  output: TRendered;
+  totalTokens: number;
+  iterations: number;
+}
+
+interface SubtreeSummary<TToolIO extends ProviderToolIO> {
+  totalTokens: number;
+  messageCount: number;
+  firstMessage: PromptMessage<TToolIO> | null;
+  lastMessage: PromptMessage<TToolIO> | null;
+}
+
+interface FitTokenCaches<TToolIO extends ProviderToolIO> {
+  messageTokens: WeakMap<PromptMessageNode<TToolIO>, number>;
+  summaries: WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
+}
+
+const providerMessageTokenCaches = new WeakMap<
+  ModelProvider<unknown, ProviderToolIO>,
+  WeakMap<PromptMessageNode<ProviderToolIO>, number>
+>();
+
+const providerSummaryCaches = new WeakMap<
+  ModelProvider<unknown, ProviderToolIO>,
+  WeakMap<PromptNode<ProviderToolIO>, SubtreeSummary<ProviderToolIO>>
+>();
+
+function getProviderMessageTokenCache<TToolIO extends ProviderToolIO>(
+  provider: ModelProvider<unknown, TToolIO>
+): WeakMap<PromptMessageNode<TToolIO>, number> {
+  const providerKey = provider as ModelProvider<unknown, ProviderToolIO>;
+  let cache = providerMessageTokenCaches.get(providerKey);
+  if (!cache) {
+    cache = new WeakMap<PromptMessageNode<ProviderToolIO>, number>();
+    providerMessageTokenCaches.set(providerKey, cache);
+  }
+  return cache as WeakMap<PromptMessageNode<TToolIO>, number>;
+}
+
+function getProviderSummaryCache<TToolIO extends ProviderToolIO>(
+  provider: ModelProvider<unknown, TToolIO>
+): WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>> {
+  const providerKey = provider as ModelProvider<unknown, ProviderToolIO>;
+  let cache = providerSummaryCaches.get(providerKey);
+  if (!cache) {
+    cache = new WeakMap<
+      PromptNode<ProviderToolIO>,
+      SubtreeSummary<ProviderToolIO>
+    >();
+    providerSummaryCaches.set(providerKey, cache);
+  }
+  return cache as WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
+}
+
+function summarizeNode<TToolIO extends ProviderToolIO>(
+  node: PromptNode<TToolIO>,
+  provider: ModelProvider<unknown, TToolIO>,
+  caches: FitTokenCaches<TToolIO>
+): SubtreeSummary<TToolIO> {
+  const cached = caches.summaries.get(node);
+  if (cached) {
+    return cached;
+  }
+
+  if (node.kind === "message") {
+    const message = buildMessage(node);
+    const cachedTokens = caches.messageTokens.get(node);
+    const tokens =
+      cachedTokens === undefined
+        ? provider.countMessageTokens(message)
+        : cachedTokens;
+    if (cachedTokens === undefined) {
+      caches.messageTokens.set(node, tokens);
+    }
+    const summary: SubtreeSummary<TToolIO> = {
+      totalTokens: tokens,
+      messageCount: 1,
+      firstMessage: message,
+      lastMessage: message,
+    };
+    caches.summaries.set(node, summary);
+    return summary;
+  }
+
+  let totalTokens = 0;
+  let messageCount = 0;
+  let firstMessage: PromptMessage<TToolIO> | null = null;
+  let lastMessage: PromptMessage<TToolIO> | null = null;
+  let previousLast: PromptMessage<TToolIO> | null = null;
+
+  for (const child of node.children) {
+    const childSummary = summarizeNode(child, provider, caches);
+    if (childSummary.messageCount === 0) {
+      continue;
+    }
+
+    totalTokens += childSummary.totalTokens;
+    if (previousLast && childSummary.firstMessage) {
+      totalTokens += provider.countBoundaryTokens(
+        previousLast,
+        childSummary.firstMessage
+      );
+    }
+
+    previousLast = childSummary.lastMessage;
+    if (!firstMessage) {
+      firstMessage = childSummary.firstMessage;
+    }
+    lastMessage = childSummary.lastMessage;
+    messageCount += childSummary.messageCount;
+  }
+
+  const summary: SubtreeSummary<TToolIO> = {
+    totalTokens,
+    messageCount,
+    firstMessage,
+    lastMessage,
+  };
+  caches.summaries.set(node, summary);
+  return summary;
+}
+
+async function fitToBudgetRenderedCounting<
+  TRendered,
+  TToolIO extends ProviderToolIO,
+>(
   element: PromptTree<TToolIO>,
   budget: number,
   provider: ModelProvider<TRendered, TToolIO>,
   hooks: RenderHooks<TToolIO> | undefined,
   baseContext: CriaContext
-): Promise<PromptScope<TToolIO> | null> {
-  // Fit loop is render-driven: render+count, then apply the lowest-importance
-  // strategy, re-render, and repeat until we fit or cannot reduce further.
+): Promise<FitResult<TRendered, TToolIO>> {
   let current: PromptScope<TToolIO> | null = element;
   let iteration = 0;
-  let totalTokens = renderAndCount(element, provider).tokens;
+  const emptyScope: PromptScope<TToolIO> = {
+    kind: "scope",
+    priority: 0,
+    children: [],
+  };
+  let lastRender = renderAndCount(current, provider);
+  let totalTokens = lastRender.tokens;
 
   await safeInvoke(hooks?.onFitStart, {
     element,
@@ -434,7 +562,162 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     }
     current = applied.element;
 
-    const nextTokens = current ? renderAndCount(current, provider).tokens : 0;
+    const nextScope = current ?? emptyScope;
+    const nextRender = renderAndCount(nextScope, provider);
+    const nextTokens = nextRender.tokens;
+    if (nextTokens >= totalTokens) {
+      const error = new FitError({
+        overBudgetBy: nextTokens - budget,
+        priority: lowestImportancePriority,
+        iteration,
+        budget,
+        totalTokens: nextTokens,
+      });
+      await safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: lowestImportancePriority,
+        totalTokens: nextTokens,
+      });
+      throw error;
+    }
+
+    totalTokens = nextTokens;
+    lastRender = nextRender;
+  }
+
+  if (lastRender.tokens > budget) {
+    const error = new FitError({
+      overBudgetBy: lastRender.tokens - budget,
+      priority: -1,
+      iteration,
+      budget,
+      totalTokens: lastRender.tokens,
+    });
+    await safeInvoke(hooks?.onFitError, {
+      error,
+      iteration,
+      priority: -1,
+      totalTokens: lastRender.tokens,
+    });
+    throw error;
+  }
+
+  await safeInvoke(hooks?.onFitComplete, {
+    result: current,
+    iterations: iteration,
+    totalTokens: lastRender.tokens,
+  });
+
+  return {
+    scope: current,
+    output: lastRender.output,
+    totalTokens: lastRender.tokens,
+    iterations: iteration,
+  };
+}
+
+async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
+  element: PromptTree<TToolIO>,
+  budget: number,
+  provider: ModelProvider<TRendered, TToolIO>,
+  hooks: RenderHooks<TToolIO> | undefined,
+  baseContext: CriaContext
+): Promise<FitResult<TRendered, TToolIO>> {
+  if (provider.tokenCountingMode() === "rendered") {
+    return fitToBudgetRenderedCounting(
+      element,
+      budget,
+      provider,
+      hooks,
+      baseContext
+    );
+  }
+
+  // Fit loop is render-driven: render+count, then apply the lowest-importance
+  // strategy, re-render, and repeat until we fit or cannot reduce further.
+  let current: PromptScope<TToolIO> | null = element;
+  let iteration = 0;
+  const caches: FitTokenCaches<TToolIO> = {
+    messageTokens: getProviderMessageTokenCache(provider),
+    summaries: getProviderSummaryCache(provider),
+  };
+  const initialSummary = summarizeNode(current, provider, caches);
+  let totalTokens = initialSummary.totalTokens;
+
+  await safeInvoke(hooks?.onFitStart, {
+    element,
+    budget,
+    totalTokens,
+  });
+
+  while (current && totalTokens > budget) {
+    iteration += 1;
+
+    const lowestImportancePriority = findLowestImportancePriority(current);
+    if (lowestImportancePriority === null) {
+      const error = new FitError({
+        overBudgetBy: totalTokens - budget,
+        priority: -1,
+        iteration,
+        budget,
+        totalTokens,
+      });
+      await safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: -1,
+        totalTokens,
+      });
+      throw error;
+    }
+
+    await safeInvoke(hooks?.onFitIteration, {
+      iteration,
+      priority: lowestImportancePriority,
+      totalTokens,
+    });
+
+    const baseCtx: BaseContext<TToolIO> = {
+      totalTokens,
+      iteration,
+    };
+
+    const applied: { element: PromptNode<TToolIO> | null; applied: boolean } =
+      await applyStrategiesAtPriority(
+        current,
+        lowestImportancePriority,
+        baseCtx,
+        baseContext,
+        hooks,
+        iteration
+      );
+
+    if (!applied.applied) {
+      const error = new FitError({
+        overBudgetBy: totalTokens - budget,
+        priority: lowestImportancePriority,
+        iteration,
+        budget,
+        totalTokens,
+      });
+      await safeInvoke(hooks?.onFitError, {
+        error,
+        iteration,
+        priority: lowestImportancePriority,
+        totalTokens,
+      });
+      throw error;
+    }
+
+    if (applied.element && applied.element.kind !== "scope") {
+      throw new Error("Root scope was replaced by a message node.");
+    }
+    current = applied.element;
+
+    const nextTokens = current
+      ? summarizeNode(current, provider, caches).totalTokens
+      : 0;
     if (nextTokens >= totalTokens) {
       const error = new FitError({
         overBudgetBy: nextTokens - budget,
@@ -455,13 +738,25 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     totalTokens = nextTokens;
   }
 
+  const finalScope: PromptScope<TToolIO> = current ?? {
+    kind: "scope",
+    priority: 0,
+    children: [],
+  };
+  const output = renderOutput(finalScope, provider);
+
   await safeInvoke(hooks?.onFitComplete, {
     result: current,
     iterations: iteration,
     totalTokens,
   });
 
-  return current;
+  return {
+    scope: current,
+    output,
+    totalTokens,
+    iterations: iteration,
+  };
 }
 
 function findLowestImportancePriority<TToolIO extends ProviderToolIO>(

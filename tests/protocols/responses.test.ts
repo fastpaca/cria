@@ -5,7 +5,7 @@ import {
 } from "@fastpaca/cria/protocols/responses";
 import { type MessageCodec, ModelProvider } from "@fastpaca/cria/provider";
 import { render } from "@fastpaca/cria/render";
-import type { PromptMessageNode } from "@fastpaca/cria/types";
+import type { PromptMessage, PromptMessageNode } from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {
@@ -14,6 +14,10 @@ class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {
   constructor(codec: MessageCodec<T, ResponsesToolIO>) {
     super();
     this.codec = codec;
+  }
+
+  countMessageTokens(_message: PromptMessage<ResponsesToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

@@ -21,17 +21,19 @@ const ROLE_PREFIX_RE = /^(system|developer|user|assistant|tool):\s*/;
 export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
   private readonly joinMessagesWith: string;
   private readonly includeRolePrefix: boolean;
+  private readonly separatorTokens: number;
 
   constructor(options: PlainTextCodecOptions = {}) {
     super();
     this.joinMessagesWith = options.joinMessagesWith ?? "";
     this.includeRolePrefix = options.includeRolePrefix ?? false;
+    this.separatorTokens = this.joinMessagesWith
+      ? countText(this.joinMessagesWith)
+      : 0;
   }
 
   override render(layout: PromptLayout<PlainTextToolIO>): string {
-    const messages = layout.map((message) =>
-      formatPlaintextMessage(message, this.includeRolePrefix)
-    );
+    const messages = layout.map((message) => this.renderMessage(message));
 
     return messages.join(this.joinMessagesWith);
   }
@@ -74,6 +76,18 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
 
         return { role: "assistant", text: segment };
       });
+  }
+
+  renderMessage(message: PromptMessage<PlainTextToolIO>): string {
+    return formatPlaintextMessage(message, this.includeRolePrefix);
+  }
+
+  separatorTokenCount(): number {
+    return this.separatorTokens;
+  }
+
+  supportsMessageTokenCounting(): boolean {
+    return this.includeRolePrefix || this.joinMessagesWith.length > 0;
   }
 }
 
@@ -133,11 +147,30 @@ export function createTestProvider(
 }
 
 export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
-  readonly codec: MessageCodec<string, PlainTextToolIO>;
+  readonly codec: PlainTextCodec;
 
   constructor(codec: MessageCodec<string, PlainTextToolIO>) {
     super();
+    if (!(codec instanceof PlainTextCodec)) {
+      throw new Error("PlainTextProvider requires a PlainTextCodec.");
+    }
     this.codec = codec;
+  }
+
+  tokenCountingMode(): "message" | "rendered" {
+    return this.codec.supportsMessageTokenCounting() ? "message" : "rendered";
+  }
+
+  countMessageTokens(message: PromptMessage<PlainTextToolIO>): number {
+    const renderedMessage = this.codec.renderMessage(message);
+    return countText(renderedMessage);
+  }
+
+  countBoundaryTokens(
+    _prev: PromptMessage<PlainTextToolIO> | null,
+    _next: PromptMessage<PlainTextToolIO>
+  ): number {
+    return this.codec.separatorTokenCount();
   }
 
   countTokens(rendered: string): number {

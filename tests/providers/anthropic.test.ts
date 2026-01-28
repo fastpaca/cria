@@ -8,7 +8,7 @@ import {
   type AnthropicToolIO,
 } from "@fastpaca/cria/providers/anthropic";
 import { render } from "@fastpaca/cria/render";
-import type { PromptMessageNode } from "@fastpaca/cria/types";
+import type { PromptMessage, PromptMessageNode } from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
 
 class RenderOnlyProvider extends ProtocolProvider<
@@ -21,6 +21,10 @@ class RenderOnlyProvider extends ProtocolProvider<
       new ChatCompletionsProtocol<AnthropicToolIO>(),
       new AnthropicAdapter()
     );
+  }
+
+  countMessageTokens(_message: PromptMessage<AnthropicToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

@@ -14,10 +14,11 @@ import type {
 } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
 import { ProtocolProvider, type ProviderAdapter } from "../provider";
-import type { ToolCallPart } from "../types";
+import type { PromptMessage, ToolCallPart } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
+const SYSTEM_JOIN_TOKENS = countText("\n\n");
 
 /**
  * Rendered Anthropic input (system + messages array).
@@ -314,6 +315,48 @@ function countAnthropicMessageTokens(msg: MessageParam): number {
   return msg.content.reduce((n, b) => n + countContentBlockTokens(b), 0);
 }
 
+function countToolResultTokens(
+  content: ToolResultBlockParam["content"]
+): number {
+  if (typeof content === "string") {
+    return countText(content);
+  }
+  if (Array.isArray(content)) {
+    let tokens = 0;
+    for (const entry of content) {
+      if (entry.type === "text") {
+        tokens += countText(entry.text);
+      }
+    }
+    return tokens;
+  }
+  return 0;
+}
+
+function countLayoutMessageTokens(
+  message: PromptMessage<AnthropicToolIO>
+): number {
+  if (message.role === "tool") {
+    return countToolResultTokens(message.output);
+  }
+
+  if (message.role !== "assistant") {
+    return countText(message.text);
+  }
+
+  const combinedText = message.reasoning
+    ? `${message.text}<thinking>\n${message.reasoning}\n</thinking>`
+    : message.text;
+
+  let tokens = combinedText ? countText(combinedText) : 0;
+  if (message.toolCalls) {
+    for (const call of message.toolCalls) {
+      tokens += countText(call.toolName + serializeToolInput(call.input));
+    }
+  }
+  return tokens;
+}
+
 /** Extract concatenated text from Anthropic response content blocks. */
 const extractText = (content: Anthropic.Messages.ContentBlock[]) =>
   content
@@ -341,6 +384,19 @@ export class AnthropicProvider extends ProtocolProvider<
     this.client = client;
     this.model = model;
     this.maxTokens = maxTokens;
+  }
+
+  countMessageTokens(message: PromptMessage<AnthropicToolIO>): number {
+    return countLayoutMessageTokens(message);
+  }
+
+  countBoundaryTokens(
+    prev: PromptMessage<AnthropicToolIO> | null,
+    next: PromptMessage<AnthropicToolIO>
+  ): number {
+    const prevIsSystem = prev?.role === "system" || prev?.role === "developer";
+    const nextIsSystem = next.role === "system" || next.role === "developer";
+    return prevIsSystem && nextIsSystem ? SYSTEM_JOIN_TOKENS : 0;
   }
 
   /** Count tokens for Anthropic rendered input. */

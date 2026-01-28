@@ -7,7 +7,7 @@ import {
   type AiSdkToolIO,
 } from "@fastpaca/cria/providers/ai-sdk";
 import { render } from "@fastpaca/cria/render";
-import type { PromptMessageNode } from "@fastpaca/cria/types";
+import type { PromptMessage, PromptMessageNode } from "@fastpaca/cria/types";
 import type { ModelMessage } from "ai";
 import { expect, test } from "vitest";
 
@@ -18,6 +18,10 @@ class RenderOnlyProvider extends ProtocolProvider<
 > {
   constructor() {
     super(new ChatCompletionsProtocol<AiSdkToolIO>(), new AiSdkAdapter());
+  }
+
+  countMessageTokens(_message: PromptMessage<AiSdkToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

@@ -1,6 +1,7 @@
 import { c, cria } from "@fastpaca/cria/dsl";
 import { createJudge } from "@fastpaca/cria/eval";
 import { ModelProvider } from "@fastpaca/cria/provider";
+import type { PromptMessage } from "@fastpaca/cria/types";
 import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
@@ -22,6 +23,25 @@ class MockProvider extends ModelProvider<string> {
     super();
     this.completionValue = completionValue;
     this.objectValue = objectValue;
+  }
+
+  countMessageTokens(message: PromptMessage): number {
+    if (message.role === "tool") {
+      return countText(String(message.output));
+    }
+
+    let tokens = countText(message.text);
+    if (message.role === "assistant") {
+      if (message.reasoning) {
+        tokens += countText(message.reasoning);
+      }
+      if (message.toolCalls) {
+        for (const call of message.toolCalls) {
+          tokens += countText(call.toolName + String(call.input));
+        }
+      }
+    }
+    return tokens;
   }
 
   countTokens(rendered: string): number {
