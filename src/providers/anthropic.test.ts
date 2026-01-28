@@ -4,7 +4,7 @@ import type { ChatCompletionsInput } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
 import { ProtocolProvider } from "../provider";
 import { render } from "../render";
-import type { PromptMessageNode } from "../types";
+import type { PromptMessage, PromptMessageNode } from "../types";
 import {
   AnthropicAdapter,
   type AnthropicRenderResult,
@@ -21,6 +21,10 @@ class RenderOnlyProvider extends ProtocolProvider<
       new ChatCompletionsProtocol<AnthropicToolIO>(),
       new AnthropicAdapter()
     );
+  }
+
+  countMessageTokens(_message: PromptMessage<AnthropicToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

@@ -2,6 +2,7 @@ import {
   type ChatCompletionsInput,
   cria,
   InMemoryStore,
+  type PromptMessage,
   type PromptNode,
   type PromptPart,
   type PromptTree,
@@ -76,6 +77,10 @@ class OpenAIChatOfflineProvider extends ProtocolProvider<
     );
   }
 
+  countMessageTokens(message: PromptMessage<OpenAIChatToolIO>): number {
+    return countChatLayoutMessageTokens(message);
+  }
+
   countTokens(messages: ChatCompletionMessageParam[]): number {
     let total = 0;
     for (const message of messages) {
@@ -109,6 +114,10 @@ class OpenAIResponsesOfflineProvider extends ProtocolProvider<
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
   }
 
+  countMessageTokens(message: PromptMessage<OpenAIResponsesToolIO>): number {
+    return countResponsesLayoutMessageTokens(message);
+  }
+
   countTokens(items: ResponseInputItem[]): number {
     let total = 0;
     for (const item of items) {
@@ -139,6 +148,10 @@ class AiSdkOfflineProvider extends ProtocolProvider<
     super(new ChatCompletionsProtocol<AiSdkToolIO>(), new AiSdkAdapter());
   }
 
+  countMessageTokens(message: PromptMessage<AiSdkToolIO>): number {
+    return countAiSdkLayoutMessageTokens(message);
+  }
+
   countTokens(messages: ModelMessage[]): number {
     let total = 0;
     for (const message of messages) {
@@ -161,6 +174,26 @@ function countChatMessageTokens(message: ChatCompletionMessageParam): number {
     "content" in message ? countChatContentTokens(message.content) : 0;
   const toolTokens = countChatToolCallTokens(message);
   return contentTokens + toolTokens;
+}
+
+function countChatLayoutMessageTokens(
+  message: PromptMessage<OpenAIChatToolIO>
+): number {
+  if (message.role === "tool") {
+    return countText(String(message.output));
+  }
+
+  if (message.role !== "assistant") {
+    return countText(message.text);
+  }
+
+  let tokens = countText(message.text);
+  if (message.toolCalls) {
+    for (const call of message.toolCalls) {
+      tokens += countText(call.toolName + call.input);
+    }
+  }
+  return tokens;
 }
 
 function countResponseItemTokens(item: ResponseInputItem): number {
@@ -191,6 +224,29 @@ function countResponseItemTokens(item: ResponseInputItem): number {
   return 0;
 }
 
+function countResponsesLayoutMessageTokens(
+  message: PromptMessage<OpenAIResponsesToolIO>
+): number {
+  if (message.role === "tool") {
+    return countText(String(message.output));
+  }
+
+  if (message.role !== "assistant") {
+    return countText(message.text);
+  }
+
+  let tokens = countText(message.text);
+  if (message.reasoning) {
+    tokens += countText(message.reasoning);
+  }
+  if (message.toolCalls) {
+    for (const call of message.toolCalls) {
+      tokens += countText(call.toolName + call.input);
+    }
+  }
+  return tokens;
+}
+
 function countModelMessageTokens(message: ModelMessage): number {
   if (typeof message.content === "string") {
     return countText(message.content);
@@ -218,6 +274,37 @@ function countModelMessageTokens(message: ModelMessage): number {
           ? part.output
           : JSON.stringify(part.output);
       tokens += countText(output);
+    }
+  }
+  return tokens;
+}
+
+function countAiSdkLayoutMessageTokens(
+  message: PromptMessage<AiSdkToolIO>
+): number {
+  if (message.role === "tool") {
+    const output =
+      typeof message.output === "string"
+        ? message.output
+        : JSON.stringify(message.output);
+    return countText(output ?? "");
+  }
+
+  if (message.role !== "assistant") {
+    return countText(message.text);
+  }
+
+  let tokens = countText(message.text);
+  if (message.reasoning) {
+    tokens += countText(message.reasoning);
+  }
+  if (message.toolCalls) {
+    for (const call of message.toolCalls) {
+      const input =
+        typeof call.input === "string"
+          ? call.input
+          : JSON.stringify(call.input);
+      tokens += countText(call.toolName + (input ?? ""));
     }
   }
   return tokens;

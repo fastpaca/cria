@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { c, cria } from "../dsl";
 import { ModelProvider } from "../provider";
 import { createPlainTextCodec } from "../testing/plaintext";
+import type { PromptMessage } from "../types";
 import { createJudge } from "./index";
 
 const codec = createPlainTextCodec({
@@ -22,6 +23,25 @@ class MockProvider extends ModelProvider<string> {
     super();
     this.completionValue = completionValue;
     this.objectValue = objectValue;
+  }
+
+  countMessageTokens(message: PromptMessage): number {
+    if (message.role === "tool") {
+      return countText(String(message.output));
+    }
+
+    let tokens = countText(message.text);
+    if (message.role === "assistant") {
+      if (message.reasoning) {
+        tokens += countText(message.reasoning);
+      }
+      if (message.toolCalls) {
+        for (const call of message.toolCalls) {
+          tokens += countText(call.toolName + String(call.input));
+        }
+      }
+    }
+    return tokens;
   }
 
   countTokens(rendered: string): number {

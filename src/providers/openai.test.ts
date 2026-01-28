@@ -7,7 +7,7 @@ import type { ResponsesInput } from "../protocols/responses";
 import { ResponsesProtocol } from "../protocols/responses";
 import { ProtocolProvider } from "../provider";
 import { render } from "../render";
-import type { PromptMessageNode } from "../types";
+import type { PromptMessage, PromptMessageNode } from "../types";
 import {
   OpenAIChatAdapter,
   type OpenAIResponses,
@@ -22,6 +22,10 @@ class RenderOnlyChatProvider extends ProtocolProvider<
 > {
   constructor() {
     super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
+  }
+
+  countMessageTokens(_message: PromptMessage<OpenAiToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {
@@ -44,6 +48,10 @@ class RenderOnlyResponsesProvider extends ProtocolProvider<
 > {
   constructor() {
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
+  }
+
+  countMessageTokens(_message: PromptMessage<OpenAiToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

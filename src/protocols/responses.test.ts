@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { cria } from "../dsl";
 import { type MessageCodec, ModelProvider } from "../provider";
 import { render } from "../render";
-import type { PromptMessageNode } from "../types";
+import type { PromptMessage, PromptMessageNode } from "../types";
 import { ResponsesProtocol, type ResponsesToolIO } from "./responses";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {
@@ -11,6 +11,10 @@ class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {
   constructor(codec: MessageCodec<T, ResponsesToolIO>) {
     super();
     this.codec = codec;
+  }
+
+  countMessageTokens(_message: PromptMessage<ResponsesToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {

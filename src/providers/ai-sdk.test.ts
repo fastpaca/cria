@@ -5,7 +5,7 @@ import type { ChatCompletionsInput } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
 import { ProtocolProvider } from "../provider";
 import { render } from "../render";
-import type { PromptMessageNode } from "../types";
+import type { PromptMessage, PromptMessageNode } from "../types";
 import { AiSdkAdapter, type AiSdkToolIO } from "./ai-sdk";
 
 class RenderOnlyProvider extends ProtocolProvider<
@@ -15,6 +15,10 @@ class RenderOnlyProvider extends ProtocolProvider<
 > {
   constructor() {
     super(new ChatCompletionsProtocol<AiSdkToolIO>(), new AiSdkAdapter());
+  }
+
+  countMessageTokens(_message: PromptMessage<AiSdkToolIO>): number {
+    return 0;
   }
 
   countTokens(): number {
