@@ -276,7 +276,7 @@ test("render: assistant message fields map to output", async () => {
 
   const result = await render(element, {
     provider,
-    budget: tokensFor("Hello Thinking[tool-call:calc]1"),
+    budget: tokensFor("Hello \n\nThinking[tool-call:calc]1"),
   });
   expect(result).toContain("Hello");
 });

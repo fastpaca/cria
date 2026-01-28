@@ -349,6 +349,7 @@ interface SubtreeSummary<TToolIO extends ProviderToolIO> {
   messageCount: number;
   firstMessage: PromptMessage<TToolIO> | null;
   lastMessage: PromptMessage<TToolIO> | null;
+  maxPriority: number | null;
 }
 
 interface FitTokenCaches<TToolIO extends ProviderToolIO> {
@@ -418,6 +419,7 @@ function summarizeNode<TToolIO extends ProviderToolIO>(
       messageCount: 1,
       firstMessage: message,
       lastMessage: message,
+      maxPriority: null,
     };
     caches.summaries.set(node, summary);
     return summary;
@@ -428,9 +430,11 @@ function summarizeNode<TToolIO extends ProviderToolIO>(
   let firstMessage: PromptMessage<TToolIO> | null = null;
   let lastMessage: PromptMessage<TToolIO> | null = null;
   let previousLast: PromptMessage<TToolIO> | null = null;
+  let maxPriority: number | null = node.strategy ? node.priority : null;
 
   for (const child of node.children) {
     const childSummary = summarizeNode(child, provider, caches);
+    maxPriority = maxNullable(maxPriority, childSummary.maxPriority);
     if (childSummary.messageCount === 0) {
       continue;
     }
@@ -456,6 +460,7 @@ function summarizeNode<TToolIO extends ProviderToolIO>(
     messageCount,
     firstMessage,
     lastMessage,
+    maxPriority,
   };
   caches.summaries.set(node, summary);
   return summary;
@@ -476,8 +481,8 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     messageTokens: getProviderMessageTokenCache(provider),
     summaries: getProviderSummaryCache(provider),
   };
-  const initialSummary = summarizeNode(current, provider, caches);
-  let totalTokens = initialSummary.totalTokens;
+  let currentSummary = summarizeNode(current, provider, caches);
+  let totalTokens = currentSummary.totalTokens;
 
   await safeInvoke(hooks?.onFitStart, {
     element,
@@ -488,7 +493,7 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   while (current && totalTokens > budget) {
     iteration += 1;
 
-    const lowestImportancePriority = findLowestImportancePriority(current);
+    const lowestImportancePriority = currentSummary.maxPriority;
     if (lowestImportancePriority === null) {
       const error = new FitError({
         overBudgetBy: totalTokens - budget,
@@ -517,15 +522,16 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
       iteration,
     };
 
-    const applied: { element: PromptNode<TToolIO> | null; applied: boolean } =
-      await applyStrategiesAtPriority(
-        current,
-        lowestImportancePriority,
-        baseCtx,
-        baseContext,
-        hooks,
-        iteration
-      );
+    const applied = await applyStrategiesAtPriority(
+      current,
+      lowestImportancePriority,
+      baseCtx,
+      baseContext,
+      hooks,
+      iteration,
+      provider,
+      caches
+    );
 
     if (!applied.applied) {
       const error = new FitError({
@@ -549,9 +555,8 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     }
     current = applied.element;
 
-    const nextTokens = current
-      ? summarizeNode(current, provider, caches).totalTokens
-      : 0;
+    const nextSummary = applied.summary;
+    const nextTokens = nextSummary.totalTokens;
     if (nextTokens >= totalTokens) {
       const error = new FitError({
         overBudgetBy: nextTokens - budget,
@@ -570,6 +575,7 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     }
 
     totalTokens = nextTokens;
+    currentSummary = nextSummary;
   }
 
   const finalScope: PromptScope<TToolIO> = current ?? {
@@ -582,32 +588,15 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   await safeInvoke(hooks?.onFitComplete, {
     result: current,
     iterations: iteration,
-    totalTokens,
+    totalTokens: currentSummary.totalTokens,
   });
 
   return {
     scope: current,
     output,
-    totalTokens,
+    totalTokens: currentSummary.totalTokens,
     iterations: iteration,
   };
-}
-
-function findLowestImportancePriority<TToolIO extends ProviderToolIO>(
-  node: PromptNode<TToolIO>
-): number | null {
-  if (node.kind === "message") {
-    return null;
-  }
-
-  let maxPriority: number | null = node.strategy ? node.priority : null;
-
-  for (const child of node.children) {
-    const childMax = findLowestImportancePriority(child);
-    maxPriority = maxNullable(maxPriority, childMax);
-  }
-
-  return maxPriority;
 }
 
 function maxNullable(a: number | null, b: number | null): number | null {
@@ -631,10 +620,20 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
   baseCtx: BaseContext<TToolIO>,
   inheritedContext: CriaContext,
   hooks: RenderHooks<TToolIO> | undefined,
-  iteration: number
-): Promise<{ element: PromptNode<TToolIO> | null; applied: boolean }> {
+  iteration: number,
+  provider: ModelProvider<unknown, TToolIO>,
+  caches: FitTokenCaches<TToolIO>
+): Promise<{
+  element: PromptNode<TToolIO> | null;
+  applied: boolean;
+  summary: SubtreeSummary<TToolIO>;
+}> {
   if (element.kind === "message") {
-    return { element, applied: false };
+    return {
+      element,
+      applied: false,
+      summary: summarizeNode(element, provider, caches),
+    };
   }
 
   // Bottom-up: rewrite children first so nested strategies get first crack.
@@ -644,25 +643,55 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
     : inheritedContext;
 
   let childrenChanged = false;
+  let applied = false;
   const nextChildren: PromptNode<TToolIO>[] = [];
+  let totalTokens = 0;
+  let messageCount = 0;
+  let firstMessage: PromptMessage<TToolIO> | null = null;
+  let lastMessage: PromptMessage<TToolIO> | null = null;
+  let previousLast: PromptMessage<TToolIO> | null = null;
+  let maxPriority: number | null = element.strategy ? element.priority : null;
 
   for (const child of element.children) {
-    const applied = await applyStrategiesAtPriority(
+    const childResult = await applyStrategiesAtPriority(
       child,
       priority,
       baseCtx,
       mergedContext,
       hooks,
-      iteration
+      iteration,
+      provider,
+      caches
     );
-    if (applied.applied) {
+    if (childResult.applied) {
       childrenChanged = true;
+      applied = true;
     }
-    if (applied.element) {
-      nextChildren.push(applied.element);
+    if (childResult.element) {
+      nextChildren.push(childResult.element);
     } else {
       childrenChanged = true;
     }
+
+    maxPriority = maxNullable(maxPriority, childResult.summary.maxPriority);
+    if (childResult.summary.messageCount === 0) {
+      continue;
+    }
+
+    totalTokens += childResult.summary.totalTokens;
+    if (previousLast && childResult.summary.firstMessage) {
+      totalTokens += provider.countBoundaryTokens(
+        previousLast,
+        childResult.summary.firstMessage
+      );
+    }
+
+    previousLast = childResult.summary.lastMessage;
+    if (!firstMessage) {
+      firstMessage = childResult.summary.firstMessage;
+    }
+    lastMessage = childResult.summary.lastMessage;
+    messageCount += childResult.summary.messageCount;
   }
 
   const nextElement = childrenChanged
@@ -681,8 +710,35 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
       priority,
       iteration,
     });
-    return { element: replacement, applied: true };
+    if (!replacement) {
+      return {
+        element: null,
+        applied: true,
+        summary: {
+          totalTokens: 0,
+          messageCount: 0,
+          firstMessage: null,
+          lastMessage: null,
+          maxPriority: null,
+        },
+      };
+    }
+
+    return {
+      element: replacement,
+      applied: true,
+      summary: summarizeNode(replacement, provider, caches),
+    };
   }
 
-  return { element: nextElement, applied: childrenChanged };
+  const summary: SubtreeSummary<TToolIO> = {
+    totalTokens,
+    messageCount,
+    firstMessage,
+    lastMessage,
+    maxPriority,
+  };
+  caches.summaries.set(nextElement, summary);
+
+  return { element: nextElement, applied: applied || childrenChanged, summary };
 }
