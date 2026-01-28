@@ -54,18 +54,13 @@ export abstract class ModelProvider<
   /** Codec that translates between PromptLayout and provider-native input. */
   abstract readonly codec: MessageCodec<TRendered, TToolIO>;
 
-  /** Count tokens for a single PromptLayout message. */
-  abstract countMessageTokens(message: PromptMessage<TToolIO>): number;
-
   /**
-   * Select the token counting mode used during fitting.
+   * Count tokens for a single PromptLayout message.
    *
-   * - "message": count tokens from PromptLayout messages and boundaries.
-   * - "rendered": render the full prompt and count the rendered output.
+   * Providers must ensure message token counts plus boundary tokens match the
+   * rendered representation for accurate budgeting.
    */
-  tokenCountingMode(): "message" | "rendered" {
-    return "message";
-  }
+  abstract countMessageTokens(message: PromptMessage<TToolIO>): number;
 
   /**
    * Count tokens introduced between adjacent messages in the rendered form.

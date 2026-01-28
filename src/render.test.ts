@@ -82,9 +82,9 @@ test("render: nested scopes", async () => {
   ]);
   const result = await render(element, {
     provider,
-    budget: tokensFor("Start Middle End"),
+    budget: tokensFor("Start \n\nMiddle\n\n End"),
   });
-  expect(result).toBe("Start Middle End");
+  expect(result).toBe("Start \n\nMiddle\n\n End");
 });
 
 test("render: omit removes scope when over budget", async () => {
@@ -97,8 +97,8 @@ test("render: omit removes scope when over budget", async () => {
   ]);
 
   const full =
-    "Important Less important content that should be removedAlso important";
-  const reduced = "Important Also important";
+    "Important \n\nLess important content that should be removed\n\nAlso important";
+  const reduced = "Important \n\nAlso important";
 
   const resultLarge = await render(element, {
     provider,
@@ -122,7 +122,7 @@ test("render: truncate reduces content", async () => {
     }),
   ]);
 
-  const truncated = "Head Beta";
+  const truncated = "Head \n\nBeta";
   const result = await render(element, {
     provider,
     budget: tokensFor(truncated),

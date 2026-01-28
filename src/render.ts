@@ -22,7 +22,7 @@ import {
  * - PromptTree carries provider-bound tool IO types.
  * - layoutPrompt flattens the tree into a PromptLayout and enforces invariants.
  * - The provider's codec translates that layout into the provider payload.
- * - Token counting is provider-owned and happens on rendered output.
+ * - Token counting is provider-owned and derived from layout messages + boundaries.
  */
 export interface RenderOptions<
   TRendered = unknown,
@@ -91,8 +91,8 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
   element: MaybePromise<PromptTree<TToolIO>>,
   options: RenderOptions<TRendered, TToolIO>
 ): Promise<TRendered> {
-  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.codec -> provider.countTokens.
-  // The fit loop just re-renders and re-counts until we land under budget.
+  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.codec.
+  // The fit loop uses message-level token summaries and renders only once.
   /*
    * Rendering is budget-agnostic; fitting owns the budget and simply calls
    * rendering to get total tokens. Keep that separation explicit here.
@@ -122,17 +122,6 @@ function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
   // Prompt tree composition is resolved before rendering; codecs only see layout.
   const layout = layoutPrompt(root);
   return provider.codec.render(layout);
-}
-
-function renderAndCount<TRendered, TToolIO extends ProviderToolIO>(
-  root: PromptTree<TToolIO>,
-  provider: ModelProvider<TRendered, TToolIO>
-): { output: TRendered; tokens: number } {
-  // Tree -> layout -> codec output, then provider-owned token counting.
-  const layout = layoutPrompt(root);
-  const output = provider.codec.render(layout);
-  const tokens = provider.countTokens(output);
-  return { output, tokens };
 }
 
 export function assertValidMessageScope<
@@ -472,151 +461,6 @@ function summarizeNode<TToolIO extends ProviderToolIO>(
   return summary;
 }
 
-async function fitToBudgetRenderedCounting<
-  TRendered,
-  TToolIO extends ProviderToolIO,
->(
-  element: PromptTree<TToolIO>,
-  budget: number,
-  provider: ModelProvider<TRendered, TToolIO>,
-  hooks: RenderHooks<TToolIO> | undefined,
-  baseContext: CriaContext
-): Promise<FitResult<TRendered, TToolIO>> {
-  let current: PromptScope<TToolIO> | null = element;
-  let iteration = 0;
-  const emptyScope: PromptScope<TToolIO> = {
-    kind: "scope",
-    priority: 0,
-    children: [],
-  };
-  let lastRender = renderAndCount(current, provider);
-  let totalTokens = lastRender.tokens;
-
-  await safeInvoke(hooks?.onFitStart, {
-    element,
-    budget,
-    totalTokens,
-  });
-
-  while (current && totalTokens > budget) {
-    iteration += 1;
-
-    const lowestImportancePriority = findLowestImportancePriority(current);
-    if (lowestImportancePriority === null) {
-      const error = new FitError({
-        overBudgetBy: totalTokens - budget,
-        priority: -1,
-        iteration,
-        budget,
-        totalTokens,
-      });
-      await safeInvoke(hooks?.onFitError, {
-        error,
-        iteration,
-        priority: -1,
-        totalTokens,
-      });
-      throw error;
-    }
-
-    await safeInvoke(hooks?.onFitIteration, {
-      iteration,
-      priority: lowestImportancePriority,
-      totalTokens,
-    });
-
-    const baseCtx: BaseContext<TToolIO> = {
-      totalTokens,
-      iteration,
-    };
-
-    const applied: { element: PromptNode<TToolIO> | null; applied: boolean } =
-      await applyStrategiesAtPriority(
-        current,
-        lowestImportancePriority,
-        baseCtx,
-        baseContext,
-        hooks,
-        iteration
-      );
-
-    if (!applied.applied) {
-      const error = new FitError({
-        overBudgetBy: totalTokens - budget,
-        priority: lowestImportancePriority,
-        iteration,
-        budget,
-        totalTokens,
-      });
-      await safeInvoke(hooks?.onFitError, {
-        error,
-        iteration,
-        priority: lowestImportancePriority,
-        totalTokens,
-      });
-      throw error;
-    }
-
-    if (applied.element && applied.element.kind !== "scope") {
-      throw new Error("Root scope was replaced by a message node.");
-    }
-    current = applied.element;
-
-    const nextScope = current ?? emptyScope;
-    const nextRender = renderAndCount(nextScope, provider);
-    const nextTokens = nextRender.tokens;
-    if (nextTokens >= totalTokens) {
-      const error = new FitError({
-        overBudgetBy: nextTokens - budget,
-        priority: lowestImportancePriority,
-        iteration,
-        budget,
-        totalTokens: nextTokens,
-      });
-      await safeInvoke(hooks?.onFitError, {
-        error,
-        iteration,
-        priority: lowestImportancePriority,
-        totalTokens: nextTokens,
-      });
-      throw error;
-    }
-
-    totalTokens = nextTokens;
-    lastRender = nextRender;
-  }
-
-  if (lastRender.tokens > budget) {
-    const error = new FitError({
-      overBudgetBy: lastRender.tokens - budget,
-      priority: -1,
-      iteration,
-      budget,
-      totalTokens: lastRender.tokens,
-    });
-    await safeInvoke(hooks?.onFitError, {
-      error,
-      iteration,
-      priority: -1,
-      totalTokens: lastRender.tokens,
-    });
-    throw error;
-  }
-
-  await safeInvoke(hooks?.onFitComplete, {
-    result: current,
-    iterations: iteration,
-    totalTokens: lastRender.tokens,
-  });
-
-  return {
-    scope: current,
-    output: lastRender.output,
-    totalTokens: lastRender.tokens,
-    iterations: iteration,
-  };
-}
-
 async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   element: PromptTree<TToolIO>,
   budget: number,
@@ -624,18 +468,8 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   hooks: RenderHooks<TToolIO> | undefined,
   baseContext: CriaContext
 ): Promise<FitResult<TRendered, TToolIO>> {
-  if (provider.tokenCountingMode() === "rendered") {
-    return fitToBudgetRenderedCounting(
-      element,
-      budget,
-      provider,
-      hooks,
-      baseContext
-    );
-  }
-
-  // Fit loop is render-driven: render+count, then apply the lowest-importance
-  // strategy, re-render, and repeat until we fit or cannot reduce further.
+  // Fit loop is summary-driven: apply the lowest-importance strategy, update
+  // summary tokens, and repeat until we fit or cannot reduce further.
   let current: PromptScope<TToolIO> | null = element;
   let iteration = 0;
   const caches: FitTokenCaches<TToolIO> = {
