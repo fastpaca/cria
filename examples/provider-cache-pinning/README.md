@@ -10,9 +10,8 @@ The script checks that:
 
 - OpenAI requests include a stable `prompt_cache_key` when the pinned prefix is unchanged
 - That key changes when the pinned prefix changes
-- No cache key is sent when the pin is not in the prefix
 - Anthropic system blocks receive `cache_control` when the pin is in the prefix
-- No `cache_control` is applied when the pin is not in the prefix
+- Pins must be the prompt prefix; invalid placements throw early
 
 ## Run It
 

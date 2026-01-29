@@ -319,7 +319,6 @@ test("render: hook errors bubble (async error)", async () => {
   ).rejects.toThrow("Async hook error");
 });
 
-
 test("render: cache descriptor uses contiguous pinned prefix", async () => {
   const pinnedSystem = cria.prompt().system("Static rules").pin({
     id: "rules",
@@ -359,4 +358,15 @@ test("render: assistant message fields map to output", async () => {
     budget: tokensFor("Hello Thinking[tool-call:calc]1"),
   });
   expect(result).toContain("Hello");
+});
+
+test("render: pinned scopes after unpinned content throw", () => {
+  const pinnedLater = cria.prompt().system("Pinned later").pin({
+    id: "later",
+    version: "v1",
+  });
+
+  expect(() => cria.prompt().user("Start").merge(pinnedLater)).toThrow(
+    "Cannot merge a pinned prompt after unpinned content."
+  );
 });

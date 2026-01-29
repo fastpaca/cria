@@ -9,9 +9,8 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 
 ## Provider Cache Pinning
 
-- `pin(...)`: mark a region as cache-pinned (use stable ids when possible).
+- `pin(...)`: mark the current prompt prefix as cache-pinned (use stable ids when possible). Only one pin per prompt.
 - `prefix(...)`: place content at the start of the prompt so prefix caching can apply.
-- `cachePin(...)`: wrap provided content in a pinned scope.
 
 ## Fit & compaction
 

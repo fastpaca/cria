@@ -24,7 +24,7 @@ const provider = createTestProvider({
 const tokensFor = (text: string): number => provider.countTokens(text);
 
 const renderBuilder = async (
-  builder: PromptBuilder<unknown>,
+  builder: PromptBuilder<unknown, "unpinned" | "pinned">,
   budget = 10_000
 ): Promise<string> => render(await builder.build(), { provider, budget });
 
@@ -160,7 +160,7 @@ describe("PromptBuilder", () => {
           toolCallId: "call_1",
           toolName: "calc",
           output: '{"answer":42}',
-        }) as PromptBuilder<unknown>
+        })
       );
       expect(result).toBe('tool: [tool-result:calc]{"answer":42}');
     });
