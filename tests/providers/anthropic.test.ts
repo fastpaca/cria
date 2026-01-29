@@ -1,7 +1,8 @@
+import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { cria } from "@fastpaca/cria/dsl";
 import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
-import { ProtocolProvider } from "@fastpaca/cria/provider";
+import { ProtocolProvider, type ProviderRenderContext } from "@fastpaca/cria/provider";
 import {
   AnthropicAdapter,
   type AnthropicRenderResult,
@@ -10,6 +11,7 @@ import {
 import { render } from "@fastpaca/cria/render";
 import type { PromptMessageNode } from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
+import type { ZodType } from "zod";
 
 class RenderOnlyProvider extends ProtocolProvider<
   AnthropicRenderResult,
@@ -23,15 +25,22 @@ class RenderOnlyProvider extends ProtocolProvider<
     );
   }
 
-  countTokens(): number {
+  countTokens(_rendered: AnthropicRenderResult): number {
     return 0;
   }
 
-  completion(): string {
+  completion(
+    _rendered: AnthropicRenderResult,
+    _context?: ProviderRenderContext
+  ): string {
     return "";
   }
 
-  object(): never {
+  object<TOut>(
+    _rendered: AnthropicRenderResult,
+    _schema: ZodType<TOut>,
+    _context?: ProviderRenderContext
+  ): never {
     throw new Error("Not implemented");
   }
 }
@@ -49,6 +58,15 @@ function messageWithParts(
   return { kind: "message", role, children };
 }
 
+function hasCacheControl(
+  block: ContentBlockParam
+): block is ContentBlockParam & {
+  cache_control: { type: "ephemeral"; ttl?: string };
+} {
+  return "cache_control" in block;
+}
+
+
 test("anthropic: extracts system message separately", async () => {
   const prompt = cria.scope([
     cria.system("You are a helpful assistant."),
@@ -56,6 +74,28 @@ test("anthropic: extracts system message separately", async () => {
   ]);
 
   const result = await render(prompt, { provider });
+
+test("anthropic: pins cache control on the pinned prefix", async () => {
+  const pinnedSystem = cria
+    .prompt()
+    .system("Pinned rules")
+    .pin({ id: "rules", version: "v1", ttlSeconds: 3600 });
+
+  const prompt = cria.prompt().prefix(pinnedSystem).user("Hello!");
+  const result = await prompt.render({ provider });
+
+  expect(Array.isArray(result.system)).toBe(true);
+  if (!Array.isArray(result.system)) {
+    throw new Error("Expected system to be rendered as content blocks.");
+  }
+
+  const firstBlock = result.system[0];
+  expect(firstBlock).toMatchObject({ type: "text", text: "Pinned rules" });
+  if (!(firstBlock && hasCacheControl(firstBlock))) {
+    throw new Error("Expected cache_control on the pinned system block.");
+  }
+  expect(firstBlock.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+});
 
   expect(result).toEqual({
     system: "You are a helpful assistant.",

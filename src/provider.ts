@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type {
+  CacheDescriptor,
   MaybePromise,
   PromptLayout,
   PromptMessage,
@@ -7,10 +8,74 @@ import type {
 } from "./types";
 
 /**
+ * Context passed into codec rendering and provider requests.
+ *
+ * This is derived from the fitted prompt tree and allows providers to map
+ * provider-agnostic hints (like cache pinning) to provider-native features.
+ */
+export interface ProviderRenderContext {
+  cache?: CacheDescriptor | undefined;
+}
+
+const RENDER_CONTEXT_SYMBOL = Symbol.for("@fastpaca/cria.renderContext");
+
+const isObject = (value: unknown): value is object =>
+  typeof value === "object" && value !== null;
+
+const isProviderRenderContext = (
+  value: unknown
+): value is ProviderRenderContext => isObject(value);
+
+/**
+ * Attach non-enumerable render context metadata to rendered outputs.
+ *
+ * This preserves the existing render() return shape while allowing providers to
+ * read context (like cache pin descriptors) during completion/object calls.
+ */
+export function attachRenderContext<TRendered>(
+  rendered: TRendered,
+  context: ProviderRenderContext
+): TRendered {
+  if (!isObject(rendered)) {
+    return rendered;
+  }
+
+  try {
+    Object.defineProperty(rendered, RENDER_CONTEXT_SYMBOL, {
+      value: context,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
+  } catch {
+    // If the rendered value is non-extensible, we silently skip metadata.
+  }
+
+  return rendered;
+}
+
+/**
+ * Read attached render context metadata from rendered outputs.
+ */
+export function getRenderContext(
+  rendered: unknown
+): ProviderRenderContext | undefined {
+  if (!isObject(rendered)) {
+    return undefined;
+  }
+
+  const value = Reflect.get(rendered, RENDER_CONTEXT_SYMBOL);
+  return isProviderRenderContext(value) ? value : undefined;
+}
+
+/**
  * Bidirectional codec between PromptLayout (IR) and provider-native input.
  */
 export abstract class MessageCodec<TRendered, TToolIO extends ProviderToolIO> {
-  abstract render(layout: PromptLayout<TToolIO>): TRendered;
+  abstract render(
+    layout: PromptLayout<TToolIO>,
+    context?: ProviderRenderContext
+  ): TRendered;
   abstract parse(rendered: TRendered): PromptLayout<TToolIO>;
 }
 
@@ -22,15 +87,23 @@ export abstract class ListMessageCodec<
   TProviderMessage,
   TToolIO extends ProviderToolIO,
 > extends MessageCodec<readonly TProviderMessage[], TToolIO> {
-  protected abstract toProviderMessage(
-    message: PromptMessage<TToolIO>
-  ): readonly TProviderMessage[];
+  protected abstract toProviderMessage(args: {
+    message: PromptMessage<TToolIO>;
+    index: number;
+    context?: ProviderRenderContext;
+  }): readonly TProviderMessage[];
   protected abstract fromProviderMessage(
     message: TProviderMessage
   ): readonly PromptMessage<TToolIO>[];
 
-  override render(layout: PromptLayout<TToolIO>): readonly TProviderMessage[] {
-    return layout.flatMap((message) => this.toProviderMessage(message));
+  override render(
+    layout: PromptLayout<TToolIO>,
+    context?: ProviderRenderContext
+  ): readonly TProviderMessage[] {
+    return layout.flatMap((message, index) => {
+      const args = context ? { message, index, context } : { message, index };
+      return this.toProviderMessage(args);
+    });
   }
 
   override parse(rendered: readonly TProviderMessage[]): PromptLayout<TToolIO> {
@@ -58,7 +131,10 @@ export abstract class ModelProvider<
   abstract countTokens(rendered: TRendered): number;
 
   /** Generate a text completion from rendered prompt input. */
-  abstract completion(rendered: TRendered): MaybePromise<string>;
+  abstract completion(
+    rendered: TRendered,
+    context?: ProviderRenderContext
+  ): MaybePromise<string>;
 
   /**
    * Generate a structured object validated against the schema.
@@ -69,7 +145,8 @@ export abstract class ModelProvider<
    */
   abstract object<T>(
     rendered: TRendered,
-    schema: z.ZodType<T>
+    schema: z.ZodType<T>,
+    context?: ProviderRenderContext
   ): MaybePromise<T>;
 }
 
@@ -100,7 +177,7 @@ export interface InputLayout<TToolIO extends ProviderToolIO = ProviderToolIO> {
  */
 export interface ProviderAdapter<TProtocolInput, TProviderInput> {
   /** Convert protocol input into the provider-native input shape. */
-  to(input: TProtocolInput): TProviderInput;
+  to(input: TProtocolInput, context?: ProviderRenderContext): TProviderInput;
   /** Convert provider-native input into the protocol input shape. */
   from(input: TProviderInput): TProtocolInput;
 }
@@ -126,8 +203,12 @@ export class CompositeCodec<
   }
 
   /** Render PromptLayout into provider input via protocol + adapter. */
-  render(layout: PromptLayout<TToolIO>): TProviderInput {
-    return this.adapter.to(this.protocol.render(layout));
+  render(
+    layout: PromptLayout<TToolIO>,
+    context?: ProviderRenderContext
+  ): TProviderInput {
+    const protocolInput = this.protocol.render(layout, context);
+    return this.adapter.to(protocolInput, context);
   }
 
   /** Parse provider input into PromptLayout via adapter + protocol. */

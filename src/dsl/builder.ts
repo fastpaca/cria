@@ -12,6 +12,7 @@ import type {
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
+  CacheHint,
   CriaContext,
   PromptLayout,
   PromptMessage,
@@ -69,6 +70,24 @@ type InputFor<P> =
     ? PromptInput<TRendered>
     : never;
 type InputLayoutFor<P> = InputLayout<ToolIOFor<P>>;
+
+const DEFAULT_PIN_ID = "__cria:auto-pin__";
+
+interface CachePinOptions {
+  id?: string;
+  scopeKey?: string;
+  ttlSeconds?: number;
+  priority?: number;
+}
+
+function createPinHint(opts: CachePinOptions | undefined): CacheHint {
+  return {
+    mode: "pin",
+    id: opts?.id ?? DEFAULT_PIN_ID,
+    ...(opts?.scopeKey ? { scopeKey: opts.scopeKey } : {}),
+    ...(opts?.ttlSeconds !== undefined ? { ttlSeconds: opts.ttlSeconds } : {}),
+  };
+}
 
 export type ScopeContent<P = unknown> =
   | PromptNodeFor<P>
@@ -330,6 +349,26 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   /**
+   * Place content at the start of the prompt.
+   *
+   * This is useful for provider cache pinning, which only applies to a shared
+   * prompt prefix.
+   */
+  prefix(content: ScopeContent<P>, opts?: { id?: string }): PromptBuilder<P> {
+    const element = resolveScopeContent(
+      content,
+      this.boundProvider?.codec
+    ).then((children) =>
+      createScope<ToolIOFor<P>>(
+        children,
+        opts?.id ? { id: opts.id } : undefined
+      )
+    );
+
+    return this.create([element, ...this.children], this.context);
+  }
+
+  /**
    * Add content that will be truncated when over budget.
    */
   truncate(
@@ -475,6 +514,39 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     );
 
     return this.addChild(element);
+  }
+
+  /**
+   * Mark the current builder contents as cache-pinned.
+   *
+   * Stable ids are recommended for maximum cache reuse across runs.
+   */
+  pin(opts?: CachePinOptions): PromptBuilder<P> {
+    const cache = createPinHint(opts);
+    const pinnedScope = this.buildChildren().then((children) =>
+      createScope<ToolIOFor<P>>(children, {
+        cache,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+      })
+    );
+
+    return this.create([pinnedScope], this.context);
+  }
+
+  /**
+   * Wrap provided content in a cache-pinned scope.
+   */
+  cachePin(content: ScopeContent<P>, opts?: CachePinOptions): PromptBuilder<P> {
+    const cache = createPinHint(opts);
+    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
+      (children) =>
+        createScope<ToolIOFor<P>>(children, {
+          cache,
+          ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+        })
+    );
+
+    return this.addChild(node);
   }
 
   /**

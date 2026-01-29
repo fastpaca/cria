@@ -3,6 +3,7 @@
  */
 
 import type {
+  CacheHint,
   MessageChildren,
   PromptMessageNode,
   PromptPart,
@@ -18,7 +19,12 @@ import type {
  */
 export function createScope<TToolIO extends ProviderToolIO>(
   children: ScopeChildren<TToolIO>,
-  opts?: { priority?: number; strategy?: Strategy; id?: string }
+  opts?: {
+    priority?: number;
+    strategy?: Strategy;
+    id?: string;
+    cache?: CacheHint;
+  }
 ): PromptScope<TToolIO> {
   // Thin helper that preserves tool IO types without coercion.
   return {
@@ -27,6 +33,7 @@ export function createScope<TToolIO extends ProviderToolIO>(
     children,
     ...(opts?.strategy && { strategy: opts.strategy }),
     ...(opts?.id && { id: opts.id }),
+    ...(opts?.cache && { cache: opts.cache }),
   };
 }
 

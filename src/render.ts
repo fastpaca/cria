@@ -1,6 +1,10 @@
-import type { ModelProvider } from "./provider";
+import { createHash } from "node:crypto";
+import type { ModelProvider, ProviderRenderContext } from "./provider";
+import { attachRenderContext } from "./provider";
 import {
   type AssistantMessage,
+  type CacheDescriptor,
+  type CacheHint,
   type CriaContext,
   FitError,
   type MaybePromise,
@@ -123,8 +127,10 @@ function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
   provider: ModelProvider<TRendered, TToolIO>
 ): TRendered {
   // Prompt tree composition is resolved before rendering; codecs only see layout.
-  const layout = layoutPrompt(root);
-  return provider.codec.render(layout);
+  const { layout, cacheDescriptor } = layoutPromptWithCache(root);
+  const context: ProviderRenderContext = { cache: cacheDescriptor };
+  const rendered = provider.codec.render(layout, context);
+  return attachRenderContext(rendered, context);
 }
 
 function renderAndCount<TRendered, TToolIO extends ProviderToolIO>(
@@ -167,6 +173,221 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
   walk(root);
 
   return messages;
+}
+
+interface LayoutWithPins<TToolIO extends ProviderToolIO> {
+  layout: PromptLayout<TToolIO>;
+  pinIdsByMessage: readonly (readonly string[])[];
+  scopeKeysByMessage: readonly (readonly string[])[];
+  ttlSecondsByMessage: readonly (readonly number[])[];
+}
+
+function layoutPromptWithPins<TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>
+): LayoutWithPins<TToolIO> {
+  const messages: PromptMessage<TToolIO>[] = [];
+  const pinIdsByMessage: (readonly string[])[] = [];
+  const scopeKeysByMessage: (readonly string[])[] = [];
+  const ttlSecondsByMessage: (readonly number[])[] = [];
+  const activePins: CacheHint[] = [];
+
+  const walk = (node: PromptNode<TToolIO>): void => {
+    if (node.kind === "message") {
+      messages.push(buildMessage(node));
+      const pinIds = dedupeStrings(activePins.map((pin) => pin.id));
+      const scopeKeys = dedupeStrings(
+        activePins.flatMap((pin) => (pin.scopeKey ? [pin.scopeKey] : []))
+      );
+      const ttlSeconds = dedupeNumbers(
+        activePins.flatMap((pin) =>
+          pin.ttlSeconds !== undefined ? [pin.ttlSeconds] : []
+        )
+      );
+      pinIdsByMessage.push(pinIds);
+      scopeKeysByMessage.push(scopeKeys);
+      ttlSecondsByMessage.push(ttlSeconds);
+      return;
+    }
+
+    const cacheHint = node.cache;
+    const hasPin = cacheHint?.mode === "pin";
+    if (hasPin && cacheHint) {
+      activePins.push(cacheHint);
+    }
+
+    for (const child of node.children) {
+      walk(child);
+    }
+
+    if (hasPin) {
+      activePins.pop();
+    }
+  };
+
+  walk(root);
+
+  return {
+    layout: messages,
+    pinIdsByMessage,
+    scopeKeysByMessage,
+    ttlSecondsByMessage,
+  };
+}
+
+function dedupeStrings(values: readonly string[]): readonly string[] {
+  if (values.length <= 1) {
+    return values;
+  }
+  return [...new Set(values)];
+}
+
+function dedupeNumbers(values: readonly number[]): readonly number[] {
+  if (values.length <= 1) {
+    return values;
+  }
+  return [...new Set(values)];
+}
+
+function canonicalizeMessage<TToolIO extends ProviderToolIO>(
+  message: PromptMessage<TToolIO>
+): unknown {
+  switch (message.role) {
+    case "assistant":
+      return {
+        role: message.role,
+        text: message.text,
+        reasoning: message.reasoning ?? "",
+        toolCalls: message.toolCalls ?? [],
+      };
+    case "tool":
+      return {
+        role: message.role,
+        toolCallId: message.toolCallId,
+        toolName: message.toolName,
+        output: message.output,
+      };
+    default:
+      return {
+        role: message.role,
+        text: message.text,
+      };
+  }
+}
+
+function hashPinnedPrefix<TToolIO extends ProviderToolIO>(
+  layout: PromptLayout<TToolIO>,
+  pinnedPrefixMessageCount: number
+): string | null {
+  if (pinnedPrefixMessageCount === 0) {
+    return null;
+  }
+
+  const pinnedPrefix = layout
+    .slice(0, pinnedPrefixMessageCount)
+    .map((message) => canonicalizeMessage(message));
+  const canonical = JSON.stringify(pinnedPrefix);
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
+function computePinnedPrefixCount(
+  pinIdsByMessage: readonly (readonly string[])[]
+): number {
+  let pinnedPrefixMessageCount = 0;
+  for (const pinIds of pinIdsByMessage) {
+    if (pinIds.length === 0) {
+      break;
+    }
+    pinnedPrefixMessageCount += 1;
+  }
+  return pinnedPrefixMessageCount;
+}
+
+function buildPinnedMessageIndexes(
+  pinnedPrefixMessageCount: number
+): readonly number[] {
+  if (pinnedPrefixMessageCount === 0) {
+    return [];
+  }
+  return Array.from(
+    { length: pinnedPrefixMessageCount },
+    (_unused, index) => index
+  );
+}
+
+function collectPinIdsInPrefix(
+  pinIdsByMessage: readonly (readonly string[])[],
+  pinnedPrefixMessageCount: number
+): readonly string[] {
+  const pinIdsInPrefix: string[] = [];
+  const pinIdsSeen = new Set<string>();
+  for (let index = 0; index < pinnedPrefixMessageCount; index += 1) {
+    const pinIds = pinIdsByMessage[index];
+    if (!pinIds) {
+      continue;
+    }
+    for (const pinId of pinIds) {
+      if (pinIdsSeen.has(pinId)) {
+        continue;
+      }
+      pinIdsSeen.add(pinId);
+      pinIdsInPrefix.push(pinId);
+    }
+  }
+  return pinIdsInPrefix;
+}
+
+function sharedSingleValue<T>(values: readonly T[]): T | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const uniqueValues = [...new Set(values)];
+  return uniqueValues.length === 1 ? uniqueValues[0] : undefined;
+}
+
+function computeCacheDescriptor<TToolIO extends ProviderToolIO>(
+  layout: PromptLayout<TToolIO>,
+  pinIdsByMessage: readonly (readonly string[])[],
+  scopeKeysByMessage: readonly (readonly string[])[],
+  ttlSecondsByMessage: readonly (readonly number[])[]
+): CacheDescriptor {
+  const pinnedPrefixMessageCount = computePinnedPrefixCount(pinIdsByMessage);
+  const pinnedMessageIndexes = buildPinnedMessageIndexes(
+    pinnedPrefixMessageCount
+  );
+  const pinIdsInPrefix = collectPinIdsInPrefix(
+    pinIdsByMessage,
+    pinnedPrefixMessageCount
+  );
+
+  const scopeKey = sharedSingleValue(
+    scopeKeysByMessage.slice(0, pinnedPrefixMessageCount).flat()
+  );
+  const ttlSeconds = sharedSingleValue(
+    ttlSecondsByMessage.slice(0, pinnedPrefixMessageCount).flat()
+  );
+
+  return {
+    pinIdsInPrefix,
+    pinnedMessageIndexes,
+    pinnedPrefixMessageCount,
+    pinnedPrefixHash: hashPinnedPrefix(layout, pinnedPrefixMessageCount),
+    ...(scopeKey ? { scopeKey } : {}),
+    ...(ttlSeconds !== undefined ? { ttlSeconds } : {}),
+  };
+}
+
+function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>
+): { layout: PromptLayout<TToolIO>; cacheDescriptor: CacheDescriptor } {
+  const { layout, pinIdsByMessage, scopeKeysByMessage, ttlSecondsByMessage } =
+    layoutPromptWithPins(root);
+  const cacheDescriptor = computeCacheDescriptor(
+    layout,
+    pinIdsByMessage,
+    scopeKeysByMessage,
+    ttlSecondsByMessage
+  );
+  return { layout, cacheDescriptor };
 }
 
 function buildMessage<TToolIO extends ProviderToolIO>(

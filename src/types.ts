@@ -87,6 +87,23 @@ export interface CriaContext {
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
+ * Provider cache hint for prompt prefix pinning.
+ *
+ * Cache pinning is a hint that a region is stable across runs and should be
+ * considered for provider-side prompt/KV caching when it appears in the
+ * contiguous prompt prefix.
+ */
+export interface CacheHint {
+  mode: "pin";
+  /** Stable identifier for the pinned region (versioned ids recommended). */
+  id: string;
+  /** Optional grouping key (for example, tenant + policy version). */
+  scopeKey?: string | undefined;
+  /** Optional TTL hint in seconds. Providers may ignore this. */
+  ttlSeconds?: number | undefined;
+}
+
+/**
  * Content parts that appear as leaf nodes in message nodes.
  *
  * Tool parts directly embed provider-native input/output shapes, so a bound
@@ -141,6 +158,7 @@ export interface PromptScope<TToolIO extends ProviderToolIO = ProviderToolIO> {
   strategy?: Strategy | undefined;
   id?: string | undefined;
   context?: CriaContext | undefined;
+  cache?: CacheHint | undefined;
   children: readonly PromptNode<TToolIO>[];
 }
 
@@ -247,6 +265,34 @@ export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
 /** Flat, role-shaped message list used by codecs and token counting. */
 export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
   readonly PromptMessage<TToolIO>[];
+
+/**
+ * Provider-agnostic descriptor of the pinned prompt prefix.
+ *
+ * This is computed after fitting so providers can translate the descriptor into
+ * their native caching features (for example, cache control blocks or prompt
+ * cache keys).
+ */
+export interface CacheDescriptor {
+  /** Pinned scope ids that contribute to the contiguous pinned prefix. */
+  pinIdsInPrefix: readonly string[];
+  /** Message indexes that belong to the pinned prefix. */
+  pinnedMessageIndexes: readonly number[];
+  /** Number of pinned messages in the contiguous prefix. */
+  pinnedPrefixMessageCount: number;
+  /** Stable hash of the pinned prefix layout, or null when no pins apply. */
+  pinnedPrefixHash: string | null;
+  /**
+   * Optional shared scope key when all prefix pins agree on the same value.
+   * When pins disagree, this will be undefined.
+   */
+  scopeKey?: string | undefined;
+  /**
+   * Optional shared TTL hint (seconds) when all prefix pins agree on the same
+   * value. Providers may ignore this.
+   */
+  ttlSeconds?: number | undefined;
+}
 
 /**
  * Result of applying a strategy to a scope.
