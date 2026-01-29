@@ -445,6 +445,7 @@ const runPinnedUnpinnedSeries = async (options: {
   const unpinnedPrices: PriceCalculationResult[] = [];
   const pinnedPrices: PriceCalculationResult[] = [];
 
+  // Pin the shared prefix once; continue chaining for the unpinned tail.
   const pinnedSystem = options.baseSystem.pin({
     id: "system:v1",
     scopeKey: SCOPE_KEY,

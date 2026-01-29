@@ -11,6 +11,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 
 - `pin(...)`: mark the current prompt prefix as cache-pinned (use stable ids when possible). Only one pin per prompt. After pinning, keep chaining to add the unpinned tail.
 - `prefix(...)`: place content at the start of the prompt so prefix caching can apply.
+  Note: a pinned builder must be the first content in a prompt; merging a pinned builder after unpinned content throws.
 
 ## Fit & compaction
 
