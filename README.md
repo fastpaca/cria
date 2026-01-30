@@ -33,26 +33,32 @@ const messages = await cria
   .render({ budget: 128_000 });
 ```
 
+## Status
+
+| Area | Status |
+| --- | --- |
+| Build | ✅ |
+| Eval | ✅ |
+| Inspect | ❌ |
+
+**Build**: compose prompt pipelines (providers, memory, retrieval) as explicit steps.
+
+**Eval**: prompt eval/test helpers to catch drift.
+
+**Inspect**: planned local DevTools-style prompt inspector (preview final prompt, token counts per block, and diffs when swapping components).
+
 ## Works with
 
-| Type | Integration |
+| Integration | Status |
 | --- | --- |
-| Provider | OpenAI (Chat Completions) |
-| Provider | OpenAI (Responses) |
-| Provider | Anthropic |
-| Provider | Vercel AI SDK |
-| Store | Redis |
-| Store | Postgres |
-| Store | Chroma |
-| Store | Qdrant |
-
-## Planned
-
-| Item | Why it matters |
-| --- | --- |
-| Local prompt inspector (DevTools-style) | Preview the final prompt, token counts per block, and what changes when you swap components (local-first). |
-| Next.js adapter | Drop-in integration for Next.js apps. |
-| Seamless provider integration (type system) | Fewer hoops when switching providers; stronger types. |
+| OpenAI (Chat Completions) | ✅ |
+| OpenAI (Responses) | ✅ |
+| Anthropic | ✅ |
+| Vercel AI SDK | ✅ |
+| Redis | ✅ |
+| Postgres | ✅ |
+| Chroma | ✅ |
+| Qdrant | ✅ |
 
 ## Why Cria
 
@@ -64,7 +70,6 @@ It keeps prompt construction explicit and reviewable so you can move fast withou
 * Swap providers and stores without rewrites.
 * Token budgeting + fit/compaction controls.
 * Render hooks + OpenTelemetry integration.
-* Prompt eval/test helpers to catch drift.
 
 ## Swap, don't rewrite
 
