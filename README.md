@@ -48,11 +48,11 @@ const messages = await cria
 
 ## Planned
 
-| Item |
-| --- |
-| Next.js adapter |
-| Local prompt inspector (DevTools-style) |
-| Seamless provider integration (type system) |
+| Item | Why it matters |
+| --- | --- |
+| Local prompt inspector (DevTools-style) | Preview the final prompt, token counts per block, and what changes when you swap components (local-first). |
+| Next.js adapter | Drop-in integration for Next.js apps. |
+| Seamless provider integration (type system) | Fewer hoops when switching providers; stronger types. |
 
 ## Why Cria
 
@@ -65,7 +65,6 @@ It keeps prompt construction explicit and reviewable so you can move fast withou
 * Token budgeting + fit/compaction controls.
 * Render hooks + OpenTelemetry integration.
 * Prompt eval/test helpers to catch drift.
-* Planned: local DevTools-style prompt inspector.
 
 ## Swap, don't rewrite
 
@@ -86,12 +85,12 @@ const messages = await build(openaiProvider, redisMemory, qdrantStore);
 const messages2 = await build(anthropicProvider, postgresMemory, chromaStore);
 ```
 
-## Use cases
+## Use Cria if...
 
-* Fast-moving teams and engineers swapping providers, memory, or retrieval without touching prompt logic.
-* Engineers A/B testing summarization or compaction strategies.
-* Apps that need to migrate components without rewrites as the stack evolves.
-* Teams that want to inspect what gets sent (and later use the planned local inspector).
+* You need to swap providers, memory, or retrieval without touching prompt logic.
+* You A/B test summarization or compaction strategies.
+* You migrate components frequently as the stack evolves.
+* You want to inspect what gets sent before it hits the model.
 
 ## Quick start
 
@@ -117,59 +116,6 @@ const response = await client.chat.completions.create({
   model: "gpt-4o-mini",
   messages,
 });
-```
-
-## Snippets
-
-### Providers
-
-```ts
-// OpenAI Chat Completions
-import OpenAI from "openai";
-import { createProvider } from "@fastpaca/cria/openai";
-
-const openai = new OpenAI();
-const openaiProvider = createProvider(openai, "gpt-4o-mini");
-```
-
-```ts
-// OpenAI Responses
-import OpenAI from "openai";
-import { createResponsesProvider } from "@fastpaca/cria/openai";
-
-const openai = new OpenAI();
-const openaiResponsesProvider = createResponsesProvider(openai, "gpt-4o");
-```
-
-```ts
-// Anthropic
-import Anthropic from "@anthropic-ai/sdk";
-import { createProvider } from "@fastpaca/cria/anthropic";
-
-const anthropic = new Anthropic();
-const anthropicProvider = createProvider(anthropic, "claude-sonnet-4-20250514");
-```
-
-```ts
-// Vercel AI SDK
-import { createProvider } from "@fastpaca/cria/ai-sdk";
-
-// `model` is an AI SDK model instance
-const aiSdkProvider = createProvider(model);
-```
-
-### Common operations
-
-```ts
-// `redis`, `qdrant`, and `examples` are your own adapters/values
-const messages = await cria
-  .prompt(provider)
-  .system(SYSTEM_PROMPT)
-  .summary(conversation, { id: "conv", store: redis, priority: 2 })
-  .last(conversation, { n: 20 })
-  .vectorSearch({ store: qdrant, query, limit: 10 })
-  .omit(examples, { priority: 3 })
-  .render({ budget: 128_000 });
 ```
 
 ## Docs
@@ -323,6 +269,59 @@ await judge(prompt).toPass(c`Provides clear, actionable steps`);
 ```
 
 Use it in your favorite test runner (we like vitest) and relax.
+
+<details>
+<summary><strong>Snippets (providers + common operations)</strong></summary>
+
+```ts
+// OpenAI Chat Completions
+import OpenAI from "openai";
+import { createProvider } from "@fastpaca/cria/openai";
+
+const openai = new OpenAI();
+const openaiProvider = createProvider(openai, "gpt-4o-mini");
+```
+
+```ts
+// OpenAI Responses
+import OpenAI from "openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
+
+const openai = new OpenAI();
+const openaiResponsesProvider = createResponsesProvider(openai, "gpt-4o");
+```
+
+```ts
+// Anthropic
+import Anthropic from "@anthropic-ai/sdk";
+import { createProvider } from "@fastpaca/cria/anthropic";
+
+const anthropic = new Anthropic();
+const anthropicProvider = createProvider(anthropic, "claude-sonnet-4-20250514");
+```
+
+```ts
+// Vercel AI SDK
+import { createProvider } from "@fastpaca/cria/ai-sdk";
+
+// `model` is an AI SDK model instance
+const aiSdkProvider = createProvider(model);
+```
+
+```ts
+// Common operations
+// `redis`, `qdrant`, and `examples` are your own adapters/values
+const messages = await cria
+  .prompt(provider)
+  .system(SYSTEM_PROMPT)
+  .summary(conversation, { id: "conv", store: redis, priority: 2 })
+  .last(conversation, { n: 20 })
+  .vectorSearch({ store: qdrant, query, limit: 10 })
+  .omit(examples, { priority: 3 })
+  .render({ budget: 128_000 });
+```
+
+</details>
 
 ## FAQ
 
