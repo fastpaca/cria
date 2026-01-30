@@ -33,17 +33,31 @@ const messages = await cria
   .render({ budget: 128_000 });
 ```
 
-Start with **[Quickstart](docs/quickstart.md)** or keep reading.
+## Works with
+
+| Type | Integration |
+| --- | --- |
+| Provider | OpenAI (Chat Completions) |
+| Provider | OpenAI (Responses) |
+| Provider | Anthropic |
+| Provider | Vercel AI SDK |
+| Store | Redis |
+| Store | Postgres |
+| Store | Chroma |
+| Store | Qdrant |
+
+## Planned
+
+| Item |
+| --- |
+| Next.js adapter |
+| Local prompt inspector (DevTools-style) |
+| Seamless provider integration (type system) |
 
 ## Why Cria
 
-Cria exists because fast-moving teams and engineers needed to swap providers, memory, or retrieval without rewriting prompt pipelines.
-The stack moves fast, so the prompt layer has to move faster without becoming a mess.
-We built a swap-first architecture where components are interchangeable, not entangled.
-The core is explicit prompt construction: every step is named, ordered, and reviewable.
-That keeps compaction, context, and evaluation decisions visible instead of buried in glue code.
-You can replace the pieces while keeping the same prompt contract.
-Cria is the thin, explicit layer that keeps your prompt system stable as everything else changes.
+Cria is prompt architecture for teams that need to swap providers, memory, and retrieval without rewrites.
+It keeps prompt construction explicit and reviewable so you can move fast without breaking prompts.
 
 ## What you get
 
@@ -256,38 +270,6 @@ await judge(prompt).toPass(c`Provides clear, actionable steps`);
 ```
 
 Use it in your favorite test runner (we like vitest) and relax.
-
-## Works with
-
-| Type | Integration / capability |
-| --- | --- |
-| Provider | OpenAI (Chat Completions) |
-| Provider | OpenAI (Responses) |
-| Provider | Anthropic |
-| Provider | Vercel AI SDK |
-| Store | Redis |
-| Store | Postgres |
-| Store | Chroma |
-| Store | Qdrant |
-| Capability | Token budgeting + fit/compaction |
-| Capability | OpenTelemetry integration |
-| Capability | Prompt eval/test helpers |
-
-## Planned
-
-| Item |
-| --- |
-| Next.js adapter |
-| Local prompt inspector (DevTools-style) |
-| Seamless provider integration (type system) |
-
-## Why we built Cria
-
-We built Cria while [benchmarking memory systems](https://fastpaca.com/blog/memory-isnt-one-thing) for production LLM apps.
-The takeaway: the hard part wasn’t “memory” — it was the prompt construction layer that glues everything together.
-Cria makes that layer explicit and swappable for fast-moving teams and engineers.
-
-— [fastpaca](https://fastpaca.com)
 
 ## FAQ
 
