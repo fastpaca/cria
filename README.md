@@ -279,26 +279,29 @@ Cria makes that layer explicit and swappable for fast-moving teams and engineers
 
 ## FAQ
 
-**Does this replace my LLM SDK?**
-No — Cria builds prompt structures. You still use your SDK to call the model.
+**Where does Cria fit in my stack?**
+Cria builds prompt structures/messages. You keep your LLM SDK and whatever orchestration/tooling you already use.
 
-**How is this different from an agent framework?**
-Cria is a prompt architecture layer, not an agent runtime. You bring your own orchestration and tools.
+**What providers are supported?**
+Cria ships adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK.
 
-**How do I swap providers or stores safely?**
-Adapters give you a consistent interface, so you can switch without rewriting the prompt pipeline. Keep tests on the prompt output and compare renders across adapters.
+**Which stores are supported?**
+Cria includes adapters for Redis, Postgres, Chroma, and Qdrant.
 
-**Does Cria do observability or evals?**
-Yes for hooks and prompt eval/test helpers, not a full observability suite. It’s designed to integrate with your existing tooling.
+**How do I swap components safely?**
+Swap via adapters, then validate with prompt-output tests and/or prompt evals. For migrations, render both variants and diff what gets sent.
 
-**Is the inspector real?**
-It’s planned, with the goal of a local DevTools-style inspector. It’s not shipped yet.
+**How do I keep prompts within limits?**
+Use token budgeting plus fit/compaction controls to stay inside a context window.
 
-**Is it production-ready and stable?**
+**What observability and testing hooks exist?**
+Render hooks and OpenTelemetry integration for tracing, plus prompt eval/test helpers.
+
+**Is the local inspector available?**
+Not yet. A local DevTools-style prompt inspector is planned.
+
+**How stable is the API?**
 We use it in production, but the API may change before 2.0. Pin versions and follow the changelog.
-
-**Is it TypeScript-first and provider-agnostic?**
-Yes — the API is typed end-to-end and adapters keep providers swappable. That’s the core design goal.
 
 ## Contributing
 
