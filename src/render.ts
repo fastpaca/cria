@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { ModelProvider, ProviderRenderContext } from "./provider";
 import { attachRenderContext } from "./provider";
 import {
@@ -174,17 +173,6 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
   return messages;
 }
 
-function hashPinnedPrefix<TToolIO extends ProviderToolIO>(
-  messages: readonly PromptMessage<TToolIO>[]
-): string | null {
-  if (messages.length === 0) {
-    return null;
-  }
-
-  const canonical = JSON.stringify(messages);
-  return createHash("sha256").update(canonical).digest("hex");
-}
-
 function countMessagesInScope<TToolIO extends ProviderToolIO>(
   node: PromptNode<TToolIO>
 ): number {
@@ -211,13 +199,11 @@ function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
         pinIdsInPrefix: [],
         pinnedMessageIndexes: [],
         pinnedPrefixMessageCount: 0,
-        pinnedPrefixHash: null,
       },
     };
   }
 
   const pinnedPrefixMessageCount = countMessagesInScope(firstChild);
-  const pinnedPrefixMessages = layout.slice(0, pinnedPrefixMessageCount);
   const pinnedMessageIndexes =
     pinnedPrefixMessageCount === 0
       ? []
@@ -228,9 +214,9 @@ function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
 
   const cacheDescriptor: CacheDescriptor = {
     pinIdsInPrefix: [firstChild.cache.id],
+    pinVersionInPrefix: firstChild.cache.version,
     pinnedMessageIndexes,
     pinnedPrefixMessageCount,
-    pinnedPrefixHash: hashPinnedPrefix(pinnedPrefixMessages),
     ...(firstChild.cache.scopeKey
       ? { scopeKey: firstChild.cache.scopeKey }
       : {}),

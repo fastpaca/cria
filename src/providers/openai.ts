@@ -49,7 +49,9 @@ function derivePromptCacheKey(
   model: string
 ): string | undefined {
   const descriptor = context?.cache;
-  if (!descriptor?.pinnedPrefixHash) {
+  const pinId = descriptor?.pinIdsInPrefix[0];
+  const pinVersion = descriptor?.pinVersionInPrefix;
+  if (!(pinId && pinVersion)) {
     return undefined;
   }
 
@@ -59,7 +61,7 @@ function derivePromptCacheKey(
       ? `ttl:${descriptor.ttlSeconds}`
       : "ttl:default";
 
-  return `cria:${model}:${scopeKey}:${ttlSegment}:${descriptor.pinnedPrefixHash}`;
+  return `cria:${model}:${scopeKey}:${ttlSegment}:${pinId}:${pinVersion}`;
 }
 
 /** OpenAI tool IO matches the responses protocol tool IO. */

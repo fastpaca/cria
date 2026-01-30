@@ -22,7 +22,6 @@ const tokensFor = (text: string): number => provider.countTokens(text);
 const cacheProvider = new LayoutProvider();
 
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
-
 class LayoutCodec extends MessageCodec<
   { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext },
   ProviderToolIO

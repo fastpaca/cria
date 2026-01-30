@@ -51,10 +51,12 @@ const main = async (): Promise<void> => {
   const systemText = buildSystemText();
 
   // Pin the stable prefix once; reuse it across requests.
-  const pinnedPrefix = cria
-    .prompt()
-    .system(systemText)
-    .pin({ id: "system:v1", scopeKey: SCOPE_KEY, ttlSeconds: TTL_SECONDS });
+  const pinnedPrefix = cria.prompt().system(systemText).pin({
+    id: "system",
+    version: "v1",
+    scopeKey: SCOPE_KEY,
+    ttlSeconds: TTL_SECONDS,
+  });
 
   const renderAndComplete = async (
     systemPrompt: ReturnType<typeof cria.prompt>,
@@ -96,7 +98,12 @@ const main = async (): Promise<void> => {
   const pinnedPrefixV2 = cria
     .prompt()
     .system(`${systemText}\nRule v2: Keep responses tight.`)
-    .pin({ id: "system:v2", scopeKey: SCOPE_KEY, ttlSeconds: TTL_SECONDS });
+    .pin({
+      id: "system",
+      version: "v2",
+      scopeKey: SCOPE_KEY,
+      ttlSeconds: TTL_SECONDS,
+    });
 
   const changedPinned = await renderAndComplete(pinnedPrefixV2, "Hello 4");
   if (changedPinned.prompt_cache_key === pinnedKey) {

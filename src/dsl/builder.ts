@@ -83,17 +83,19 @@ const DEFAULT_PIN_ID = "__cria:auto-pin__";
 
 interface CachePinOptions {
   id?: string;
+  version: string;
   scopeKey?: string;
   ttlSeconds?: number;
   priority?: number;
 }
 
-function createPinHint(opts: CachePinOptions | undefined): CacheHint {
+function createPinHint(opts: CachePinOptions): CacheHint {
   return {
     mode: "pin",
-    id: opts?.id ?? DEFAULT_PIN_ID,
-    ...(opts?.scopeKey ? { scopeKey: opts.scopeKey } : {}),
-    ...(opts?.ttlSeconds !== undefined ? { ttlSeconds: opts.ttlSeconds } : {}),
+    id: opts.id ?? DEFAULT_PIN_ID,
+    version: opts.version,
+    ...(opts.scopeKey ? { scopeKey: opts.scopeKey } : {}),
+    ...(opts.ttlSeconds !== undefined ? { ttlSeconds: opts.ttlSeconds } : {}),
   };
 }
 
@@ -608,15 +610,18 @@ export class PromptBuilder<
   /**
    * Mark the current builder contents as cache-pinned.
    *
-   * Stable ids are recommended for maximum cache reuse across runs.
+   * Provide a stable id + version to control cache reuse across runs.
    * Only one pin is allowed per prompt.
    */
   pin(
     this: PromptBuilder<P, "unpinned">,
-    opts?: CachePinOptions
+    opts: CachePinOptions
   ): PromptBuilder<P, "pinned"> {
     if (this.pinState) {
       throw new Error("Prompt is already pinned.");
+    }
+    if (!opts?.version) {
+      throw new Error("pin() requires a version.");
     }
 
     const cache = createPinHint(opts);

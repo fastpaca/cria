@@ -15,7 +15,7 @@ const prompt = cria
   .prompt()
   .system("You are a helpful assistant.")
   .system("Policy v3: ...")
-  .pin({ id: "rules:v3", scopeKey: "tenant:acme", ttlSeconds: 3600 })
+  .pin({ id: "rules", version: "v3", scopeKey: "tenant:acme", ttlSeconds: 3600 })
   .user(userQuestion);
 ```
 
@@ -26,7 +26,7 @@ const pinnedPrefix = cria
   .prompt()
   .system("You are a helpful assistant.")
   .system("Policy v3: ...")
-  .pin({ id: "rules:v3", scopeKey: "tenant:acme", ttlSeconds: 3600 });
+  .pin({ id: "rules", version: "v3", scopeKey: "tenant:acme", ttlSeconds: 3600 });
 
 const prompt = cria
   .prompt()
@@ -39,12 +39,13 @@ const prompt = cria
 - `.pin()` can only be used once per prompt.
 - The pin always refers to the **current prompt prefix**.
 - A pinned builder must be first. Merging a pinned builder **after** unpinned content throws.
+- Use `id` + `version` to control cache keys explicitly.
 
 ## Provider behavior
 
 Cria exposes a provider-agnostic cache descriptor during render. Providers translate it into their native hints:
 
-- **OpenAI**: `prompt_cache_key` is derived from the pinned prefix hash.
+- **OpenAI**: `prompt_cache_key` is derived from the pin `id` + `version`.
 - **Anthropic**: `cache_control` is applied to the pinned system prefix blocks.
 
 Providers may ignore these hints or apply different cache rules. Pinning works best when your prefix is stable and versioned.

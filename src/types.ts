@@ -95,8 +95,10 @@ export type MaybePromise<T> = T | Promise<T>;
  */
 export interface CacheHint {
   mode: "pin";
-  /** Stable identifier for the pinned region (versioned ids recommended). */
+  /** Stable identifier for the pinned region. */
   id: string;
+  /** Human-managed version for the pinned prefix. */
+  version: string;
   /** Optional grouping key (for example, tenant + policy version). */
   scopeKey?: string | undefined;
   /** Optional TTL hint in seconds. Providers may ignore this. */
@@ -276,12 +278,12 @@ export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
 export interface CacheDescriptor {
   /** Pinned scope ids that contribute to the contiguous pinned prefix. */
   pinIdsInPrefix: readonly string[];
+  /** Pin version for the contiguous pinned prefix, if any. */
+  pinVersionInPrefix?: string | undefined;
   /** Message indexes that belong to the pinned prefix. */
   pinnedMessageIndexes: readonly number[];
   /** Number of pinned messages in the contiguous prefix. */
   pinnedPrefixMessageCount: number;
-  /** Stable hash of the pinned prefix layout, or null when no pins apply. */
-  pinnedPrefixHash: string | null;
   /**
    * Optional shared scope key when all prefix pins agree on the same value.
    * When pins disagree, this will be undefined.
