@@ -5,20 +5,7 @@
 </p>
 
 <p align="center">
-  Built for fast-moving teams on a stack that changes weekly.
-</p>
-
-<p align="center">
-  No lock-in, no rewrites — swap providers, memory, retrieval, and summarization/compaction strategies.
-</p>
-
-<p align="center">
-  Your LLM app started simple. Then you added conversation history. Then RAG. Then tool outputs. Then summaries.
-  Now you have a 400-line function that builds a prompt and nobody knows what's actually getting sent to the model.
-</p>
-
-<p align="center">
-  <b>Cria is the prompt construction layer.</b>
+  TypeScript prompt architecture for fast-moving stacks.
 </p>
 
 <p align="center">
@@ -36,7 +23,8 @@
 Cria is a lightweight TypeScript prompt architecture layer.
 Compose reusable prompt blocks, wire in memory + retrieval, and **inspect exactly what gets sent** — across OpenAI, Anthropic, or Vercel AI SDK.
 
-Designed for fast-moving teams that need to swap components without rewriting their prompt code.
+
+<!-- -->
 
 ```ts
 const messages = await cria
@@ -50,75 +38,9 @@ const messages = await cria
 
 Start with **[Quickstart](docs/quickstart.md)** or keep reading.
 
-## The usual prompt spaghetti in production
+## Why Cria
 
-Every production LLM app eventually ends up with a function like this. You know the one.
-It started as 10 lines, and now it's the scariest file in your codebase. You poke at it and you need to run your entire eval suite and pray.
-
-<details>
-<summary><strong>The function you've definitely written before</strong></summary>
-
-```ts
-async function buildPrompt(user, query, tools) {
-  const messages = [];
-
-  messages.push({ role: "system", content: SYSTEM_PROMPT });
-
-  // Get conversation history, but not too much
-  const history = await getHistory(user.id);
-  const truncatedHistory = history.slice(-20); // magic number, hope it fits
-  messages.push(...truncatedHistory);
-
-  // Maybe add a summary if history is long?
-  if (history.length > 50) {
-    const summary = await getSummary(user.id);
-    if (summary) {
-      messages.splice(1, 0, { role: "system", content: `Previous context: ${summary}` });
-    }
-  }
-
-  // RAG results, if we have them
-  const docs = await vectorSearch(query);
-  if (docs.length > 0) {
-    let context = docs.map((d) => d.content).join("\n\n");
-
-    // but wait, is this too long? let's check tokens maybe?
-    const tokens = countTokens(context);
-    if (tokens > 4000) {
-      // truncate somehow???
-      context = context.slice(0, 12000); // characters aren't tokens but whatever
-    }
-
-    messages.push({ role: "system", content: `Relevant information:\n${context}` });
-  }
-
-  messages.push({ role: "user", content: query });
-
-  // Did we blow the context window? Who knows!
-  return messages;
-}
-```
-
-</details>
-
-You've written this function. You've debugged it at 2am. You've wondered what actually got sent to the model when a user reported weird behavior.
-
-## The fix
-
-With Cria, the same intent becomes:
-
-```ts
-const messages = await cria
-  .prompt(provider)
-  .system(SYSTEM_PROMPT)
-  .summary(conversation, { id: "history", store: memory, priority: 2 })
-  .vectorSearch({ store, query, limit: 10 })
-  .last(conversation, { n: 20 })
-  .user(query)
-  .render({ budget: 128_000 });
-```
-
-Explicit structure. You can inspect what's in the prompt and why — which is exactly what you want at 2am.
+Cria keeps prompt construction explicit and swappable, so you can evolve providers, memory, retrieval, and compaction strategies without rewriting your prompt layer.
 
 ## Three pillars
 
