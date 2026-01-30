@@ -257,13 +257,17 @@ Use it in your favorite test runner (we like vitest) and relax.
 
 ## Roadmap
 
-| Now | Next |
-| --- | --- |
-| Providers: OpenAI/Anthropic/AI SDK | Next.js adapter |
-| Stores: Redis/Postgres/Chroma/Qdrant | Local prompt inspector (DevTools-style) |
-| Compaction controls | Seamless provider integration |
-| OTel hooks | — |
-| Prompt eval/test helpers | — |
+A quick feature view of what exists today and what’s next.
+
+| Area | ✅ Now (shipped) | 🛠️ Next (planned) |
+| --- | --- | --- |
+| Prompt pipeline | Fluent DSL for prompt pipelines<br/>Composable blocks + deterministic render | More built-in blocks + patterns |
+| Fit & compaction | Token budgeting + fit/compaction controls<br/>Priority-based omission | Better defaults + presets |
+| Providers | OpenAI (Chat Completions + Responses)<br/>Anthropic<br/>Vercel AI SDK | Seamless provider integration (type system, no hoops) |
+| Memory & retrieval | Stores: Redis, Postgres, Chroma, Qdrant<br/>Summary + last-N + vector search wiring | More store adapters + smoother BYO-store ergonomics |
+| Observability | Render hooks + OpenTelemetry integration<br/>Prompt spans before/after fit | Local prompt inspector (DevTools-style) |
+| Prompt quality | Prompt eval / testing helpers (judge-style) | More evaluators + workflows |
+| DX / integration | Docs + examples | Next.js adapter |
 
 ## Why we built Cria
 
