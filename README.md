@@ -65,11 +65,18 @@ const messages = await cria
 Cria is prompt architecture for teams that need to swap providers, memory, and retrieval without rewrites.
 It keeps prompt construction explicit and reviewable so you can move fast without breaking prompts.
 
-## What you get
+## Capabilities
 
-* Swap providers and stores without rewrites.
-* Token budgeting + fit/compaction controls.
-* Render hooks + OpenTelemetry integration.
+| Capability | Status |
+| --- | --- |
+| Provider swapping via adapters | ✅ |
+| Store swapping via adapters | ✅ |
+| Token budgeting | ✅ |
+| Fit & compaction controls | ✅ |
+| OpenTelemetry integration | ✅ |
+| Render hooks | ✅ |
+| Prompt eval/test helpers | ✅ |
+| Local prompt inspector (DevTools-style) | 🛠️ |
 
 ## Swap, don't rewrite
 
