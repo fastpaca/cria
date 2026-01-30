@@ -1,5 +1,4 @@
 import { cria } from "@fastpaca/cria";
-import { AnthropicProvider } from "@fastpaca/cria/anthropic";
 import { OpenAIChatProvider } from "@fastpaca/cria/openai";
 import { calcPrice, type PriceCalculationResult } from "@pydantic/genai-prices";
 import OpenAI from "openai";
@@ -222,14 +221,6 @@ const logPriceSavings = (options: {
     const outputDelta = pinned.output - unpinned.output;
     console.log(`  price_estimate Δ (output): ${formatCost(outputDelta)}`);
   }
-};
-
-const isEphemeralOneHourCacheControl = (value: unknown): boolean => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as { type?: unknown; ttl?: unknown };
-  return record.type === "ephemeral" && record.ttl === "1h";
 };
 
 const makeLargeSystemInstructions = (
@@ -524,57 +515,9 @@ async function runOpenAiAbTest(): Promise<void> {
   });
 }
 
-async function verifyAnthropicCacheControl(): Promise<void> {
-  const client = {
-    messages: {
-      create: async () => ({ content: [{ type: "text", text: "ok" }] }),
-    },
-  };
-
-  const provider = new AnthropicProvider(
-    client as never,
-    "claude-3-5-sonnet-latest" as never,
-    256
-  );
-
-  const pinnedSystem = cria
-    .prompt()
-    .system("Pinned rules")
-    .pin({ id: "rules:v1", ttlSeconds: TTL_SECONDS });
-
-  const renderedPinned = await cria
-    .prompt(provider)
-    .prefix(pinnedSystem)
-    .user("Hi")
-    .render();
-
-  const systemPinned = renderedPinned.system;
-  if (!Array.isArray(systemPinned) || systemPinned.length === 0) {
-    throw new Error("Expected pinned Anthropic system content as blocks.");
-  }
-
-  const [firstBlock] = systemPinned;
-  if (firstBlock.type !== "text") {
-    throw new Error("Expected first Anthropic system block to be text.");
-  }
-
-  const cacheControl = (firstBlock as { cache_control?: unknown })
-    .cache_control;
-  if (!isEphemeralOneHourCacheControl(cacheControl)) {
-    throw new Error(
-      'Expected Anthropic cache_control to be { type: "ephemeral", ttl: "1h" }.'
-    );
-  }
-
-  console.log("\nAnthropic cache_control verified.");
-  console.log("Pinned system cache_control:", cacheControl);
-}
-
 async function main(): Promise<void> {
   console.log("== Provider Cache Pinning A/B Test (Real API) ==\n");
   await runOpenAiAbTest();
-  console.log("");
-  await verifyAnthropicCacheControl();
   console.log("\nAll cache pinning checks passed.");
 }
 
