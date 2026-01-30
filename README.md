@@ -1,7 +1,15 @@
 <h1 align="center">Cria</h1>
 
 <p align="center">
-  <b>Stop writing prompt spaghetti.</b>
+  <b>Swap any component when something better drops.</b>
+</p>
+
+<p align="center">
+  Built for fast-moving teams on a stack that changes weekly.
+</p>
+
+<p align="center">
+  No lock-in, no rewrites — swap providers, memory, retrieval, and summarization/compaction strategies.
 </p>
 
 <p align="center">
@@ -10,7 +18,7 @@
 </p>
 
 <p align="center">
-  <b>Cria gives you prompt architecture.</b>
+  <b>Cria is the prompt construction layer.</b>
 </p>
 
 <p align="center">
@@ -25,8 +33,10 @@
   </a>
 </p>
 
-Cria is a lightweight TypeScript toolkit for building prompts as an explicit pipeline.
+Cria is a lightweight TypeScript prompt architecture layer.
 Compose reusable prompt blocks, wire in memory + retrieval, and **inspect exactly what gets sent** — across OpenAI, Anthropic, or Vercel AI SDK.
+
+Designed for fast-moving teams that need to swap components without rewriting their prompt code.
 
 ```ts
 const messages = await cria
@@ -110,13 +120,37 @@ const messages = await cria
 
 Explicit structure. You can inspect what's in the prompt and why — which is exactly what you want at 2am.
 
-## What you get
+## Three pillars
 
-* **Compose prompts like code** — Build reusable pieces (policies, tool instructions, retrieval blocks) that snap together predictably.
-* **Real memory layouts** — Working context, summaries, and retrieval wired together intentionally, not duct-taped.
-* **Provider-agnostic** — Render through adapters for OpenAI, Anthropic, or Vercel AI SDK. Switch without rewriting.
-* **Debug what matters** — Inspect exactly what prompt you sent (and why each piece is there).
-* **Regression-test prompts** — Eval helpers catch prompt drift before prod does.
+* **Build** — Compose prompts as explicit pipelines.
+* **Swap** — Swap providers, memory, retrieval, or compaction without rewrites.
+* **Inspect (planned)** — Local DevTools-style inspector to preview what you'll send.
+
+## Swap, don't rewrite
+
+Same prompt architecture, different components:
+
+```ts
+// Pseudocode identifiers; replace with your adapters.
+const build = (provider, memory, store) =>
+  cria
+    .prompt(provider)
+    .system(SYSTEM_PROMPT)
+    .summary(conversation, { id: "history", store: memory })
+    .vectorSearch({ store, query, limit: 8 })
+    .user(query)
+    .render({ budget: 128_000 });
+
+const messages = await build(openaiProvider, redisMemory, qdrantStore);
+const messages2 = await build(anthropicProvider, postgresMemory, chromaStore);
+```
+
+## Use cases
+
+* Fast-moving teams swapping providers, memory, or retrieval without touching prompt logic.
+* Builders A/B testing summarization or compaction strategies.
+* Apps that need to migrate components without rewrites as the stack evolves.
+* Teams that want to inspect what gets sent (and later use the planned local inspector).
 
 ## Quick start
 
@@ -143,13 +177,6 @@ const response = await client.chat.completions.create({
   messages,
 });
 ```
-
-## Use cases
-
-* **Tool-using agents** with stable policies that don't drift
-* **RAG apps** that don't turn into unmaintainable prompt spaghetti
-* **Long-running assistants** where memory needs actual structure
-* **Multi-provider deployments** that want one prompt architecture
 
 ## Docs
 
@@ -316,17 +343,15 @@ Use it in your favorite test runner (we like vitest) and relax.
 **Planned**
 
 * [ ] Next.js adapter
-* [ ] Visualization tool
+* [ ] Local prompt inspector (DevTools-style)
 * [ ] Seamless provider integration (type system, no hoops)
 
 ## Why we built Cria
 
 We spent months [benchmarking memory systems](https://fastpaca.com/blog/memory-isnt-one-thing) for production LLM apps (Mem0, Zep, etc).
-What we found: they were often dramatically more expensive than naive long-context and sometimes less accurate in recall.
+They were often dramatically more expensive than naive long-context and sometimes less accurate in recall.
 
-The problem wasn't "memory." It was everything underneath — the prompt construction layer everyone treats as an afterthought.
-RAG gets bolted on. Summaries get hacked in. Token windows get enforced with magic numbers and hope.
-
+The real problem wasn't "memory." It was the prompt construction layer everyone treats as an afterthought.
 Cria is the architecture we needed: explicit structure for prompts, memory, and retrieval. Composable. Debuggable. Provider-agnostic.
 
 — [fastpaca](https://fastpaca.com)
