@@ -390,7 +390,7 @@ export class AnthropicProvider extends ProtocolProvider<
     return countLayoutMessageTokens(message);
   }
 
-  countBoundaryTokens(
+  override countBoundaryTokens(
     prev: PromptMessage<AnthropicToolIO> | null,
     next: PromptMessage<AnthropicToolIO>
   ): number {

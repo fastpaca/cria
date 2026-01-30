@@ -163,7 +163,7 @@ export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
     return countText(renderedMessage);
   }
 
-  countBoundaryTokens(
+  override countBoundaryTokens(
     _prev: PromptMessage<PlainTextToolIO> | null,
     _next: PromptMessage<PlainTextToolIO>
   ): number {

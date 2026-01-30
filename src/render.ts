@@ -237,6 +237,12 @@ interface FitTokenCaches<TToolIO extends ProviderToolIO> {
   summaries: WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
 }
 
+interface ApplyResult<TToolIO extends ProviderToolIO> {
+  element: PromptNode<TToolIO> | null;
+  applied: boolean;
+  summary: SubtreeSummary<TToolIO>;
+}
+
 function summarizeNode<TToolIO extends ProviderToolIO>(
   node: PromptNode<TToolIO>,
   provider: ModelProvider<unknown, TToolIO>,
@@ -357,7 +363,7 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
       iteration,
     };
 
-    const applied = await applyStrategiesAtPriority(
+    const applied: ApplyResult<TToolIO> = await applyStrategiesAtPriority(
       current,
       lowestImportancePriority,
       baseCtx,
