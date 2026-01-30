@@ -257,17 +257,22 @@ Use it in your favorite test runner (we like vitest) and relax.
 
 ## Roadmap
 
-| Feature | Status | Notes |
+| Type | Integration / capability | Status |
 | --- | --- | --- |
-| Prompt pipeline DSL | ✅ Shipped | Compose named prompt steps; deterministic render |
-| Fit & compaction | ✅ Shipped | Token budgeting + fit/compaction controls |
-| Provider adapters | ✅ Shipped | OpenAI (Chat Completions + Responses), Anthropic, Vercel AI SDK |
-| Store adapters | ✅ Shipped | Redis, Postgres, Chroma, Qdrant |
-| Observability hooks | ✅ Shipped | Render hooks + OpenTelemetry integration |
-| Prompt eval/test helpers | ✅ Shipped | Judge-style prompt evaluation utilities |
-| Next.js adapter | 🛠️ Planned | First-class integration for Next.js |
-| Local prompt inspector | 🛠️ Planned | DevTools-style prompt inspector (local, no cloud) |
-| Seamless provider integration | 🛠️ Planned | Provider integration improvements (type system, no hoops) |
+| Provider | OpenAI (Chat Completions) | ✅ |
+| Provider | OpenAI (Responses) | ✅ |
+| Provider | Anthropic | ✅ |
+| Provider | Vercel AI SDK | ✅ |
+| Store | Redis | ✅ |
+| Store | Postgres | ✅ |
+| Store | Chroma | ✅ |
+| Store | Qdrant | ✅ |
+| Capability | Token budgeting + fit/compaction | ✅ |
+| Capability | OpenTelemetry integration | ✅ |
+| Capability | Prompt eval/test helpers | ✅ |
+| Planned | Next.js adapter | 🛠️ |
+| Planned | Local prompt inspector (DevTools-style) | 🛠️ |
+| Planned | Seamless provider integration (type system) | 🛠️ |
 
 ## Why we built Cria
 
