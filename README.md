@@ -257,17 +257,17 @@ Use it in your favorite test runner (we like vitest) and relax.
 
 ## Roadmap
 
-A quick feature view of what exists today and what’s next.
-
-| Area | ✅ Now (shipped) | 🛠️ Next (planned) |
+| Feature | Status | Notes |
 | --- | --- | --- |
-| Prompt pipeline | Fluent DSL for prompt pipelines<br/>Composable blocks + deterministic render | More built-in blocks + patterns |
-| Fit & compaction | Token budgeting + fit/compaction controls<br/>Priority-based omission | Better defaults + presets |
-| Providers | OpenAI (Chat Completions + Responses)<br/>Anthropic<br/>Vercel AI SDK | Seamless provider integration (type system, no hoops) |
-| Memory & retrieval | Stores: Redis, Postgres, Chroma, Qdrant<br/>Summary + last-N + vector search wiring | More store adapters + smoother BYO-store ergonomics |
-| Observability | Render hooks + OpenTelemetry integration<br/>Prompt spans before/after fit | Local prompt inspector (DevTools-style) |
-| Prompt quality | Prompt eval / testing helpers (judge-style) | More evaluators + workflows |
-| DX / integration | Docs + examples | Next.js adapter |
+| Prompt pipeline DSL | ✅ Shipped | Compose named prompt steps; deterministic render |
+| Fit & compaction | ✅ Shipped | Token budgeting + fit/compaction controls |
+| Provider adapters | ✅ Shipped | OpenAI (Chat Completions + Responses), Anthropic, Vercel AI SDK |
+| Store adapters | ✅ Shipped | Redis, Postgres, Chroma, Qdrant |
+| Observability hooks | ✅ Shipped | Render hooks + OpenTelemetry integration |
+| Prompt eval/test helpers | ✅ Shipped | Judge-style prompt evaluation utilities |
+| Next.js adapter | 🛠️ Planned | First-class integration for Next.js |
+| Local prompt inspector | 🛠️ Planned | DevTools-style prompt inspector (local, no cloud) |
+| Seamless provider integration | 🛠️ Planned | Provider integration improvements (type system, no hoops) |
 
 ## Why we built Cria
 
@@ -279,26 +279,29 @@ Cria makes that layer explicit and swappable for fast-moving teams and engineers
 
 ## FAQ
 
-**Where does Cria fit in my stack?**
-Cria builds prompt structures/messages. You keep your LLM SDK and whatever orchestration/tooling you already use.
+**What does Cria output?**
+It renders prompt structures/messages for your provider adapter. You then pass those messages into your existing LLM SDK call.
 
-**What providers are supported?**
-Cria ships adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK.
+**Do I still use my LLM SDK?**
+Yes. Cria does prompt construction; your SDK does the network call.
 
-**Which stores are supported?**
-Cria includes adapters for Redis, Postgres, Chroma, and Qdrant.
+**Which providers can I target today?**
+OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK.
 
-**How do I swap components safely?**
-Swap via adapters, then validate with prompt-output tests and/or prompt evals. For migrations, render both variants and diff what gets sent.
+**Which stores can I plug in?**
+Redis, Postgres, Chroma, and Qdrant.
 
-**How do I keep prompts within limits?**
-Use token budgeting plus fit/compaction controls to stay inside a context window.
+**How do teams validate swaps?**
+Swap via adapters, then compare rendered prompt output and run prompt eval/tests to catch drift.
 
-**What observability and testing hooks exist?**
-Render hooks and OpenTelemetry integration for tracing, plus prompt eval/test helpers.
+**How do I handle context limits?**
+Use token budgeting plus fit/compaction controls to keep prompts within a budget.
 
-**Is the local inspector available?**
-Not yet. A local DevTools-style prompt inspector is planned.
+**What hooks exist for tracing and testing?**
+Render hooks + OpenTelemetry integration for tracing, plus prompt eval/test helpers.
+
+**What’s the status of the local inspector?**
+Planned. The goal is a DevTools-style local prompt inspector (no cloud).
 
 **How stable is the API?**
 We use it in production, but the API may change before 2.0. Pin versions and follow the changelog.
