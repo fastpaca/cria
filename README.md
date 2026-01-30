@@ -33,32 +33,16 @@ const messages = await cria
   .render({ budget: 128_000 });
 ```
 
-## Status
-
-| Area | Status |
-| --- | --- |
-| Build | ✅ |
-| Eval | ✅ |
-| Inspect | ❌ |
-
-**Build**: compose prompt pipelines (providers, memory, retrieval) as explicit steps.
-
-**Eval**: prompt eval/test helpers to catch drift.
-
-**Inspect**: planned local DevTools-style prompt inspector (preview final prompt, token counts per block, and diffs when swapping components).
+<!-- -->
 
 ## Works with
 
-| Integration | Status |
+| Providers | Stores |
 | --- | --- |
-| OpenAI (Chat Completions) | ✅ |
-| OpenAI (Responses) | ✅ |
-| Anthropic | ✅ |
-| Vercel AI SDK | ✅ |
-| Redis | ✅ |
-| Postgres | ✅ |
-| Chroma | ✅ |
-| Qdrant | ✅ |
+| OpenAI (Chat Completions) | Redis |
+| OpenAI (Responses) | Postgres |
+| Anthropic | Chroma |
+| Vercel AI SDK | Qdrant |
 
 ## Why Cria
 
