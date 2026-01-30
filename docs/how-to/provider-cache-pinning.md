@@ -75,4 +75,6 @@ pnpm install
 pnpm start
 ```
 
-This example validates OpenAI prompt cache keys and Anthropic cache control, and logs cached tokens and estimated cost deltas across multiple runs.
+This example uses **OpenAI chat completions only**. It pins a large system prefix,
+reuses it across requests, and throws if the `prompt_cache_key` wiring is not
+stable for pinned prefixes or missing for unpinned prompts.
