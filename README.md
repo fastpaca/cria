@@ -119,6 +119,59 @@ const response = await client.chat.completions.create({
 });
 ```
 
+## Snippets
+
+### Providers
+
+```ts
+// OpenAI Chat Completions
+import OpenAI from "openai";
+import { createProvider } from "@fastpaca/cria/openai";
+
+const openai = new OpenAI();
+const openaiProvider = createProvider(openai, "gpt-4o-mini");
+```
+
+```ts
+// OpenAI Responses
+import OpenAI from "openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
+
+const openai = new OpenAI();
+const openaiResponsesProvider = createResponsesProvider(openai, "gpt-4o");
+```
+
+```ts
+// Anthropic
+import Anthropic from "@anthropic-ai/sdk";
+import { createProvider } from "@fastpaca/cria/anthropic";
+
+const anthropic = new Anthropic();
+const anthropicProvider = createProvider(anthropic, "claude-sonnet-4-20250514");
+```
+
+```ts
+// Vercel AI SDK
+import { createProvider } from "@fastpaca/cria/ai-sdk";
+
+// `model` is an AI SDK model instance
+const aiSdkProvider = createProvider(model);
+```
+
+### Common operations
+
+```ts
+// `redis`, `qdrant`, and `examples` are your own adapters/values
+const messages = await cria
+  .prompt(provider)
+  .system(SYSTEM_PROMPT)
+  .summary(conversation, { id: "conv", store: redis, priority: 2 })
+  .last(conversation, { n: 20 })
+  .vectorSearch({ store: qdrant, query, limit: 10 })
+  .omit(examples, { priority: 3 })
+  .render({ budget: 128_000 });
+```
+
 ## Docs
 
 * [Quickstart](docs/quickstart.md)
