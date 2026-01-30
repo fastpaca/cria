@@ -255,24 +255,29 @@ await judge(prompt).toPass(c`Provides clear, actionable steps`);
 
 Use it in your favorite test runner (we like vitest) and relax.
 
-## Roadmap
+## Works with
 
-| Type | Integration / capability | Status |
-| --- | --- | --- |
-| Provider | OpenAI (Chat Completions) | ✅ |
-| Provider | OpenAI (Responses) | ✅ |
-| Provider | Anthropic | ✅ |
-| Provider | Vercel AI SDK | ✅ |
-| Store | Redis | ✅ |
-| Store | Postgres | ✅ |
-| Store | Chroma | ✅ |
-| Store | Qdrant | ✅ |
-| Capability | Token budgeting + fit/compaction | ✅ |
-| Capability | OpenTelemetry integration | ✅ |
-| Capability | Prompt eval/test helpers | ✅ |
-| Planned | Next.js adapter | 🛠️ |
-| Planned | Local prompt inspector (DevTools-style) | 🛠️ |
-| Planned | Seamless provider integration (type system) | 🛠️ |
+| Type | Integration / capability |
+| --- | --- |
+| Provider | OpenAI (Chat Completions) |
+| Provider | OpenAI (Responses) |
+| Provider | Anthropic |
+| Provider | Vercel AI SDK |
+| Store | Redis |
+| Store | Postgres |
+| Store | Chroma |
+| Store | Qdrant |
+| Capability | Token budgeting + fit/compaction |
+| Capability | OpenTelemetry integration |
+| Capability | Prompt eval/test helpers |
+
+## Planned
+
+| Item |
+| --- |
+| Next.js adapter |
+| Local prompt inspector (DevTools-style) |
+| Seamless provider integration (type system) |
 
 ## Why we built Cria
 
