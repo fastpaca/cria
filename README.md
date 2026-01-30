@@ -280,31 +280,22 @@ Cria makes that layer explicit and swappable for fast-moving teams and engineers
 ## FAQ
 
 **What does Cria output?**
-It renders prompt structures/messages for your provider adapter. You then pass those messages into your existing LLM SDK call.
+Prompt structures/messages (via a provider adapter). You pass the rendered output into your existing LLM SDK call.
 
-**Do I still use my LLM SDK?**
-Yes. Cria does prompt construction; your SDK does the network call.
-
-**Which providers can I target today?**
-OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK.
-
-**Which stores can I plug in?**
-Redis, Postgres, Chroma, and Qdrant.
+**What works out of the box?**
+Provider adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK; store adapters for Redis, Postgres, Chroma, and Qdrant.
 
 **How do teams validate swaps?**
-Swap via adapters, then compare rendered prompt output and run prompt eval/tests to catch drift.
+Swap via adapters, then diff rendered prompt output and run prompt eval/tests to catch drift.
 
 **How do I handle context limits?**
-Use token budgeting plus fit/compaction controls to keep prompts within a budget.
+Use token budgeting plus fit/compaction controls to stay within a budget.
 
 **What hooks exist for tracing and testing?**
 Render hooks + OpenTelemetry integration for tracing, plus prompt eval/test helpers.
 
-**What’s the status of the local inspector?**
-Planned. The goal is a DevTools-style local prompt inspector (no cloud).
-
-**How stable is the API?**
-We use it in production, but the API may change before 2.0. Pin versions and follow the changelog.
+**What’s the status of the local inspector and API stability?**
+The DevTools-style local prompt inspector is planned (not shipped). We use Cria in production, but the API may change before 2.0 — pin versions and follow the changelog.
 
 ## Contributing
 
