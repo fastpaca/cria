@@ -23,9 +23,6 @@
 Cria is a lightweight TypeScript prompt architecture layer.
 Compose reusable prompt blocks, wire in memory + retrieval, and **inspect exactly what gets sent** — across OpenAI, Anthropic, or Vercel AI SDK.
 
-
-<!-- -->
-
 ```ts
 const messages = await cria
   .prompt(provider)
@@ -40,7 +37,13 @@ Start with **[Quickstart](docs/quickstart.md)** or keep reading.
 
 ## Why Cria
 
-Cria keeps prompt construction explicit and swappable, so you can evolve providers, memory, retrieval, and compaction strategies without rewriting your prompt layer.
+Cria exists because swapping providers, memory, or retrieval used to mean rewriting prompt pipelines.
+The stack moves fast, so the prompt layer has to move faster without becoming a mess.
+We built a swap-first architecture where components are interchangeable, not entangled.
+The core is explicit prompt construction: every step is named, ordered, and reviewable.
+That keeps compaction, context, and evaluation decisions visible instead of buried in glue code.
+You can replace the pieces while keeping the same prompt contract.
+Cria is the thin, explicit layer that keeps your prompt system stable as everything else changes.
 
 ## Three pillars
 
@@ -254,27 +257,19 @@ Use it in your favorite test runner (we like vitest) and relax.
 
 ## Roadmap
 
-**Done**
-
-* [x] Fluent DSL and compaction controls
-* [x] Providers: OpenAI (Chat Completions + Responses), Anthropic, AI SDK
-* [x] Stores: Redis, Postgres, Chroma, Qdrant
-* [x] Observability: render hooks, OpenTelemetry
-* [x] Prompt eval / testing functionality
-
-**Planned**
-
-* [ ] Next.js adapter
-* [ ] Local prompt inspector (DevTools-style)
-* [ ] Seamless provider integration (type system, no hoops)
+| Now | Next |
+| --- | --- |
+| Providers: OpenAI/Anthropic/AI SDK | Next.js adapter |
+| Stores: Redis/Postgres/Chroma/Qdrant | Local prompt inspector (DevTools-style) |
+| Compaction controls | Seamless provider integration |
+| OTel hooks | — |
+| Prompt eval/test helpers | — |
 
 ## Why we built Cria
 
-We spent months [benchmarking memory systems](https://fastpaca.com/blog/memory-isnt-one-thing) for production LLM apps (Mem0, Zep, etc).
-They were often dramatically more expensive than naive long-context and sometimes less accurate in recall.
-
-The real problem wasn't "memory." It was the prompt construction layer everyone treats as an afterthought.
-Cria is the architecture we needed: explicit structure for prompts, memory, and retrieval. Composable. Debuggable. Provider-agnostic.
+We built Cria while [benchmarking memory systems](https://fastpaca.com/blog/memory-isnt-one-thing) for production LLM apps.
+The takeaway: the hard part wasn’t “memory” — it was the prompt construction layer that glues everything together.
+Cria makes that layer explicit and swappable.
 
 — [fastpaca](https://fastpaca.com)
 
@@ -283,8 +278,23 @@ Cria is the architecture we needed: explicit structure for prompts, memory, and 
 **Does this replace my LLM SDK?**
 No — Cria builds prompt structures. You still use your SDK to call the model.
 
-**Is this production-ready?**
-We're using it in production, but the API may change before 2.0. Test thoroughly.
+**How is this different from an agent framework?**
+Cria is a prompt architecture layer, not an agent runtime. You bring your own orchestration and tools.
+
+**How do I swap providers or stores safely?**
+Adapters give you a consistent interface, so you can switch without rewriting the prompt pipeline. Keep tests on the prompt output and compare renders across adapters.
+
+**Does Cria do observability or evals?**
+Yes for hooks and prompt eval/test helpers, not a full observability suite. It’s designed to integrate with your existing tooling.
+
+**Is the inspector real?**
+It’s planned, with the goal of a local DevTools-style inspector. It’s not shipped yet.
+
+**Is it production-ready and stable?**
+We use it in production, but the API may change before 2.0. Pin versions and follow the changelog.
+
+**Is it TypeScript-first and provider-agnostic?**
+Yes — the API is typed end-to-end and adapters keep providers swappable. That’s the core design goal.
 
 ## Contributing
 
