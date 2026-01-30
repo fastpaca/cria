@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  TypeScript prompt architecture for fast-moving stacks.
+  TypeScript prompt architecture for fast-moving teams and engineers.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
   </a>
 </p>
 
-Cria is a lightweight TypeScript prompt architecture layer.
+Cria is a lightweight TypeScript prompt architecture layer for fast-moving teams.
 Compose reusable prompt blocks, wire in memory + retrieval, and **inspect exactly what gets sent** — across OpenAI, Anthropic, or Vercel AI SDK.
 
 ```ts
@@ -37,7 +37,7 @@ Start with **[Quickstart](docs/quickstart.md)** or keep reading.
 
 ## Why Cria
 
-Cria exists because swapping providers, memory, or retrieval used to mean rewriting prompt pipelines.
+Cria exists because fast-moving teams and engineers needed to swap providers, memory, or retrieval without rewriting prompt pipelines.
 The stack moves fast, so the prompt layer has to move faster without becoming a mess.
 We built a swap-first architecture where components are interchangeable, not entangled.
 The core is explicit prompt construction: every step is named, ordered, and reviewable.
@@ -72,8 +72,8 @@ const messages2 = await build(anthropicProvider, postgresMemory, chromaStore);
 
 ## Use cases
 
-* Fast-moving teams swapping providers, memory, or retrieval without touching prompt logic.
-* Builders A/B testing summarization or compaction strategies.
+* Fast-moving teams and engineers swapping providers, memory, or retrieval without touching prompt logic.
+* Engineers A/B testing summarization or compaction strategies.
 * Apps that need to migrate components without rewrites as the stack evolves.
 * Teams that want to inspect what gets sent (and later use the planned local inspector).
 
@@ -269,7 +269,7 @@ Use it in your favorite test runner (we like vitest) and relax.
 
 We built Cria while [benchmarking memory systems](https://fastpaca.com/blog/memory-isnt-one-thing) for production LLM apps.
 The takeaway: the hard part wasn’t “memory” — it was the prompt construction layer that glues everything together.
-Cria makes that layer explicit and swappable.
+Cria makes that layer explicit and swappable for fast-moving teams and engineers.
 
 — [fastpaca](https://fastpaca.com)
 
