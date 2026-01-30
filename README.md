@@ -37,24 +37,16 @@ const messages = await cria
 
 ## Works with
 
-OpenAI (Chat Completions + Responses), Anthropic, Vercel AI SDK · Redis, Postgres, Chroma, Qdrant
+**Providers**
+- OpenAI (Chat Completions + Responses)
+- Anthropic
+- Vercel AI SDK
 
-<details>
-<summary><strong>Provider examples</strong></summary>
-
-- OpenAI Chat Completions: see the OpenAI snippet in <a href="#providers">Providers</a>
-- OpenAI Responses: see the OpenAI Responses snippet in <a href="#providers">Providers</a>
-- Anthropic: see the Anthropic snippet in <a href="#providers">Providers</a>
-- Vercel AI SDK: see the AI SDK snippet in <a href="#providers">Providers</a>
-
-</details>
-
-<details>
-<summary><strong>Store examples</strong></summary>
-
-- Redis/Postgres/Chroma/Qdrant: see <a href="#memory--retrieval">Memory &amp; retrieval</a> (below)
-
-</details>
+**Stores**
+- Redis
+- Postgres
+- Chroma
+- Qdrant
 
 ## Why Cria
 
