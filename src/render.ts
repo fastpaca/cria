@@ -1,20 +1,16 @@
+import { buildMessageFromNode } from "./message";
 import type { ModelProvider } from "./provider";
 import {
-  type AssistantMessage,
   type CriaContext,
   FitError,
   type MaybePromise,
   type PromptLayout,
   type PromptMessage,
-  type PromptMessageNode,
   type PromptNode,
-  type PromptPart,
   type PromptScope,
   type PromptTree,
   type ProviderToolIO,
   type StrategyInput,
-  type ToolCallPart,
-  type ToolResultPart,
 } from "./types";
 
 /**
@@ -141,7 +137,7 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
 
   const walk = (node: PromptNode<TToolIO>): void => {
     if (node.kind === "message") {
-      messages.push(buildMessage(node));
+      messages.push(buildMessageFromNode(node));
       return;
     }
 
@@ -153,121 +149,6 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
   walk(root);
 
   return messages;
-}
-
-function buildMessage<TToolIO extends ProviderToolIO>(
-  node: Extract<PromptNode<TToolIO>, { kind: "message" }>
-): PromptMessage<TToolIO> {
-  if (node.role === "tool") {
-    return buildToolMessage(node.children);
-  }
-
-  if (node.role === "assistant") {
-    return buildAssistantMessage(node.children);
-  }
-
-  return buildTextMessage(node.role, node.children);
-}
-
-function buildToolMessage<TToolIO extends ProviderToolIO>(
-  children: readonly PromptPart<TToolIO>[]
-): PromptMessage<TToolIO> {
-  // Tool messages are a single tool result by construction.
-  if (children.length !== 1 || children[0]?.type !== "tool-result") {
-    throw new Error("Tool messages must contain exactly one tool result.");
-  }
-  const result = children[0] as ToolResultPart<TToolIO>;
-  return {
-    role: "tool",
-    toolCallId: result.toolCallId,
-    toolName: result.toolName,
-    output: result.output,
-  };
-}
-
-function buildAssistantMessage<TToolIO extends ProviderToolIO>(
-  children: readonly PromptPart<TToolIO>[]
-): AssistantMessage<TToolIO> {
-  const { text, reasoning, toolCalls } = collectAssistantParts(children);
-
-  const message: AssistantMessage<TToolIO> = { role: "assistant", text };
-  if (reasoning.length > 0) {
-    message.reasoning = reasoning;
-  }
-  if (toolCalls.length > 0) {
-    message.toolCalls = toolCalls;
-  }
-  return message;
-}
-
-function collectAssistantParts<TToolIO extends ProviderToolIO>(
-  children: readonly PromptPart<TToolIO>[]
-): {
-  text: string;
-  reasoning: string;
-  toolCalls: ToolCallPart<TToolIO>[];
-} {
-  let text = "";
-  let reasoning = "";
-  const toolCalls: ToolCallPart<TToolIO>[] = [];
-
-  for (const part of children) {
-    if (part.type === "text") {
-      text += part.text;
-      continue;
-    }
-    if (part.type === "reasoning") {
-      reasoning += part.text;
-      continue;
-    }
-    if (part.type === "tool-call") {
-      toolCalls.push(part);
-      continue;
-    }
-    if (part.type === "tool-result") {
-      // Tool results must live in tool messages, not assistant messages.
-      throw new Error("Tool results must be inside a tool message.");
-    }
-  }
-
-  return { text, reasoning, toolCalls };
-}
-
-function buildTextMessage<TToolIO extends ProviderToolIO>(
-  role: PromptMessage<TToolIO>["role"],
-  children: readonly PromptPart<TToolIO>[]
-): PromptMessage<TToolIO> {
-  // System/user messages are text-only; other parts are rejected here.
-  const text = collectTextParts(children);
-
-  if (role === "system") {
-    return { role: "system", text };
-  }
-
-  if (role === "developer") {
-    return { role: "developer", text };
-  }
-
-  if (role === "user") {
-    return { role: "user", text };
-  }
-
-  throw new Error(`Unsupported message role: ${role}`);
-}
-
-function collectTextParts<TToolIO extends ProviderToolIO>(
-  children: readonly PromptPart<TToolIO>[]
-): string {
-  let text = "";
-  for (const part of children) {
-    if (part.type !== "text") {
-      throw new Error(
-        "Only assistant messages may contain reasoning or tool calls."
-      );
-    }
-    text += part.text;
-  }
-  return text;
 }
 
 async function safeInvoke<T>(
@@ -353,7 +234,6 @@ interface SubtreeSummary<TToolIO extends ProviderToolIO> {
 }
 
 interface FitTokenCaches<TToolIO extends ProviderToolIO> {
-  messageTokens: WeakMap<PromptMessageNode<TToolIO>, number>;
   summaries: WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
 }
 
@@ -368,15 +248,8 @@ function summarizeNode<TToolIO extends ProviderToolIO>(
   }
 
   if (node.kind === "message") {
-    const message = buildMessage(node);
-    const cachedTokens = caches.messageTokens.get(node);
-    const tokens =
-      cachedTokens === undefined
-        ? provider.countMessageTokens(message)
-        : cachedTokens;
-    if (cachedTokens === undefined) {
-      caches.messageTokens.set(node, tokens);
-    }
+    const message = buildMessageFromNode(node);
+    const tokens = node.tokenCount ?? provider.countMessageTokens(message);
     const summary: SubtreeSummary<TToolIO> = {
       totalTokens: tokens,
       messageCount: 1,
@@ -441,7 +314,6 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   let current: PromptScope<TToolIO> | null = element;
   let iteration = 0;
   const caches: FitTokenCaches<TToolIO> = {
-    messageTokens: new WeakMap<PromptMessageNode<TToolIO>, number>(),
     summaries: new WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>(),
   };
   let currentSummary = summarizeNode(current, provider, caches);
@@ -577,6 +449,41 @@ type BaseContext<TToolIO extends ProviderToolIO> = Omit<
   "target" | "context"
 >;
 
+interface SummaryAccumulator<TToolIO extends ProviderToolIO> {
+  totalTokens: number;
+  messageCount: number;
+  firstMessage: PromptMessage<TToolIO> | null;
+  lastMessage: PromptMessage<TToolIO> | null;
+  previousLast: PromptMessage<TToolIO> | null;
+  maxPriority: number | null;
+}
+
+function mergeChildSummary<TToolIO extends ProviderToolIO>(
+  acc: SummaryAccumulator<TToolIO>,
+  child: SubtreeSummary<TToolIO>,
+  provider: ModelProvider<unknown, TToolIO>
+): void {
+  acc.maxPriority = maxNullable(acc.maxPriority, child.maxPriority);
+  if (child.messageCount === 0) {
+    return;
+  }
+
+  acc.totalTokens += child.totalTokens;
+  if (acc.previousLast && child.firstMessage) {
+    acc.totalTokens += provider.countBoundaryTokens(
+      acc.previousLast,
+      child.firstMessage
+    );
+  }
+
+  acc.previousLast = child.lastMessage;
+  if (!acc.firstMessage) {
+    acc.firstMessage = child.firstMessage;
+  }
+  acc.lastMessage = child.lastMessage;
+  acc.messageCount += child.messageCount;
+}
+
 async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
   element: PromptNode<TToolIO>,
   priority: number,
@@ -599,6 +506,18 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
     };
   }
 
+  const existingSummary = summarizeNode(element, provider, caches);
+  if (
+    existingSummary.maxPriority === null ||
+    existingSummary.maxPriority < priority
+  ) {
+    return {
+      element,
+      applied: false,
+      summary: existingSummary,
+    };
+  }
+
   // Bottom-up: rewrite children first so nested strategies get first crack.
   // Element context overrides inherited context.
   const mergedContext: CriaContext = element.context
@@ -608,12 +527,14 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
   let childrenChanged = false;
   let applied = false;
   const nextChildren: PromptNode<TToolIO>[] = [];
-  let totalTokens = 0;
-  let messageCount = 0;
-  let firstMessage: PromptMessage<TToolIO> | null = null;
-  let lastMessage: PromptMessage<TToolIO> | null = null;
-  let previousLast: PromptMessage<TToolIO> | null = null;
-  let maxPriority: number | null = element.strategy ? element.priority : null;
+  const summaryState: SummaryAccumulator<TToolIO> = {
+    totalTokens: 0,
+    messageCount: 0,
+    firstMessage: null,
+    lastMessage: null,
+    previousLast: null,
+    maxPriority: element.strategy ? element.priority : null,
+  };
 
   for (const child of element.children) {
     const childResult = await applyStrategiesAtPriority(
@@ -636,25 +557,7 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
       childrenChanged = true;
     }
 
-    maxPriority = maxNullable(maxPriority, childResult.summary.maxPriority);
-    if (childResult.summary.messageCount === 0) {
-      continue;
-    }
-
-    totalTokens += childResult.summary.totalTokens;
-    if (previousLast && childResult.summary.firstMessage) {
-      totalTokens += provider.countBoundaryTokens(
-        previousLast,
-        childResult.summary.firstMessage
-      );
-    }
-
-    previousLast = childResult.summary.lastMessage;
-    if (!firstMessage) {
-      firstMessage = childResult.summary.firstMessage;
-    }
-    lastMessage = childResult.summary.lastMessage;
-    messageCount += childResult.summary.messageCount;
+    mergeChildSummary(summaryState, childResult.summary, provider);
   }
 
   const nextElement = childrenChanged
@@ -695,11 +598,11 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
   }
 
   const summary: SubtreeSummary<TToolIO> = {
-    totalTokens,
-    messageCount,
-    firstMessage,
-    lastMessage,
-    maxPriority,
+    totalTokens: summaryState.totalTokens,
+    messageCount: summaryState.messageCount,
+    firstMessage: summaryState.firstMessage,
+    lastMessage: summaryState.lastMessage,
+    maxPriority: summaryState.maxPriority,
   };
   caches.summaries.set(nextElement, summary);
 

@@ -157,6 +157,11 @@ export interface PromptMessageNode<
   role: PromptRole;
   id?: string | undefined;
   children: readonly PromptPart<TToolIO>[];
+  /**
+   * Optional precomputed token count for this message.
+   * When present, rendering can skip provider tokenization for this node.
+   */
+  tokenCount?: number | undefined;
 }
 
 /**
