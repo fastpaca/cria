@@ -33,26 +33,170 @@ const messages = await cria
   .render({ budget: 128_000 });
 ```
 
-<!-- -->
-
 ## Works with
 
 <details>
-<summary><strong>LLM APIs</strong></summary>
+<summary><strong>OpenAI (Chat Completions)</strong></summary>
 
-- OpenAI (Chat Completions + Responses)
-- Anthropic
-- Vercel AI SDK
+```ts
+import OpenAI from "openai";
+import { createProvider } from "@fastpaca/cria/openai";
+import { cria } from "@fastpaca/cria";
+
+const client = new OpenAI();
+const provider = createProvider(client, "gpt-4o-mini");
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const response = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages,
+});
+```
 
 </details>
 
 <details>
-<summary><strong>Data backends</strong></summary>
+<summary><strong>OpenAI (Responses)</strong></summary>
 
-- Redis
-- Postgres
-- Chroma
-- Qdrant
+```ts
+import OpenAI from "openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
+import { cria } from "@fastpaca/cria";
+
+const client = new OpenAI();
+const provider = createResponsesProvider(client, "gpt-4o");
+
+const input = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const response = await client.responses.create({
+  model: "gpt-4o",
+  input,
+});
+```
+
+</details>
+
+<details>
+<summary><strong>Anthropic</strong></summary>
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { createProvider } from "@fastpaca/cria/anthropic";
+import { cria } from "@fastpaca/cria";
+
+const client = new Anthropic();
+const provider = createProvider(client, "claude-sonnet-4-20250514");
+
+const { system, messages } = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const response = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  system,
+  messages,
+});
+```
+
+</details>
+
+<details>
+<summary><strong>Vercel AI SDK</strong></summary>
+
+```ts
+import { createProvider } from "@fastpaca/cria/ai-sdk";
+import { cria } from "@fastpaca/cria";
+import { generateText } from "ai";
+
+const provider = createProvider(model);
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const { text } = await generateText({ model, messages });
+```
+
+</details>
+
+<details>
+<summary><strong>Redis</strong></summary>
+
+```ts
+import { RedisStore } from "@fastpaca/cria/memory/redis";
+
+const store = new RedisStore<{ content: string }>({
+  host: "localhost",
+});
+
+await store.set("key-1", { content: "Hello" });
+const entry = await store.get("key-1");
+```
+
+</details>
+
+<details>
+<summary><strong>Postgres</strong></summary>
+
+```ts
+import { PostgresStore } from "@fastpaca/cria/memory/postgres";
+
+const store = new PostgresStore<{ content: string }>({
+  connectionString: "postgres://user:pass@localhost/mydb",
+});
+
+await store.set("key-1", { content: "Hello" });
+const entry = await store.get("key-1");
+```
+
+</details>
+
+<details>
+<summary><strong>Chroma</strong></summary>
+
+```ts
+import { ChromaClient } from "chromadb";
+import { ChromaStore } from "@fastpaca/cria/memory/chroma";
+
+const client = new ChromaClient({ path: "http://localhost:8000" });
+const collection = await client.getOrCreateCollection({ name: "my-docs" });
+
+const store = new ChromaStore({
+  collection,
+  embed: async (text) => await getEmbedding(text),
+});
+```
+
+</details>
+
+<details>
+<summary><strong>Qdrant</strong></summary>
+
+```ts
+import { QdrantClient } from "@qdrant/js-client-rest";
+import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
+
+const client = new QdrantClient({ url: "http://localhost:6333" });
+
+const store = new QdrantStore({
+  client,
+  collectionName: "my-docs",
+  embed: async (text) => await getEmbedding(text),
+});
+```
 
 </details>
 
