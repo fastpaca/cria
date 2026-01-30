@@ -45,11 +45,13 @@ That keeps compaction, context, and evaluation decisions visible instead of buri
 You can replace the pieces while keeping the same prompt contract.
 Cria is the thin, explicit layer that keeps your prompt system stable as everything else changes.
 
-## Three pillars
+## What you get
 
-* **Build** — Compose prompts as explicit pipelines.
-* **Swap** — Swap providers, memory, retrieval, or compaction without rewrites.
-* **Inspect (planned)** — Local DevTools-style inspector to preview what you'll send.
+* Swap providers and stores without rewrites.
+* Token budgeting + fit/compaction controls.
+* Render hooks + OpenTelemetry integration.
+* Prompt eval/test helpers to catch drift.
+* Planned: local DevTools-style prompt inspector.
 
 ## Swap, don't rewrite
 
