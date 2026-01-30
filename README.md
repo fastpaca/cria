@@ -37,28 +37,36 @@ const messages = await cria
 
 ## Works with
 
-**Providers**
+<details>
+<summary><strong>LLM APIs</strong></summary>
+
 - OpenAI (Chat Completions + Responses)
 - Anthropic
 - Vercel AI SDK
 
-**Stores**
+</details>
+
+<details>
+<summary><strong>Data backends</strong></summary>
+
 - Redis
 - Postgres
 - Chroma
 - Qdrant
 
+</details>
+
 ## Why Cria
 
-Cria is prompt architecture for teams that need to swap providers, memory, and retrieval without rewrites.
+Cria is prompt architecture for teams that need to swap components without rewrites.
 It keeps prompt construction explicit and reviewable so you can move fast without breaking prompts.
 
 ## Capabilities
 
 | Capability | Status |
 | --- | --- |
-| Provider swapping via adapters | ✅ |
-| Store swapping via adapters | ✅ |
+| Component swapping via adapters | ✅ |
+| Memory + retrieval adapters | ✅ |
 | Token budgeting | ✅ |
 | Fit & compaction controls | ✅ |
 | OpenTelemetry integration | ✅ |
@@ -87,7 +95,7 @@ const messages2 = await build(anthropicProvider, postgresMemory, chromaStore);
 
 ## Use Cria if...
 
-* You need to swap providers, memory, or retrieval without touching prompt logic.
+* You need to swap LLM APIs, memory, or retrieval without touching prompt logic.
 * You A/B test summarization or compaction strategies.
 * You migrate components frequently as the stack evolves.
 * You want to inspect what gets sent before it hits the model.
@@ -127,7 +135,7 @@ const response = await client.chat.completions.create({
 * [Prompt evaluation](docs/how-to/prompt-evaluation.md)
 * [Full documentation](docs/README.md)
 
-## Providers
+## LLM APIs
 
 <details>
 <summary><strong>OpenAI Chat Completions</strong></summary>
@@ -242,7 +250,7 @@ Cria has built-in support for the patterns you actually need:
 .omit(examples, { priority: 3 })
 ```
 
-Supported stores: Redis, Postgres, Chroma, Qdrant. Or bring your own.
+Supported backends: Redis, Postgres, Chroma, Qdrant. Or bring your own.
 
 ## Evaluation
 
@@ -271,7 +279,7 @@ await judge(prompt).toPass(c`Provides clear, actionable steps`);
 Use it in your favorite test runner (we like vitest) and relax.
 
 <details>
-<summary><strong>Snippets (providers + common operations)</strong></summary>
+<summary><strong>Snippets (LLM APIs + common operations)</strong></summary>
 
 ```ts
 // OpenAI Chat Completions
