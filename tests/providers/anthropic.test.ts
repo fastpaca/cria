@@ -2,7 +2,10 @@ import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { cria } from "@fastpaca/cria/dsl";
 import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
-import { ProtocolProvider, type ProviderRenderContext } from "@fastpaca/cria/provider";
+import {
+  ProtocolProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import {
   AnthropicAdapter,
   type AnthropicRenderResult,
@@ -66,7 +69,6 @@ function hasCacheControl(
   return "cache_control" in block;
 }
 
-
 test("anthropic: extracts system message separately", async () => {
   const prompt = cria.scope([
     cria.system("You are a helpful assistant."),
@@ -74,6 +76,12 @@ test("anthropic: extracts system message separately", async () => {
   ]);
 
   const result = await render(prompt, { provider });
+
+  expect(result).toEqual({
+    system: "You are a helpful assistant.",
+    messages: [{ role: "user", content: [{ type: "text", text: "Hello!" }] }],
+  });
+});
 
 test("anthropic: pins cache control on the pinned prefix", async () => {
   const pinnedSystem = cria
@@ -95,12 +103,6 @@ test("anthropic: pins cache control on the pinned prefix", async () => {
     throw new Error("Expected cache_control on the pinned system block.");
   }
   expect(firstBlock.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-});
-
-  expect(result).toEqual({
-    system: "You are a helpful assistant.",
-    messages: [{ role: "user", content: [{ type: "text", text: "Hello!" }] }],
-  });
 });
 
 test("anthropic: renders user and assistant messages", async () => {
