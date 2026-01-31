@@ -1,5 +1,5 @@
+import { RedisStore } from "@fastpaca/cria/memory/redis";
 import { beforeEach, expect, test, vi } from "vitest";
-import { RedisStore } from "./redis";
 
 // Mock ioredis
 const mockData = new Map<string, string>();

@@ -5,7 +5,7 @@ const srcPath = resolve(__dirname, "src");
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["tests/**/*.test.ts"],
   },
   resolve: {
     alias: {

@@ -1,16 +1,16 @@
-import { describe, expect, test } from "vitest";
-import { InMemoryStore } from "../memory";
-import { ListMessageCodec, ModelProvider } from "../provider";
-import { render } from "../render";
-import { createTestProvider } from "../testing/plaintext";
+import { c, cria, PromptBuilder, prompt } from "@fastpaca/cria/dsl";
+import type { StoredSummary } from "@fastpaca/cria/dsl/summary";
+import { InMemoryStore } from "@fastpaca/cria/memory";
+import { ListMessageCodec, ModelProvider } from "@fastpaca/cria/provider";
+import { render } from "@fastpaca/cria/render";
 import type {
   PromptLayout,
   PromptMessage,
   PromptMessageNode,
   PromptNode,
-} from "../types";
-import { c, cria, PromptBuilder, prompt } from "./index";
-import type { StoredSummary } from "./summary";
+} from "@fastpaca/cria/types";
+import { describe, expect, test } from "vitest";
+import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
   includeRolePrefix: true,

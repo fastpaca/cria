@@ -1,5 +1,5 @@
+import { PostgresStore } from "@fastpaca/cria/memory/postgres";
 import { beforeEach, expect, test, vi } from "vitest";
-import { PostgresStore } from "./postgres";
 
 // Mock data storage
 const mockTables = new Map<string, Map<string, Record<string, unknown>>>();
