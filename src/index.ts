@@ -86,6 +86,8 @@ export type {
 } from "./render";
 export { render } from "./render";
 export type {
+  CacheDescriptor,
+  CacheHint,
   CriaContext,
   MaybePromise,
   MessageChildren,

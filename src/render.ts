@@ -1,6 +1,7 @@
-import type { ModelProvider } from "./provider";
+import type { ModelProvider, ProviderRenderContext } from "./provider";
 import {
   type AssistantMessage,
+  type CacheDescriptor,
   type CriaContext,
   FitError,
   type MaybePromise,
@@ -90,15 +91,8 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
   element: MaybePromise<PromptTree<TToolIO>>,
   options: RenderOptions<TRendered, TToolIO>
 ): Promise<TRendered> {
-  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.codec -> provider.countTokens.
-  // The fit loop just re-renders and re-counts until we land under budget.
-  /*
-   * Rendering is budget-agnostic; fitting owns the budget and simply calls
-   * rendering to get total tokens. Keep that separation explicit here.
-   */
   const resolvedElement = element instanceof Promise ? await element : element;
   const provider = resolveProvider(resolvedElement, options.provider);
-
   if (options.budget === undefined || options.budget === null) {
     return renderOutput(resolvedElement, provider);
   }
@@ -123,8 +117,10 @@ function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
   provider: ModelProvider<TRendered, TToolIO>
 ): TRendered {
   // Prompt tree composition is resolved before rendering; codecs only see layout.
-  const layout = layoutPrompt(root);
-  return provider.codec.render(layout);
+  const { layout, cacheDescriptor } = layoutPromptWithCache(root);
+  const context: ProviderRenderContext = { cache: cacheDescriptor };
+  const rendered = provider.codec.render(layout, context);
+  return rendered;
 }
 
 function renderAndCount<TRendered, TToolIO extends ProviderToolIO>(
@@ -167,6 +163,59 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
   walk(root);
 
   return messages;
+}
+
+function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>
+): { layout: PromptLayout<TToolIO>; cacheDescriptor: CacheDescriptor } {
+  const firstChild = root.children[0];
+  const layout: PromptMessage<TToolIO>[] = [];
+  let pinnedPrefixMessageCount = 0;
+
+  const walk = (node: PromptNode<TToolIO>, countPinned: boolean): void => {
+    if (node.kind === "message") {
+      layout.push(buildMessage(node));
+      if (countPinned) {
+        pinnedPrefixMessageCount += 1;
+      }
+      return;
+    }
+
+    for (const child of node.children) {
+      walk(child, countPinned);
+    }
+  };
+
+  if (firstChild && firstChild.kind === "scope" && firstChild.cache) {
+    walk(firstChild, true);
+    for (const child of root.children.slice(1)) {
+      walk(child, false);
+    }
+  } else {
+    for (const child of root.children) {
+      walk(child, false);
+    }
+  }
+
+  if (!firstChild || firstChild.kind !== "scope" || !firstChild.cache) {
+    return {
+      layout,
+      cacheDescriptor: {
+        pinnedPrefixMessageCount: 0,
+      },
+    };
+  }
+
+  const cache = firstChild.cache;
+  const cacheDescriptor: CacheDescriptor = {
+    pinIdInPrefix: cache.id,
+    pinVersionInPrefix: cache.version,
+    pinnedPrefixMessageCount,
+    ...(cache.scopeKey ? { scopeKey: cache.scopeKey } : {}),
+    ...(cache.ttlSeconds !== undefined ? { ttlSeconds: cache.ttlSeconds } : {}),
+  };
+
+  return { layout, cacheDescriptor };
 }
 
 function buildMessage<TToolIO extends ProviderToolIO>(

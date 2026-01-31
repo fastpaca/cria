@@ -1,4 +1,8 @@
-import { MessageCodec, ModelProvider } from "@fastpaca/cria/provider";
+import {
+  MessageCodec,
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import type { PromptLayout, PromptMessage } from "@fastpaca/cria/types";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
@@ -28,7 +32,10 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
     this.includeRolePrefix = options.includeRolePrefix ?? false;
   }
 
-  override render(layout: PromptLayout<PlainTextToolIO>): string {
+  override render(
+    layout: PromptLayout<PlainTextToolIO>,
+    _context?: ProviderRenderContext
+  ): string {
     const messages = layout.map((message) =>
       formatPlaintextMessage(message, this.includeRolePrefix)
     );
@@ -144,11 +151,15 @@ export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
     return countText(rendered);
   }
 
-  completion(rendered: string): string {
+  completion(rendered: string, _context?: ProviderRenderContext): string {
     return rendered;
   }
 
-  object<T>(rendered: string, schema: z.ZodType<T>): T {
+  object<T>(
+    rendered: string,
+    schema: z.ZodType<T>,
+    _context?: ProviderRenderContext
+  ): T {
     return schema.parse(JSON.parse(rendered));
   }
 }

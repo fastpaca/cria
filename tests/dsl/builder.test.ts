@@ -1,7 +1,11 @@
 import { c, cria, PromptBuilder, prompt } from "@fastpaca/cria/dsl";
 import type { StoredSummary } from "@fastpaca/cria/dsl/summary";
 import { InMemoryStore } from "@fastpaca/cria/memory";
-import { ListMessageCodec, ModelProvider } from "@fastpaca/cria/provider";
+import {
+  ListMessageCodec,
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import { render } from "@fastpaca/cria/render";
 import type {
   PromptLayout,
@@ -10,6 +14,7 @@ import type {
   PromptNode,
 } from "@fastpaca/cria/types";
 import { describe, expect, test } from "vitest";
+import type { ZodType } from "zod";
 import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
@@ -19,7 +24,7 @@ const provider = createTestProvider({
 const tokensFor = (text: string): number => provider.countTokens(text);
 
 const renderBuilder = async (
-  builder: PromptBuilder<unknown>,
+  builder: PromptBuilder<unknown, "unpinned" | "pinned">,
   budget = 10_000
 ): Promise<string> => render(await builder.build(), { provider, budget });
 
@@ -34,9 +39,12 @@ interface FakeInputMessage {
 }
 
 class FakeInputCodec extends ListMessageCodec<FakeInputMessage, FakeToolIO> {
-  protected toProviderMessage(
-    message: PromptMessage<FakeToolIO>
-  ): readonly FakeInputMessage[] {
+  protected toProviderMessage(args: {
+    message: PromptMessage<FakeToolIO>;
+    index: number;
+    context?: ProviderRenderContext;
+  }): readonly FakeInputMessage[] {
+    const { message } = args;
     if (message.role === "tool") {
       return [];
     }
@@ -60,11 +68,18 @@ class FakeInputProvider extends ModelProvider<FakeInputMessage[], FakeToolIO> {
     );
   }
 
-  completion(): string {
+  completion(
+    _rendered: FakeInputMessage[],
+    _context?: ProviderRenderContext
+  ): string {
     return "";
   }
 
-  object(): never {
+  object<T>(
+    _rendered: FakeInputMessage[],
+    _schema: ZodType<T>,
+    _context?: ProviderRenderContext
+  ): never {
     throw new Error("Not implemented");
   }
 }
@@ -145,7 +160,7 @@ describe("PromptBuilder", () => {
           toolCallId: "call_1",
           toolName: "calc",
           output: '{"answer":42}',
-        }) as PromptBuilder<unknown>
+        })
       );
       expect(result).toBe('tool: [tool-result:calc]{"answer":42}');
     });

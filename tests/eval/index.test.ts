@@ -1,6 +1,9 @@
 import { c, cria } from "@fastpaca/cria/dsl";
 import { createJudge } from "@fastpaca/cria/eval";
-import { ModelProvider } from "@fastpaca/cria/provider";
+import {
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
@@ -28,11 +31,15 @@ class MockProvider extends ModelProvider<string> {
     return countText(rendered);
   }
 
-  completion(): string {
+  completion(_rendered: string, _context?: ProviderRenderContext): string {
     return this.completionValue;
   }
 
-  object<T>(_: string, schema: z.ZodType<T>): T {
+  object<T>(
+    _rendered: string,
+    schema: z.ZodType<T>,
+    _context?: ProviderRenderContext
+  ): T {
     return this.objectValue ? schema.parse(this.objectValue) : schema.parse({});
   }
 }

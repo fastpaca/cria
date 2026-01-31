@@ -1,0 +1,17 @@
+{
+  "name": "cria-provider-cache-pinning-example",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx main.ts"
+  },
+  "dependencies": {
+    "@fastpaca/cria": "link:../..",
+    "openai": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "tsx": "^4.21.0"
+  }
+}

@@ -31,6 +31,17 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 - Avoid defensive re-checking of types inside trusted layers; keep runtime validation at the boundaries and rely on the refined types internally
 - Use meaningful variable names instead of magic numbers - extract constants with descriptive names
 
+### Strictness & Explicitness (Cria)
+
+- Treat Cria as a closed system: prefer strict contracts over defensive runtime checks
+- If a constraint matters, enforce it with types + tests; avoid runtime guards for trusted internal data
+- No silent failures: avoid try-catch that swallows errors; if it fails, it must throw
+- No implicit context propagation; require explicit parameters
+- Use SDK types directly in providers; do not invent "client-like" interfaces
+- Avoid Reflect or mutation hacks to inject fields; use explicit typed request shapes
+- Cache pinning must be explicit: use `pin({ id, version })` directly; no hashing or JSON serialization
+- Avoid redundant traversals when the DSL already defines boundaries
+
 ### Functional & Immutability
 
 - Prefer pure, small helpers over functions with hidden side effects; keep effects at the edges (I/O, logging)
