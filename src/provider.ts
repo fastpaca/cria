@@ -54,7 +54,10 @@ export abstract class ModelProvider<
   /** Codec that translates between PromptLayout and provider-native input. */
   abstract readonly codec: MessageCodec<TRendered, TToolIO>;
 
-  /** Count tokens for rendered output (tiktoken-backed). */
+  /**
+   * Count tokens for rendered output (tiktoken-backed).
+   * Token counting should reflect the provider-native payload.
+   */
   abstract countTokens(rendered: TRendered): number;
 
   /** Generate a text completion from rendered prompt input. */

@@ -24,7 +24,7 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
 
   constructor(options: PlainTextCodecOptions = {}) {
     super();
-    this.joinMessagesWith = options.joinMessagesWith ?? "";
+    this.joinMessagesWith = options.joinMessagesWith ?? "\n\n";
     this.includeRolePrefix = options.includeRolePrefix ?? false;
   }
 

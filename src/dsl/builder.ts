@@ -206,11 +206,12 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
     query: string;
     limit: number;
   }): MessageBuilder<P> {
-    const asyncPart = VectorSearch<T, ToolIOFor<P>>({
-      store: opts.store,
-      query: opts.query,
-      limit: opts.limit,
-    }).then((scope) => {
+    const asyncPart = (async (): Promise<PromptPartFor<P>> => {
+      const scope = await VectorSearch<T, ToolIOFor<P>>({
+        store: opts.store,
+        query: opts.query,
+        limit: opts.limit,
+      });
       const message = scope.children[0];
       if (!message || message.kind !== "message") {
         throw new Error("VectorSearch did not return a message node.");
@@ -220,7 +221,7 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
         throw new Error("VectorSearch did not return a text part.");
       }
       return part;
-    });
+    })();
     return this.addChild(asyncPart);
   }
 
@@ -317,14 +318,13 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     }
 
     const inner = fn(this.create([], this.context));
-    const element = inner
-      .buildChildren()
-      .then((children) =>
-        createScope<ToolIOFor<P>>(
-          children,
-          opts?.id ? { id: opts.id } : undefined
-        )
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await inner.buildChildren();
+      return createScope<ToolIOFor<P>>(
+        children,
+        opts?.id ? { id: opts.id } : undefined
       );
+    })();
 
     return this.addChild(element);
   }
@@ -341,14 +341,17 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       id?: string;
     }
   ): PromptBuilder<P> {
-    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
-      (children) =>
-        createScope<ToolIOFor<P>>(children, {
-          ...(opts.priority !== undefined && { priority: opts.priority }),
-          strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
-          ...(opts.id && { id: opts.id }),
-        })
-    );
+    const node = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(children, {
+        ...(opts.priority !== undefined && { priority: opts.priority }),
+        strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
+        ...(opts.id && { id: opts.id }),
+      });
+    })();
 
     return this.addChild(node);
   }
@@ -360,14 +363,17 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     content: ScopeContent<P>,
     opts?: { priority?: number; id?: string }
   ): PromptBuilder<P> {
-    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
-      (children) =>
-        createScope<ToolIOFor<P>>(children, {
-          ...(opts?.priority !== undefined && { priority: opts.priority }),
-          strategy: createOmitStrategy(),
-          ...(opts?.id && { id: opts.id }),
-        })
-    );
+    const node = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(children, {
+        ...(opts?.priority !== undefined && { priority: opts.priority }),
+        strategy: createOmitStrategy(),
+        ...(opts?.id && { id: opts.id }),
+      });
+    })();
 
     return this.addChild(node);
   }
@@ -399,14 +405,15 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     const bound = this.provider(modelProvider);
     const inner = fn(PromptBuilder.create(modelProvider));
 
-    const element = inner.buildChildren().then(
-      (children): PromptScopeFor<TProvider> => ({
+    const element = (async (): Promise<PromptScopeFor<TProvider>> => {
+      const children = await inner.buildChildren();
+      return {
         kind: "scope",
         priority: 0,
         children,
         context,
-      })
-    );
+      };
+    })();
 
     return bound.addChild(element);
   }
@@ -461,18 +468,19 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       priority?: number;
     }
   ): PromptBuilder<P> {
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec
-    ).then((children) =>
-      Summary({
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return Summary({
         id: opts.id,
         store: opts.store,
         children,
         ...(opts.summarize ? { summarize: opts.summarize } : {}),
         ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-      })
-    );
+      });
+    })();
 
     return this.addChild(element);
   }
@@ -492,10 +500,11 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     content: ScopeContent<P>,
     opts: { n: number; id?: string }
   ): PromptBuilder<P> {
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec
-    ).then((children) => {
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
       // Filter to only message nodes and take the last N
       const messages = children.filter(
         (child): child is PromptMessageNode<ToolIOFor<P>> =>
@@ -506,7 +515,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
         lastN,
         opts.id ? { id: opts.id } : undefined
       );
-    });
+    })();
 
     return this.addChild(element);
   }
@@ -758,14 +767,15 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     opts?: { id?: string }
   ): PromptBuilder<P> {
     // Normalize text-like inputs into typed parts so tool IO stays provider-bound.
-    const childrenPromise =
-      typeof content === "function"
-        ? content(new MessageBuilder<P>([], this.context)).buildChildren()
-        : Promise.resolve(normalizeTextInput<ToolIOFor<P>>(content));
-
-    const element = childrenPromise.then((children) =>
-      createMessage<ToolIOFor<P>>(role, children, opts?.id)
-    );
+    const element = (async (): Promise<PromptMessageNode<ToolIOFor<P>>> => {
+      const children =
+        typeof content === "function"
+          ? await content(
+              new MessageBuilder<P>([], this.context)
+            ).buildChildren()
+          : normalizeTextInput<ToolIOFor<P>>(content);
+      return createMessage<ToolIOFor<P>>(role, children, opts?.id);
+    })();
 
     return this.addChild(element);
   }
@@ -817,7 +827,7 @@ async function resolveScopeChildren<P>(
 
 async function resolveScopeContent<P>(
   content: ScopeContent<P>,
-  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined
+  codec: MessageCodec<unknown, ProviderToolIO> | undefined
 ): Promise<PromptNodeFor<P>[]> {
   // Scope content can be trees, builders, layouts, or provider-native inputs.
   // Provider-native inputs are decoded back into PromptLayout via the codec.
@@ -876,7 +886,7 @@ function resolveInputContent<P>(
 
 // Type-only narrowing: codec comes from the bound provider.
 function isCodecForInput<P>(
-  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined,
+  codec: MessageCodec<unknown, ProviderToolIO> | undefined,
   _content: PromptInput<RenderedForProvider<P>>
 ): codec is MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> {
   return Boolean(codec);

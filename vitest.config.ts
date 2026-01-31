@@ -7,6 +7,9 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
   },
+  benchmark: {
+    include: ["bench/**/*.bench.ts"],
+  },
   resolve: {
     alias: {
       "@fastpaca/cria": srcPath,

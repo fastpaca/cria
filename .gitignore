@@ -27,6 +27,9 @@ pnpm-debug.log*
 # Test coverage
 coverage/
 
+# Benchmarks
+bench/*.json
+
 # bv (beads viewer) local config and caches
 .bv/
 

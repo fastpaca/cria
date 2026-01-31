@@ -244,7 +244,7 @@ export type PromptMessage<TToolIO extends ProviderToolIO = ProviderToolIO> =
   | AssistantMessage<TToolIO>
   | ToolMessage<TToolIO>;
 
-/** Flat, role-shaped message list used by codecs and token counting. */
+/** Flat, role-shaped message list used by codecs (and rendered for counting). */
 export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
   readonly PromptMessage<TToolIO>[];
 

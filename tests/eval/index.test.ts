@@ -1,17 +1,15 @@
 import { c, cria } from "@fastpaca/cria/dsl";
 import { createJudge } from "@fastpaca/cria/eval";
 import { ModelProvider } from "@fastpaca/cria/provider";
-import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
 import { createPlainTextCodec } from "../utils/plaintext";
+import { countTextTokens } from "../utils/token-count";
 
 const codec = createPlainTextCodec({
   includeRolePrefix: true,
   joinMessagesWith: "\n\n",
 });
-const encoder = getEncoding("cl100k_base");
-const countText = (text: string): number => encoder.encode(text).length;
 
 class MockProvider extends ModelProvider<string> {
   readonly codec = codec;
@@ -25,7 +23,7 @@ class MockProvider extends ModelProvider<string> {
   }
 
   countTokens(rendered: string): number {
-    return countText(rendered);
+    return countTextTokens(rendered);
   }
 
   completion(): string {

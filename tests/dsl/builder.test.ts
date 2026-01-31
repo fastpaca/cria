@@ -53,6 +53,7 @@ class FakeInputCodec extends ListMessageCodec<FakeInputMessage, FakeToolIO> {
 class FakeInputProvider extends ModelProvider<FakeInputMessage[], FakeToolIO> {
   readonly codec = new FakeInputCodec();
 
+  // Test-only: intentionally naive token counting so we can assert budgets.
   countTokens(rendered: FakeInputMessage[]): number {
     return rendered.reduce(
       (total, message) => total + message.content.length,
