@@ -1,6 +1,13 @@
 import { getEncoding } from "js-tiktoken";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import type { ResponseInputItem } from "openai/resources/responses/responses";
+import type OpenAI from "openai";
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
+import type {
+  ResponseCreateParamsNonStreaming,
+  ResponseInputItem,
+} from "openai/resources/responses/responses";
 import type { z } from "zod";
 import type { ChatCompletionsInput } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
@@ -11,7 +18,6 @@ import type {
 } from "../protocols/responses";
 import { ResponsesProtocol } from "../protocols/responses";
 import {
-  getRenderContext,
   ProtocolProvider,
   type ProviderAdapter,
   type ProviderRenderContext,
@@ -20,33 +26,13 @@ import {
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
-interface OpenAIChatCompletionResponse {
-  choices: Array<{
-    message?: { content?: string | null } | null;
-  }>;
-}
-
-interface OpenAIResponsesCreateResponse {
-  output_text?: string | null;
-}
-
-interface OpenAIChatClientLike {
-  chat: {
-    completions: {
-      create(params: unknown): Promise<OpenAIChatCompletionResponse>;
-    };
-  };
-}
-
-interface OpenAIResponsesClientLike {
-  responses: {
-    create(params: unknown): Promise<OpenAIResponsesCreateResponse>;
-  };
-}
+type OpenAIModel =
+  | ChatCompletionCreateParamsNonStreaming["model"]
+  | ResponseCreateParamsNonStreaming["model"];
 
 function derivePromptCacheKey(
   context: ProviderRenderContext | undefined,
-  model: string
+  model: OpenAIModel
 ): string | undefined {
   const descriptor = context?.cache;
   const pinId = descriptor?.pinIdsInPrefix[0];
@@ -479,10 +465,13 @@ export class OpenAIChatProvider extends ProtocolProvider<
   ChatCompletionsInput<OpenAiToolIO>,
   OpenAiToolIO
 > {
-  private readonly client: OpenAIChatClientLike;
-  private readonly model: string;
+  private readonly client: OpenAI;
+  private readonly model: ChatCompletionCreateParamsNonStreaming["model"];
 
-  constructor(client: OpenAIChatClientLike, model: string) {
+  constructor(
+    client: OpenAI,
+    model: ChatCompletionCreateParamsNonStreaming["model"]
+  ) {
     super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
     this.client = client;
     this.model = model;
@@ -498,11 +487,13 @@ export class OpenAIChatProvider extends ProtocolProvider<
     messages: ChatCompletionMessageParam[],
     context?: ProviderRenderContext
   ): Promise<string> {
-    const effectiveContext = context ?? getRenderContext(messages);
-    const promptCacheKey = derivePromptCacheKey(effectiveContext, this.model);
-    const request = { model: this.model, messages };
+    const promptCacheKey = derivePromptCacheKey(context, this.model);
+    const request: ChatCompletionCreateParamsNonStreaming = {
+      model: this.model,
+      messages,
+    };
     if (promptCacheKey) {
-      Reflect.set(request, "prompt_cache_key", promptCacheKey);
+      request.prompt_cache_key = promptCacheKey;
     }
 
     const res = await this.client.chat.completions.create(request);
@@ -515,15 +506,14 @@ export class OpenAIChatProvider extends ProtocolProvider<
     schema: z.ZodType<T>,
     context?: ProviderRenderContext
   ): Promise<T> {
-    const effectiveContext = context ?? getRenderContext(messages);
-    const promptCacheKey = derivePromptCacheKey(effectiveContext, this.model);
-    const request = {
+    const promptCacheKey = derivePromptCacheKey(context, this.model);
+    const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
       messages,
       response_format: { type: "json_object" as const },
     };
     if (promptCacheKey) {
-      Reflect.set(request, "prompt_cache_key", promptCacheKey);
+      request.prompt_cache_key = promptCacheKey;
     }
 
     const res = await this.client.chat.completions.create(request);
@@ -539,10 +529,13 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
   ResponsesInput,
   OpenAiToolIO
 > {
-  private readonly client: OpenAIResponsesClientLike;
-  private readonly model: string;
+  private readonly client: OpenAI;
+  private readonly model: ResponseCreateParamsNonStreaming["model"];
 
-  constructor(client: OpenAIResponsesClientLike, model: string) {
+  constructor(
+    client: OpenAI,
+    model: ResponseCreateParamsNonStreaming["model"]
+  ) {
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
     this.client = client;
     this.model = model;
@@ -558,11 +551,13 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
     items: OpenAIResponses,
     context?: ProviderRenderContext
   ): Promise<string> {
-    const effectiveContext = context ?? getRenderContext(items);
-    const promptCacheKey = derivePromptCacheKey(effectiveContext, this.model);
-    const request = { model: this.model, input: items };
+    const promptCacheKey = derivePromptCacheKey(context, this.model);
+    const request: ResponseCreateParamsNonStreaming = {
+      model: this.model,
+      input: items,
+    };
     if (promptCacheKey) {
-      Reflect.set(request, "prompt_cache_key", promptCacheKey);
+      request.prompt_cache_key = promptCacheKey;
     }
 
     const res = await this.client.responses.create(request);
@@ -581,16 +576,16 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
 
 /** Convenience creator for the OpenAI chat provider. */
 export function createProvider(
-  client: OpenAIChatClientLike,
-  model: string
+  client: OpenAI,
+  model: ChatCompletionCreateParamsNonStreaming["model"]
 ): OpenAIChatProvider {
   return new OpenAIChatProvider(client, model);
 }
 
 /** Convenience creator for the OpenAI responses provider. */
 export function createResponsesProvider(
-  client: OpenAIResponsesClientLike,
-  model: string
+  client: OpenAI,
+  model: ResponseCreateParamsNonStreaming["model"]
 ): OpenAIResponsesProvider {
   return new OpenAIResponsesProvider(client, model);
 }

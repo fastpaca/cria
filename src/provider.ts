@@ -17,57 +17,6 @@ export interface ProviderRenderContext {
   cache?: CacheDescriptor | undefined;
 }
 
-const RENDER_CONTEXT_SYMBOL = Symbol.for("@fastpaca/cria.renderContext");
-
-const isObject = (value: unknown): value is object =>
-  typeof value === "object" && value !== null;
-
-const isProviderRenderContext = (
-  value: unknown
-): value is ProviderRenderContext => isObject(value);
-
-/**
- * Attach non-enumerable render context metadata to rendered outputs.
- *
- * This preserves the existing render() return shape while allowing providers to
- * read context (like cache pin descriptors) during completion/object calls.
- */
-export function attachRenderContext<TRendered>(
-  rendered: TRendered,
-  context: ProviderRenderContext
-): TRendered {
-  if (!isObject(rendered)) {
-    return rendered;
-  }
-
-  try {
-    Object.defineProperty(rendered, RENDER_CONTEXT_SYMBOL, {
-      value: context,
-      enumerable: false,
-      configurable: true,
-      writable: false,
-    });
-  } catch {
-    // If the rendered value is non-extensible, we silently skip metadata.
-  }
-
-  return rendered;
-}
-
-/**
- * Read attached render context metadata from rendered outputs.
- */
-export function getRenderContext(
-  rendered: unknown
-): ProviderRenderContext | undefined {
-  if (!isObject(rendered)) {
-    return undefined;
-  }
-
-  const value = Reflect.get(rendered, RENDER_CONTEXT_SYMBOL);
-  return isProviderRenderContext(value) ? value : undefined;
-}
-
 /**
  * Bidirectional codec between PromptLayout (IR) and provider-native input.
  */

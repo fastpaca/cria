@@ -8,6 +8,9 @@
     "baseUrl": ".",
     "paths": {
       "@fastpaca/cria": ["../../src/index.ts"],
+      "@fastpaca/cria/openai": ["../../src/providers/openai.ts"],
+      "@fastpaca/cria/anthropic": ["../../src/providers/anthropic.ts"],
+      "@fastpaca/cria/ai-sdk": ["../../src/providers/ai-sdk.ts"],
       "@fastpaca/cria/*": ["../../src/*"]
     }
   },
