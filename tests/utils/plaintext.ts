@@ -1,7 +1,7 @@
+import { MessageCodec, ModelProvider } from "@fastpaca/cria/provider";
+import type { PromptLayout, PromptMessage } from "@fastpaca/cria/types";
 import { getEncoding } from "js-tiktoken";
 import type { z } from "zod";
-import { MessageCodec, ModelProvider } from "../provider";
-import type { PromptLayout, PromptMessage } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;

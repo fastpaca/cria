@@ -1,19 +1,19 @@
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { expect, test } from "vitest";
-import { cria } from "../dsl";
-import type { ChatCompletionsInput } from "../protocols/chat-completions";
-import { ChatCompletionsProtocol } from "../protocols/chat-completions";
-import type { ResponsesInput } from "../protocols/responses";
-import { ResponsesProtocol } from "../protocols/responses";
-import { ProtocolProvider } from "../provider";
-import { render } from "../render";
-import type { PromptMessageNode } from "../types";
+import { cria } from "@fastpaca/cria/dsl";
+import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
+import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
+import type { ResponsesInput } from "@fastpaca/cria/protocols/responses";
+import { ResponsesProtocol } from "@fastpaca/cria/protocols/responses";
+import { ProtocolProvider } from "@fastpaca/cria/provider";
 import {
   OpenAIChatAdapter,
   type OpenAIResponses,
   OpenAIResponsesAdapter,
   type OpenAiToolIO,
-} from "./openai";
+} from "@fastpaca/cria/providers/openai";
+import { render } from "@fastpaca/cria/render";
+import type { PromptMessageNode } from "@fastpaca/cria/types";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { expect, test } from "vitest";
 
 class RenderOnlyChatProvider extends ProtocolProvider<
   ChatCompletionMessageParam[],

@@ -1,15 +1,15 @@
-import { expect, test } from "vitest";
-import { cria } from "../dsl";
-import type { ChatCompletionsInput } from "../protocols/chat-completions";
-import { ChatCompletionsProtocol } from "../protocols/chat-completions";
-import { ProtocolProvider } from "../provider";
-import { render } from "../render";
-import type { PromptMessageNode } from "../types";
+import { cria } from "@fastpaca/cria/dsl";
+import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
+import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
+import { ProtocolProvider } from "@fastpaca/cria/provider";
 import {
   AnthropicAdapter,
   type AnthropicRenderResult,
   type AnthropicToolIO,
-} from "./anthropic";
+} from "@fastpaca/cria/providers/anthropic";
+import { render } from "@fastpaca/cria/render";
+import type { PromptMessageNode } from "@fastpaca/cria/types";
+import { expect, test } from "vitest";
 
 class RenderOnlyProvider extends ProtocolProvider<
   AnthropicRenderResult,

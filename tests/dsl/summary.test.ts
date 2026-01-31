@@ -1,8 +1,8 @@
+import { cria } from "@fastpaca/cria/dsl";
+import type { StoredSummary } from "@fastpaca/cria/dsl/summary";
+import { InMemoryStore } from "@fastpaca/cria/memory";
 import { describe, expect, test } from "vitest";
-import { InMemoryStore } from "../memory";
-import { createTestProvider } from "../testing/plaintext";
-import { cria } from "./index";
-import type { StoredSummary } from "./summary";
+import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
   includeRolePrefix: true,

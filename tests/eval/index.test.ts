@@ -1,10 +1,10 @@
+import { c, cria } from "@fastpaca/cria/dsl";
+import { createJudge } from "@fastpaca/cria/eval";
+import { ModelProvider } from "@fastpaca/cria/provider";
 import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";
-import { c, cria } from "../dsl";
-import { ModelProvider } from "../provider";
-import { createPlainTextCodec } from "../testing/plaintext";
-import { createJudge } from "./index";
+import { createPlainTextCodec } from "../utils/plaintext";
 
 const codec = createPlainTextCodec({
   includeRolePrefix: true,

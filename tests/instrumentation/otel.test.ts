@@ -1,9 +1,13 @@
+import { cria, render } from "@fastpaca/cria";
+import { createOtelRenderHooks } from "@fastpaca/cria/instrumentation/otel";
+import type {
+  PromptMessageNode,
+  PromptScope,
+  Strategy,
+} from "@fastpaca/cria/types";
 import type { Attributes, Span, Tracer } from "@opentelemetry/api";
 import { describe, expect, test } from "vitest";
-import { cria, render } from "../index";
-import { createTestProvider } from "../testing/plaintext";
-import type { PromptMessageNode, PromptScope, Strategy } from "../types";
-import { createOtelRenderHooks } from "./otel";
+import { createTestProvider } from "../utils/plaintext";
 
 class StubSpan implements Span {
   name: string;

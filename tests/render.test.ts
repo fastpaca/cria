@@ -1,8 +1,12 @@
+import { cria, render } from "@fastpaca/cria";
+import type { FitErrorEvent } from "@fastpaca/cria/render";
+import type {
+  PromptMessageNode,
+  PromptScope,
+  Strategy,
+} from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
-import { cria, render } from "./index";
-import type { FitErrorEvent } from "./render";
-import { createTestProvider } from "./testing/plaintext";
-import type { PromptMessageNode, PromptScope, Strategy } from "./types";
+import { createTestProvider } from "./utils/plaintext";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);

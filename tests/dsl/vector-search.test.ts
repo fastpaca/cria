@@ -1,6 +1,6 @@
+import { cria } from "@fastpaca/cria/dsl";
 import { describe, expect, test } from "vitest";
-import { createTestProvider } from "../testing/plaintext";
-import { cria } from "./index";
+import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
   includeRolePrefix: true,

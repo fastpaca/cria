@@ -1,5 +1,5 @@
+import { InMemoryStore } from "@fastpaca/cria/memory/key-value";
 import { expect, test } from "vitest";
-import { InMemoryStore } from "./key-value";
 
 test("InMemoryStore: get returns null for missing key", () => {
   const store = new InMemoryStore<string>();

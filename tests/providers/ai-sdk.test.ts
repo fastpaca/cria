@@ -1,12 +1,15 @@
+import { cria } from "@fastpaca/cria/dsl";
+import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
+import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
+import { ProtocolProvider } from "@fastpaca/cria/provider";
+import {
+  AiSdkAdapter,
+  type AiSdkToolIO,
+} from "@fastpaca/cria/providers/ai-sdk";
+import { render } from "@fastpaca/cria/render";
+import type { PromptMessageNode } from "@fastpaca/cria/types";
 import type { ModelMessage } from "ai";
 import { expect, test } from "vitest";
-import { cria } from "../dsl";
-import type { ChatCompletionsInput } from "../protocols/chat-completions";
-import { ChatCompletionsProtocol } from "../protocols/chat-completions";
-import { ProtocolProvider } from "../provider";
-import { render } from "../render";
-import type { PromptMessageNode } from "../types";
-import { AiSdkAdapter, type AiSdkToolIO } from "./ai-sdk";
 
 class RenderOnlyProvider extends ProtocolProvider<
   ModelMessage[],
