@@ -2,10 +2,8 @@ import { cria } from "@fastpaca/cria";
 import { OpenAIChatProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
-const provider = new OpenAIChatProvider(
-  new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
-  "gpt-5-nano"
-);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const provider = new OpenAIChatProvider(openai, "gpt-5-nano");
 
 const pinnedPrefix = cria.prompt().system("You are a helpful assistant.").pin({
   id: "system",
@@ -15,5 +13,9 @@ const pinnedPrefix = cria.prompt().system("You are a helpful assistant.").pin({
 });
 
 const prompt = cria.prompt(provider).prefix(pinnedPrefix).user("Hello!");
-const { output, context } = await prompt.renderWithContext();
-await provider.completion(output, context);
+const { messages, cache_id } = await prompt.render();
+await openai.chat.completions.create({
+  model: "gpt-5-nano",
+  messages,
+  ...(cache_id ? { prompt_cache_key: cache_id } : {}),
+});

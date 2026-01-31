@@ -276,23 +276,15 @@ export type PromptLayout<TToolIO extends ProviderToolIO = ProviderToolIO> =
  * cache keys).
  */
 export interface CacheDescriptor {
-  /** Pinned scope ids that contribute to the contiguous pinned prefix. */
-  pinIdsInPrefix: readonly string[];
+  /** Pin id for the contiguous pinned prefix, if any. */
+  pinIdInPrefix?: string | undefined;
   /** Pin version for the contiguous pinned prefix, if any. */
   pinVersionInPrefix?: string | undefined;
-  /** Message indexes that belong to the pinned prefix. */
-  pinnedMessageIndexes: readonly number[];
   /** Number of pinned messages in the contiguous prefix. */
   pinnedPrefixMessageCount: number;
-  /**
-   * Optional shared scope key when all prefix pins agree on the same value.
-   * When pins disagree, this will be undefined.
-   */
+  /** Optional shared scope key for the pinned prefix. */
   scopeKey?: string | undefined;
-  /**
-   * Optional shared TTL hint (seconds) when all prefix pins agree on the same
-   * value. Providers may ignore this.
-   */
+  /** Optional TTL hint in seconds. Providers may ignore this. */
   ttlSeconds?: number | undefined;
 }
 

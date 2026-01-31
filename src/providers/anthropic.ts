@@ -48,6 +48,10 @@ interface AnthropicCacheControl {
   ttl?: "5m" | "1h";
 }
 
+type CacheableContentBlockParam = ContentBlockParam & {
+  cache_control?: AnthropicCacheControl | undefined;
+};
+
 const toAnthropicTtl = (
   ttlSeconds: number | undefined
 ): "5m" | "1h" | undefined => {
@@ -64,11 +68,14 @@ function buildCacheControl(
   return ttl ? { type: "ephemeral", ttl } : { type: "ephemeral" };
 }
 
-function applyCacheControlToBlock(
-  block: ContentBlockParam,
+function applyCacheControlToBlock<T extends ContentBlockParam>(
+  block: T,
   cacheControl: AnthropicCacheControl
-): void {
-  Reflect.set(block, "cache_control", cacheControl);
+): T & CacheableContentBlockParam {
+  return {
+    ...block,
+    cache_control: cacheControl,
+  };
 }
 
 function toContentBlocks(
@@ -91,7 +98,7 @@ function applyCacheControlToMessage(
   const lastIndex = blocks.length - 1;
   const lastBlock = blocks[lastIndex];
   if (lastBlock) {
-    applyCacheControlToBlock(lastBlock, cacheControl);
+    blocks[lastIndex] = applyCacheControlToBlock(lastBlock, cacheControl);
   }
   return { ...message, content: blocks };
 }
@@ -116,16 +123,15 @@ function createTextBlock(text: string): TextBlockParam {
   return { type: "text", text };
 }
 
-function applyCacheControlIfNeeded(
-  block: ContentBlockParam,
+function maybeApplyCacheControl<T extends ContentBlockParam>(
+  block: T,
   shouldMarkCache: boolean,
   cacheControl: AnthropicCacheControl | undefined
-): boolean {
+): T | (T & CacheableContentBlockParam) {
   if (!(shouldMarkCache && cacheControl)) {
-    return false;
+    return block;
   }
-  applyCacheControlToBlock(block, cacheControl);
-  return true;
+  return applyCacheControlToBlock(block, cacheControl);
 }
 
 function renderToolResultMessages(
@@ -139,8 +145,12 @@ function renderToolResultMessages(
       tool_use_id: result.toolCallId,
       content: result.output ?? "",
     };
-    applyCacheControlIfNeeded(block, shouldMarkCache, cacheControl);
-    return { role: "user", content: [block] };
+    const resolvedBlock = maybeApplyCacheControl(
+      block,
+      shouldMarkCache,
+      cacheControl
+    );
+    return { role: "user", content: [resolvedBlock] };
   });
 }
 
@@ -237,10 +247,14 @@ export class AnthropicAdapter
             break;
           }
           const block = createTextBlock(message.content);
-          hasSystemCacheControl =
-            applyCacheControlIfNeeded(block, shouldMarkCache, cacheControl) ||
-            hasSystemCacheControl;
-          systemBlocks.push(block);
+          const shouldApplyCache = Boolean(shouldMarkCache && cacheControl);
+          const resolvedBlock = maybeApplyCacheControl(
+            block,
+            shouldMarkCache,
+            cacheControl
+          );
+          hasSystemCacheControl = shouldApplyCache || hasSystemCacheControl;
+          systemBlocks.push(resolvedBlock);
           break;
         }
         case "tool":

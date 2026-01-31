@@ -40,12 +40,13 @@ const prompt = cria
 
 async function main(): Promise<void> {
   const budget = 500;
-  const inputItems = await prompt.render({ budget });
+  const output = await prompt.render({ budget });
+  const { input: inputItems } = output;
 
   console.log("=== Response Input Items ===");
   console.log(JSON.stringify(inputItems, null, 2));
   console.log(
-    `\n=== Token count: ${provider.countTokens(inputItems)} / ${budget} ===\n`
+    `\n=== Token count: ${provider.countTokens(output)} / ${budget} ===\n`
   );
 
   const response = await client.responses.create({
