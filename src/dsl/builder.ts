@@ -3,7 +3,6 @@
  */
 
 import type { KVMemory, VectorMemory } from "../memory";
-import { buildMessageFromNode } from "../message";
 import type {
   InputLayout,
   MessageCodec,
@@ -207,11 +206,12 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
     query: string;
     limit: number;
   }): MessageBuilder<P> {
-    const asyncPart = VectorSearch<T, ToolIOFor<P>>({
-      store: opts.store,
-      query: opts.query,
-      limit: opts.limit,
-    }).then((scope) => {
+    const asyncPart = (async (): Promise<PromptPartFor<P>> => {
+      const scope = await VectorSearch<T, ToolIOFor<P>>({
+        store: opts.store,
+        query: opts.query,
+        limit: opts.limit,
+      });
       const message = scope.children[0];
       if (!message || message.kind !== "message") {
         throw new Error("VectorSearch did not return a message node.");
@@ -221,7 +221,7 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
         throw new Error("VectorSearch did not return a text part.");
       }
       return part;
-    });
+    })();
     return this.addChild(asyncPart);
   }
 
@@ -318,14 +318,13 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     }
 
     const inner = fn(this.create([], this.context));
-    const element = inner
-      .buildChildren()
-      .then((children) =>
-        createScope<ToolIOFor<P>>(
-          children,
-          opts?.id ? { id: opts.id } : undefined
-        )
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await inner.buildChildren();
+      return createScope<ToolIOFor<P>>(
+        children,
+        opts?.id ? { id: opts.id } : undefined
       );
+    })();
 
     return this.addChild(element);
   }
@@ -342,17 +341,17 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       id?: string;
     }
   ): PromptBuilder<P> {
-    const node = resolveScopeContent(
-      content,
-      this.boundProvider?.codec,
-      this.boundProvider
-    ).then((children) =>
-      createScope<ToolIOFor<P>>(children, {
+    const node = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(children, {
         ...(opts.priority !== undefined && { priority: opts.priority }),
         strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
         ...(opts.id && { id: opts.id }),
-      })
-    );
+      });
+    })();
 
     return this.addChild(node);
   }
@@ -364,17 +363,17 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     content: ScopeContent<P>,
     opts?: { priority?: number; id?: string }
   ): PromptBuilder<P> {
-    const node = resolveScopeContent(
-      content,
-      this.boundProvider?.codec,
-      this.boundProvider
-    ).then((children) =>
-      createScope<ToolIOFor<P>>(children, {
+    const node = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(children, {
         ...(opts?.priority !== undefined && { priority: opts.priority }),
         strategy: createOmitStrategy(),
         ...(opts?.id && { id: opts.id }),
-      })
-    );
+      });
+    })();
 
     return this.addChild(node);
   }
@@ -406,14 +405,15 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     const bound = this.provider(modelProvider);
     const inner = fn(PromptBuilder.create(modelProvider));
 
-    const element = inner.buildChildren().then(
-      (children): PromptScopeFor<TProvider> => ({
+    const element = (async (): Promise<PromptScopeFor<TProvider>> => {
+      const children = await inner.buildChildren();
+      return {
         kind: "scope",
         priority: 0,
         children,
         context,
-      })
-    );
+      };
+    })();
 
     return bound.addChild(element);
   }
@@ -430,14 +430,14 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       throw new Error("Inputs require a bound provider.");
     }
     const layout = provider.codec.parse(content);
-    return this.addChildren(promptLayoutToNodes(layout, provider));
+    return this.addChildren(promptLayoutToNodes(layout));
   }
 
   /**
    * Add a PromptLayout input.
    */
   inputLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P> {
-    return this.addChildren(promptLayoutToNodes(content, this.boundProvider));
+    return this.addChildren(promptLayoutToNodes(content));
   }
 
   /**
@@ -468,19 +468,19 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       priority?: number;
     }
   ): PromptBuilder<P> {
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec,
-      this.boundProvider
-    ).then((children) =>
-      Summary({
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return Summary({
         id: opts.id,
         store: opts.store,
         children,
         ...(opts.summarize ? { summarize: opts.summarize } : {}),
         ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-      })
-    );
+      });
+    })();
 
     return this.addChild(element);
   }
@@ -500,11 +500,11 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     content: ScopeContent<P>,
     opts: { n: number; id?: string }
   ): PromptBuilder<P> {
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec,
-      this.boundProvider
-    ).then((children) => {
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
       // Filter to only message nodes and take the last N
       const messages = children.filter(
         (child): child is PromptMessageNode<ToolIOFor<P>> =>
@@ -515,7 +515,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
         lastN,
         opts.id ? { id: opts.id } : undefined
       );
-    });
+    })();
 
     return this.addChild(element);
   }
@@ -673,12 +673,11 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       );
     }
     const children = Array.isArray(result) ? [...result] : [result];
-    const base = createMessage<ToolIOFor<TProvider>>(
+    const element = createMessage<ToolIOFor<TProvider>>(
       "tool",
       children,
       opts?.id
     );
-    const element = attachTokenCount(base, this.boundProvider);
     return this.addChild(element);
   }
 
@@ -768,17 +767,15 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     opts?: { id?: string }
   ): PromptBuilder<P> {
     // Normalize text-like inputs into typed parts so tool IO stays provider-bound.
-    const childrenPromise =
-      typeof content === "function"
-        ? content(new MessageBuilder<P>([], this.context)).buildChildren()
-        : Promise.resolve(normalizeTextInput<ToolIOFor<P>>(content));
-
-    const element = childrenPromise.then((children) =>
-      attachTokenCount(
-        createMessage<ToolIOFor<P>>(role, children, opts?.id),
-        this.boundProvider
-      )
-    );
+    const element = (async (): Promise<PromptMessageNode<ToolIOFor<P>>> => {
+      const children =
+        typeof content === "function"
+          ? await content(
+              new MessageBuilder<P>([], this.context)
+            ).buildChildren()
+          : normalizeTextInput<ToolIOFor<P>>(content);
+      return createMessage<ToolIOFor<P>>(role, children, opts?.id);
+    })();
 
     return this.addChild(element);
   }
@@ -806,44 +803,6 @@ function isPromptNode<TToolIO extends ProviderToolIO>(
   return kind === "scope" || kind === "message";
 }
 
-function attachTokenCount<TToolIO extends ProviderToolIO>(
-  node: PromptMessageNode<TToolIO>,
-  provider: BoundProvider | null | undefined
-): PromptMessageNode<TToolIO> {
-  if (!provider || node.tokenCount !== undefined) {
-    return node;
-  }
-
-  const typedProvider = provider as ModelProvider<unknown, TToolIO>;
-  const message = buildMessageFromNode(node);
-  const tokenCount = typedProvider.countMessageTokens(message);
-  return { ...node, tokenCount };
-}
-
-function attachTokenCountsToNode<TToolIO extends ProviderToolIO>(
-  node: PromptNode<TToolIO>,
-  provider: BoundProvider
-): PromptNode<TToolIO> {
-  if (node.kind === "message") {
-    return attachTokenCount(node, provider);
-  }
-
-  let changed = false;
-  const nextChildren = node.children.map((child) => {
-    const nextChild = attachTokenCountsToNode(child, provider);
-    if (nextChild !== child) {
-      changed = true;
-    }
-    return nextChild;
-  });
-
-  if (!changed) {
-    return node;
-  }
-
-  return { ...node, children: nextChildren };
-}
-
 async function resolveMessageChildren<P>(
   children: BuilderChild<P> | readonly BuilderChild<P>[]
 ): Promise<PromptPartFor<P>[]> {
@@ -868,8 +827,7 @@ async function resolveScopeChildren<P>(
 
 async function resolveScopeContent<P>(
   content: ScopeContent<P>,
-  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined,
-  provider: BoundProvider | null | undefined
+  codec: MessageCodec<unknown, ProviderToolIO> | undefined
 ): Promise<PromptNodeFor<P>[]> {
   // Scope content can be trees, builders, layouts, or provider-native inputs.
   // Provider-native inputs are decoded back into PromptLayout via the codec.
@@ -888,32 +846,29 @@ async function resolveScopeContent<P>(
 
   if (content instanceof Promise) {
     const value = await content;
-    return await resolveScopeContent(value as ScopeContent<P>, codec, provider);
+    return await resolveScopeContent(value as ScopeContent<P>, codec);
   }
 
   if (Array.isArray(content)) {
     const resolved = await Promise.all(
-      content.map((item) => resolveScopeContent<P>(item, codec, provider))
+      content.map((item) => resolveScopeContent<P>(item, codec))
     );
     return resolved.flat();
   }
 
   if (isPromptNode<ToolIOFor<P>>(content)) {
-    if (provider) {
-      return [attachTokenCountsToNode(content, provider)];
-    }
     return [content];
   }
 
   if (isInputLayout<ToolIOFor<P>>(content)) {
-    return promptLayoutToNodes(content.value, provider);
+    return promptLayoutToNodes(content.value);
   }
 
   if (isPromptInput<RenderedForProvider<P>>(content)) {
     if (!isCodecForInput<P>(codec, content)) {
       throw new Error("Inputs require a provider with a codec.");
     }
-    return resolveInputContent<P>(content, codec, provider);
+    return resolveInputContent<P>(content, codec);
   }
 
   throw new Error(
@@ -923,33 +878,29 @@ async function resolveScopeContent<P>(
 
 function resolveInputContent<P>(
   content: PromptInput<RenderedForProvider<P>>,
-  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>>,
-  provider: BoundProvider | null | undefined
+  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>>
 ): PromptNodeFor<P>[] {
   const layout = codec.parse(content.value);
-  return promptLayoutToNodes(layout, provider);
+  return promptLayoutToNodes(layout);
 }
 
 // Type-only narrowing: codec comes from the bound provider.
 function isCodecForInput<P>(
-  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined,
+  codec: MessageCodec<unknown, ProviderToolIO> | undefined,
   _content: PromptInput<RenderedForProvider<P>>
 ): codec is MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> {
   return Boolean(codec);
 }
 
 function promptLayoutToNodes<TToolIO extends ProviderToolIO>(
-  layout: PromptLayout<TToolIO>,
-  provider: BoundProvider | null | undefined
+  layout: PromptLayout<TToolIO>
 ): PromptMessageNode<TToolIO>[] {
-  return layout.map((message) => promptMessageToNode(message, provider));
+  return layout.map((message) => promptMessageToNode(message));
 }
 
 function promptMessageToNode<TToolIO extends ProviderToolIO>(
-  message: PromptMessage<TToolIO>,
-  provider: BoundProvider | null | undefined
+  message: PromptMessage<TToolIO>
 ): PromptMessageNode<TToolIO> {
-  const typedProvider = provider as ModelProvider<unknown, TToolIO> | null;
   if (message.role === "tool") {
     const part: ToolResultPart<TToolIO> = {
       type: "tool-result",
@@ -957,14 +908,7 @@ function promptMessageToNode<TToolIO extends ProviderToolIO>(
       toolName: message.toolName,
       output: message.output,
     };
-    const node = createMessage<TToolIO>("tool", [part]);
-    if (!typedProvider) {
-      return node;
-    }
-    return {
-      ...node,
-      tokenCount: typedProvider.countMessageTokens(message),
-    };
+    return createMessage<TToolIO>("tool", [part]);
   }
 
   if (message.role === "assistant") {
@@ -978,25 +922,11 @@ function promptMessageToNode<TToolIO extends ProviderToolIO>(
     if (message.toolCalls) {
       parts.push(...message.toolCalls);
     }
-    const node = createMessage<TToolIO>("assistant", parts);
-    if (!typedProvider) {
-      return node;
-    }
-    return {
-      ...node,
-      tokenCount: typedProvider.countMessageTokens(message),
-    };
+    return createMessage<TToolIO>("assistant", parts);
   }
 
   const parts = message.text ? [textPart<TToolIO>(message.text)] : [];
-  const node = createMessage<TToolIO>(message.role, parts);
-  if (!typedProvider) {
-    return node;
-  }
-  return {
-    ...node,
-    tokenCount: typedProvider.countMessageTokens(message),
-  };
+  return createMessage<TToolIO>(message.role, parts);
 }
 
 function isInputLayout<TToolIO extends ProviderToolIO>(

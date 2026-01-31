@@ -55,27 +55,9 @@ export abstract class ModelProvider<
   abstract readonly codec: MessageCodec<TRendered, TToolIO>;
 
   /**
-   * Count tokens for a single PromptLayout message.
-   *
-   * Providers must ensure message token counts plus boundary tokens match the
-   * rendered representation for accurate budgeting.
+   * Count tokens for rendered output (tiktoken-backed).
+   * Token counting should reflect the provider-native payload.
    */
-  abstract countMessageTokens(message: PromptMessage<TToolIO>): number;
-
-  /**
-   * Count tokens introduced between adjacent messages in the rendered form.
-   *
-   * Most providers return 0 here. Providers that merge or join messages
-   * (e.g., plaintext joins, Anthropic system merge) can override.
-   */
-  countBoundaryTokens(
-    _prev: PromptMessage<TToolIO> | null,
-    _next: PromptMessage<TToolIO>
-  ): number {
-    return 0;
-  }
-
-  /** Count tokens for rendered output (tiktoken-backed). */
   abstract countTokens(rendered: TRendered): number;
 
   /** Generate a text completion from rendered prompt input. */

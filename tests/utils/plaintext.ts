@@ -21,24 +21,17 @@ const ROLE_PREFIX_RE = /^(system|developer|user|assistant|tool):\s*/;
 export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
   private readonly joinMessagesWith: string;
   private readonly includeRolePrefix: boolean;
-  private readonly separatorTokens: number;
 
   constructor(options: PlainTextCodecOptions = {}) {
     super();
-    this.joinMessagesWith = options.joinMessagesWith ?? "\n\n";
+    this.joinMessagesWith = options.joinMessagesWith ?? "";
     this.includeRolePrefix = options.includeRolePrefix ?? false;
-    if (this.joinMessagesWith.length === 0) {
-      throw new Error(
-        "PlainTextCodec requires a non-empty joinMessagesWith separator."
-      );
-    }
-    this.separatorTokens = this.joinMessagesWith
-      ? countText(this.joinMessagesWith)
-      : 0;
   }
 
   override render(layout: PromptLayout<PlainTextToolIO>): string {
-    const messages = layout.map((message) => this.renderMessage(message));
+    const messages = layout.map((message) =>
+      formatPlaintextMessage(message, this.includeRolePrefix)
+    );
 
     return messages.join(this.joinMessagesWith);
   }
@@ -81,14 +74,6 @@ export class PlainTextCodec extends MessageCodec<string, PlainTextToolIO> {
 
         return { role: "assistant", text: segment };
       });
-  }
-
-  renderMessage(message: PromptMessage<PlainTextToolIO>): string {
-    return formatPlaintextMessage(message, this.includeRolePrefix);
-  }
-
-  separatorTokenCount(): number {
-    return this.separatorTokens;
   }
 }
 
@@ -148,42 +133,15 @@ export function createTestProvider(
 }
 
 export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
-  readonly codec: PlainTextCodec;
+  readonly codec: MessageCodec<string, PlainTextToolIO>;
 
   constructor(codec: MessageCodec<string, PlainTextToolIO>) {
     super();
-    if (!(codec instanceof PlainTextCodec)) {
-      throw new Error("PlainTextProvider requires a PlainTextCodec.");
-    }
     this.codec = codec;
   }
 
-  countMessageTokens(message: PromptMessage<PlainTextToolIO>): number {
-    const renderedMessage = this.codec.renderMessage(message);
-    return countText(renderedMessage);
-  }
-
-  override countBoundaryTokens(
-    _prev: PromptMessage<PlainTextToolIO> | null,
-    _next: PromptMessage<PlainTextToolIO>
-  ): number {
-    return this.codec.separatorTokenCount();
-  }
-
   countTokens(rendered: string): number {
-    const layout = this.codec.parse(rendered);
-    let totalTokens = 0;
-    let previous: PromptMessage<PlainTextToolIO> | null = null;
-
-    for (const message of layout) {
-      totalTokens += this.countMessageTokens(message);
-      if (previous) {
-        totalTokens += this.countBoundaryTokens(previous, message);
-      }
-      previous = message;
-    }
-
-    return totalTokens;
+    return countText(rendered);
   }
 
   completion(rendered: string): string {

@@ -12,7 +12,6 @@ import type {
 } from "../protocols/responses";
 import { ResponsesProtocol } from "../protocols/responses";
 import { ProtocolProvider, type ProviderAdapter } from "../provider";
-import type { PromptMessage } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -306,26 +305,6 @@ function countChatMessageTokens(msg: ChatCompletionMessageParam): number {
   return n;
 }
 
-function countChatLayoutMessageTokens(
-  message: PromptMessage<OpenAiToolIO>
-): number {
-  if (message.role === "tool") {
-    return countText(String(message.output));
-  }
-
-  if (message.role !== "assistant") {
-    return countText(message.text);
-  }
-
-  let tokens = countText(message.text);
-  if (message.toolCalls) {
-    for (const call of message.toolCalls) {
-      tokens += countText(call.toolName + call.input);
-    }
-  }
-  return tokens;
-}
-
 /** Count tokens for a single OpenAI responses item. */
 function countResponseItemTokens(item: ResponseInputItem): number {
   if ("content" in item && typeof item.content === "string") {
@@ -353,29 +332,6 @@ function countResponseItemTokens(item: ResponseInputItem): number {
     );
   }
   return 0;
-}
-
-function countResponsesLayoutMessageTokens(
-  message: PromptMessage<OpenAiToolIO>
-): number {
-  if (message.role === "tool") {
-    return countText(String(message.output));
-  }
-
-  if (message.role !== "assistant") {
-    return countText(message.text);
-  }
-
-  let tokens = countText(message.text);
-  if (message.reasoning) {
-    tokens += countText(message.reasoning);
-  }
-  if (message.toolCalls) {
-    for (const call of message.toolCalls) {
-      tokens += countText(call.toolName + call.input);
-    }
-  }
-  return tokens;
 }
 
 /** Extract plain text from OpenAI chat content. */
@@ -481,10 +437,6 @@ export class OpenAIChatProvider extends ProtocolProvider<
     this.model = model;
   }
 
-  countMessageTokens(message: PromptMessage<OpenAiToolIO>): number {
-    return countChatLayoutMessageTokens(message);
-  }
-
   /** Count tokens for OpenAI chat messages. */
   countTokens(messages: ChatCompletionMessageParam[]): number {
     return messages.reduce((n, m) => n + countChatMessageTokens(m), 0);
@@ -528,10 +480,6 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
     this.client = client;
     this.model = model;
-  }
-
-  countMessageTokens(message: PromptMessage<OpenAiToolIO>): number {
-    return countResponsesLayoutMessageTokens(message);
   }
 
   /** Count tokens for OpenAI responses items. */

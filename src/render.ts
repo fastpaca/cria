@@ -1,16 +1,19 @@
-import { buildMessageFromNode } from "./message";
 import type { ModelProvider } from "./provider";
 import {
+  type AssistantMessage,
   type CriaContext,
   FitError,
   type MaybePromise,
   type PromptLayout,
   type PromptMessage,
   type PromptNode,
+  type PromptPart,
   type PromptScope,
   type PromptTree,
   type ProviderToolIO,
   type StrategyInput,
+  type ToolCallPart,
+  type ToolResultPart,
 } from "./types";
 
 /**
@@ -18,7 +21,7 @@ import {
  * - PromptTree carries provider-bound tool IO types.
  * - layoutPrompt flattens the tree into a PromptLayout and enforces invariants.
  * - The provider's codec translates that layout into the provider payload.
- * - Token counting is provider-owned and derived from layout messages + boundaries.
+ * - Token counting is provider-owned and happens on rendered output.
  */
 export interface RenderOptions<
   TRendered = unknown,
@@ -87,8 +90,8 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
   element: MaybePromise<PromptTree<TToolIO>>,
   options: RenderOptions<TRendered, TToolIO>
 ): Promise<TRendered> {
-  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.codec.
-  // The fit loop uses message-level token summaries and renders only once.
+  // Data flow: PromptTree -> PromptLayout (flatten) -> provider.codec -> provider.countTokens.
+  // The fit loop just re-renders and re-counts until we land under budget.
   /*
    * Rendering is budget-agnostic; fitting owns the budget and simply calls
    * rendering to get total tokens. Keep that separation explicit here.
@@ -100,7 +103,7 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
     return renderOutput(resolvedElement, provider);
   }
 
-  const fitResult = await fitToBudget(
+  const fitted = await fitToBudget(
     resolvedElement,
     options.budget,
     provider,
@@ -108,7 +111,11 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
     { provider }
   );
 
-  return fitResult.output;
+  if (!fitted) {
+    return renderOutput({ kind: "scope", priority: 0, children: [] }, provider);
+  }
+
+  return renderOutput(fitted, provider);
 }
 
 function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
@@ -118,6 +125,17 @@ function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
   // Prompt tree composition is resolved before rendering; codecs only see layout.
   const layout = layoutPrompt(root);
   return provider.codec.render(layout);
+}
+
+function renderAndCount<TRendered, TToolIO extends ProviderToolIO>(
+  root: PromptTree<TToolIO>,
+  provider: ModelProvider<TRendered, TToolIO>
+): { output: TRendered; tokens: number } {
+  // Tree -> layout -> codec output, then provider-owned token counting.
+  const layout = layoutPrompt(root);
+  const output = provider.codec.render(layout);
+  const tokens = provider.countTokens(output);
+  return { output, tokens };
 }
 
 export function assertValidMessageScope<
@@ -137,7 +155,7 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
 
   const walk = (node: PromptNode<TToolIO>): void => {
     if (node.kind === "message") {
-      messages.push(buildMessageFromNode(node));
+      messages.push(buildMessage(node));
       return;
     }
 
@@ -149,6 +167,121 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
   walk(root);
 
   return messages;
+}
+
+function buildMessage<TToolIO extends ProviderToolIO>(
+  node: Extract<PromptNode<TToolIO>, { kind: "message" }>
+): PromptMessage<TToolIO> {
+  if (node.role === "tool") {
+    return buildToolMessage(node.children);
+  }
+
+  if (node.role === "assistant") {
+    return buildAssistantMessage(node.children);
+  }
+
+  return buildTextMessage(node.role, node.children);
+}
+
+function buildToolMessage<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): PromptMessage<TToolIO> {
+  // Tool messages are a single tool result by construction.
+  if (children.length !== 1 || children[0]?.type !== "tool-result") {
+    throw new Error("Tool messages must contain exactly one tool result.");
+  }
+  const result = children[0] as ToolResultPart<TToolIO>;
+  return {
+    role: "tool",
+    toolCallId: result.toolCallId,
+    toolName: result.toolName,
+    output: result.output,
+  };
+}
+
+function buildAssistantMessage<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): AssistantMessage<TToolIO> {
+  const { text, reasoning, toolCalls } = collectAssistantParts(children);
+
+  const message: AssistantMessage<TToolIO> = { role: "assistant", text };
+  if (reasoning.length > 0) {
+    message.reasoning = reasoning;
+  }
+  if (toolCalls.length > 0) {
+    message.toolCalls = toolCalls;
+  }
+  return message;
+}
+
+function collectAssistantParts<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): {
+  text: string;
+  reasoning: string;
+  toolCalls: ToolCallPart<TToolIO>[];
+} {
+  let text = "";
+  let reasoning = "";
+  const toolCalls: ToolCallPart<TToolIO>[] = [];
+
+  for (const part of children) {
+    if (part.type === "text") {
+      text += part.text;
+      continue;
+    }
+    if (part.type === "reasoning") {
+      reasoning += part.text;
+      continue;
+    }
+    if (part.type === "tool-call") {
+      toolCalls.push(part);
+      continue;
+    }
+    if (part.type === "tool-result") {
+      // Tool results must live in tool messages, not assistant messages.
+      throw new Error("Tool results must be inside a tool message.");
+    }
+  }
+
+  return { text, reasoning, toolCalls };
+}
+
+function buildTextMessage<TToolIO extends ProviderToolIO>(
+  role: PromptMessage<TToolIO>["role"],
+  children: readonly PromptPart<TToolIO>[]
+): PromptMessage<TToolIO> {
+  // System/user messages are text-only; other parts are rejected here.
+  const text = collectTextParts(children);
+
+  if (role === "system") {
+    return { role: "system", text };
+  }
+
+  if (role === "developer") {
+    return { role: "developer", text };
+  }
+
+  if (role === "user") {
+    return { role: "user", text };
+  }
+
+  throw new Error(`Unsupported message role: ${role}`);
+}
+
+function collectTextParts<TToolIO extends ProviderToolIO>(
+  children: readonly PromptPart<TToolIO>[]
+): string {
+  let text = "";
+  for (const part of children) {
+    if (part.type !== "text") {
+      throw new Error(
+        "Only assistant messages may contain reasoning or tool calls."
+      );
+    }
+    text += part.text;
+  }
+  return text;
 }
 
 async function safeInvoke<T>(
@@ -218,112 +351,18 @@ function collectProviders<TToolIO extends ProviderToolIO>(
   return found;
 }
 
-interface FitResult<TRendered, TToolIO extends ProviderToolIO> {
-  scope: PromptScope<TToolIO> | null;
-  output: TRendered;
-  totalTokens: number;
-  iterations: number;
-}
-
-interface SubtreeSummary<TToolIO extends ProviderToolIO> {
-  totalTokens: number;
-  messageCount: number;
-  firstMessage: PromptMessage<TToolIO> | null;
-  lastMessage: PromptMessage<TToolIO> | null;
-  maxPriority: number | null;
-}
-
-interface FitTokenCaches<TToolIO extends ProviderToolIO> {
-  summaries: WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>;
-}
-
-interface ApplyResult<TToolIO extends ProviderToolIO> {
-  element: PromptNode<TToolIO> | null;
-  applied: boolean;
-  summary: SubtreeSummary<TToolIO>;
-}
-
-function summarizeNode<TToolIO extends ProviderToolIO>(
-  node: PromptNode<TToolIO>,
-  provider: ModelProvider<unknown, TToolIO>,
-  caches: FitTokenCaches<TToolIO>
-): SubtreeSummary<TToolIO> {
-  const cached = caches.summaries.get(node);
-  if (cached) {
-    return cached;
-  }
-
-  if (node.kind === "message") {
-    const message = buildMessageFromNode(node);
-    const tokens = node.tokenCount ?? provider.countMessageTokens(message);
-    const summary: SubtreeSummary<TToolIO> = {
-      totalTokens: tokens,
-      messageCount: 1,
-      firstMessage: message,
-      lastMessage: message,
-      maxPriority: null,
-    };
-    caches.summaries.set(node, summary);
-    return summary;
-  }
-
-  let totalTokens = 0;
-  let messageCount = 0;
-  let firstMessage: PromptMessage<TToolIO> | null = null;
-  let lastMessage: PromptMessage<TToolIO> | null = null;
-  let previousLast: PromptMessage<TToolIO> | null = null;
-  let maxPriority: number | null = node.strategy ? node.priority : null;
-
-  for (const child of node.children) {
-    const childSummary = summarizeNode(child, provider, caches);
-    maxPriority = maxNullable(maxPriority, childSummary.maxPriority);
-    if (childSummary.messageCount === 0) {
-      continue;
-    }
-
-    totalTokens += childSummary.totalTokens;
-    if (previousLast && childSummary.firstMessage) {
-      totalTokens += provider.countBoundaryTokens(
-        previousLast,
-        childSummary.firstMessage
-      );
-    }
-
-    previousLast = childSummary.lastMessage;
-    if (!firstMessage) {
-      firstMessage = childSummary.firstMessage;
-    }
-    lastMessage = childSummary.lastMessage;
-    messageCount += childSummary.messageCount;
-  }
-
-  const summary: SubtreeSummary<TToolIO> = {
-    totalTokens,
-    messageCount,
-    firstMessage,
-    lastMessage,
-    maxPriority,
-  };
-  caches.summaries.set(node, summary);
-  return summary;
-}
-
 async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   element: PromptTree<TToolIO>,
   budget: number,
   provider: ModelProvider<TRendered, TToolIO>,
   hooks: RenderHooks<TToolIO> | undefined,
   baseContext: CriaContext
-): Promise<FitResult<TRendered, TToolIO>> {
-  // Fit loop is summary-driven: apply the lowest-importance strategy, update
-  // summary tokens, and repeat until we fit or cannot reduce further.
+): Promise<PromptScope<TToolIO> | null> {
+  // Fit loop is render-driven: render+count, then apply the lowest-importance
+  // strategy, re-render, and repeat until we fit or cannot reduce further.
   let current: PromptScope<TToolIO> | null = element;
   let iteration = 0;
-  const caches: FitTokenCaches<TToolIO> = {
-    summaries: new WeakMap<PromptNode<TToolIO>, SubtreeSummary<TToolIO>>(),
-  };
-  let currentSummary = summarizeNode(current, provider, caches);
-  let totalTokens = currentSummary.totalTokens;
+  let totalTokens = renderAndCount(element, provider).tokens;
 
   await safeInvoke(hooks?.onFitStart, {
     element,
@@ -334,7 +373,7 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
   while (current && totalTokens > budget) {
     iteration += 1;
 
-    const lowestImportancePriority = currentSummary.maxPriority;
+    const lowestImportancePriority = findLowestImportancePriority(current);
     if (lowestImportancePriority === null) {
       const error = new FitError({
         overBudgetBy: totalTokens - budget,
@@ -363,16 +402,15 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
       iteration,
     };
 
-    const applied: ApplyResult<TToolIO> = await applyStrategiesAtPriority(
-      current,
-      lowestImportancePriority,
-      baseCtx,
-      baseContext,
-      hooks,
-      iteration,
-      provider,
-      caches
-    );
+    const applied: { element: PromptNode<TToolIO> | null; applied: boolean } =
+      await applyStrategiesAtPriority(
+        current,
+        lowestImportancePriority,
+        baseCtx,
+        baseContext,
+        hooks,
+        iteration
+      );
 
     if (!applied.applied) {
       const error = new FitError({
@@ -396,8 +434,7 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     }
     current = applied.element;
 
-    const nextSummary = applied.summary;
-    const nextTokens = nextSummary.totalTokens;
+    const nextTokens = current ? renderAndCount(current, provider).tokens : 0;
     if (nextTokens >= totalTokens) {
       const error = new FitError({
         overBudgetBy: nextTokens - budget,
@@ -416,28 +453,32 @@ async function fitToBudget<TRendered, TToolIO extends ProviderToolIO>(
     }
 
     totalTokens = nextTokens;
-    currentSummary = nextSummary;
   }
-
-  const finalScope: PromptScope<TToolIO> = current ?? {
-    kind: "scope",
-    priority: 0,
-    children: [],
-  };
-  const output = renderOutput(finalScope, provider);
 
   await safeInvoke(hooks?.onFitComplete, {
     result: current,
     iterations: iteration,
-    totalTokens: currentSummary.totalTokens,
+    totalTokens,
   });
 
-  return {
-    scope: current,
-    output,
-    totalTokens: currentSummary.totalTokens,
-    iterations: iteration,
-  };
+  return current;
+}
+
+function findLowestImportancePriority<TToolIO extends ProviderToolIO>(
+  node: PromptNode<TToolIO>
+): number | null {
+  if (node.kind === "message") {
+    return null;
+  }
+
+  let maxPriority: number | null = node.strategy ? node.priority : null;
+
+  for (const child of node.children) {
+    const childMax = findLowestImportancePriority(child);
+    maxPriority = maxNullable(maxPriority, childMax);
+  }
+
+  return maxPriority;
 }
 
 function maxNullable(a: number | null, b: number | null): number | null {
@@ -455,73 +496,16 @@ type BaseContext<TToolIO extends ProviderToolIO> = Omit<
   "target" | "context"
 >;
 
-interface SummaryAccumulator<TToolIO extends ProviderToolIO> {
-  totalTokens: number;
-  messageCount: number;
-  firstMessage: PromptMessage<TToolIO> | null;
-  lastMessage: PromptMessage<TToolIO> | null;
-  previousLast: PromptMessage<TToolIO> | null;
-  maxPriority: number | null;
-}
-
-function mergeChildSummary<TToolIO extends ProviderToolIO>(
-  acc: SummaryAccumulator<TToolIO>,
-  child: SubtreeSummary<TToolIO>,
-  provider: ModelProvider<unknown, TToolIO>
-): void {
-  acc.maxPriority = maxNullable(acc.maxPriority, child.maxPriority);
-  if (child.messageCount === 0) {
-    return;
-  }
-
-  acc.totalTokens += child.totalTokens;
-  if (acc.previousLast && child.firstMessage) {
-    acc.totalTokens += provider.countBoundaryTokens(
-      acc.previousLast,
-      child.firstMessage
-    );
-  }
-
-  acc.previousLast = child.lastMessage;
-  if (!acc.firstMessage) {
-    acc.firstMessage = child.firstMessage;
-  }
-  acc.lastMessage = child.lastMessage;
-  acc.messageCount += child.messageCount;
-}
-
 async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
   element: PromptNode<TToolIO>,
   priority: number,
   baseCtx: BaseContext<TToolIO>,
   inheritedContext: CriaContext,
   hooks: RenderHooks<TToolIO> | undefined,
-  iteration: number,
-  provider: ModelProvider<unknown, TToolIO>,
-  caches: FitTokenCaches<TToolIO>
-): Promise<{
-  element: PromptNode<TToolIO> | null;
-  applied: boolean;
-  summary: SubtreeSummary<TToolIO>;
-}> {
+  iteration: number
+): Promise<{ element: PromptNode<TToolIO> | null; applied: boolean }> {
   if (element.kind === "message") {
-    return {
-      element,
-      applied: false,
-      summary: summarizeNode(element, provider, caches),
-    };
-  }
-
-  const existingSummary = summarizeNode(element, provider, caches);
-  if (
-    existingSummary.maxPriority === null ||
-    existingSummary.maxPriority < priority
-  ) {
-    return {
-      element,
-      applied: false,
-      summary: existingSummary,
-    };
+    return { element, applied: false };
   }
 
   // Bottom-up: rewrite children first so nested strategies get first crack.
@@ -531,39 +515,25 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
     : inheritedContext;
 
   let childrenChanged = false;
-  let applied = false;
   const nextChildren: PromptNode<TToolIO>[] = [];
-  const summaryState: SummaryAccumulator<TToolIO> = {
-    totalTokens: 0,
-    messageCount: 0,
-    firstMessage: null,
-    lastMessage: null,
-    previousLast: null,
-    maxPriority: element.strategy ? element.priority : null,
-  };
 
   for (const child of element.children) {
-    const childResult = await applyStrategiesAtPriority(
+    const applied = await applyStrategiesAtPriority(
       child,
       priority,
       baseCtx,
       mergedContext,
       hooks,
-      iteration,
-      provider,
-      caches
+      iteration
     );
-    if (childResult.applied) {
+    if (applied.applied) {
       childrenChanged = true;
-      applied = true;
     }
-    if (childResult.element) {
-      nextChildren.push(childResult.element);
+    if (applied.element) {
+      nextChildren.push(applied.element);
     } else {
       childrenChanged = true;
     }
-
-    mergeChildSummary(summaryState, childResult.summary, provider);
   }
 
   const nextElement = childrenChanged
@@ -582,35 +552,8 @@ async function applyStrategiesAtPriority<TToolIO extends ProviderToolIO>(
       priority,
       iteration,
     });
-    if (!replacement) {
-      return {
-        element: null,
-        applied: true,
-        summary: {
-          totalTokens: 0,
-          messageCount: 0,
-          firstMessage: null,
-          lastMessage: null,
-          maxPriority: null,
-        },
-      };
-    }
-
-    return {
-      element: replacement,
-      applied: true,
-      summary: summarizeNode(replacement, provider, caches),
-    };
+    return { element: replacement, applied: true };
   }
 
-  const summary: SubtreeSummary<TToolIO> = {
-    totalTokens: summaryState.totalTokens,
-    messageCount: summaryState.messageCount,
-    firstMessage: summaryState.firstMessage,
-    lastMessage: summaryState.lastMessage,
-    maxPriority: summaryState.maxPriority,
-  };
-  caches.summaries.set(nextElement, summary);
-
-  return { element: nextElement, applied: applied || childrenChanged, summary };
+  return { element: nextElement, applied: childrenChanged };
 }

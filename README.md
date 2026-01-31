@@ -63,69 +63,6 @@ Cria gives you composable prompt blocks, explicit token budgets, and building bl
 | Prompt eval/test helpers | ✅ |
 | Local prompt inspector (DevTools-style) | planned |
 
-## Performance (benchmarks)
-
-Benchmarks run via `npm run bench:compare` (Vitest bench) using `bench/baseline.json` as the baseline. Numbers below are from a single run on a dev machine and are hardware-dependent.
-
-### Golden render loop (standard summary-first)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| build + render baseline (no fit loop) | 187.62 / 5.3300 | 477.14 / 2.0958 |
-| render prebuilt baseline (no fit loop) | 377.59 / 2.6483 | 481.99 / 2.0747 |
-| render prebuilt fit budget (cold summary store) | 960.43 / 1.0412 | 279.66 / 3.5757 |
-| render prebuilt tight budget (warm summary store) | 1,696.44 / 0.5895 | 280.63 / 3.5634 |
-
-### Golden render loop (multi-strategy stress)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| render prebuilt fit budget (cold summary store) | 4,812.49 / 0.2078 | 99.2313 / 10.0775 |
-
-### Golden render loop (huge trees)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| build + render baseline (huge, no fit loop) | 33.2765 / 30.0512 | 83.6938 / 11.9483 |
-| render prebuilt baseline (huge, no fit loop) | 66.7235 / 14.9872 | 84.5006 / 11.8342 |
-| render prebuilt fit budget (huge, cold summary store) | 209.92 / 4.7637 | 53.0007 / 18.8677 |
-| render prebuilt tight budget (huge, warm summary store) | 398.96 / 2.5065 | 53.7445 / 18.6066 |
-
-### Golden render loop (20k messages)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| render prebuilt baseline (20k, no fit loop) | 8.2062 / 121.86 | 16.0650 / 62.2472 |
-| render prebuilt fit budget (20k, cold summary store) | 227.72 / 4.3913 | 15.4644 / 64.6648 |
-| render prebuilt tight budget (20k, warm summary store) | 231.83 / 4.3136 | 15.4918 / 64.5501 |
-
-### Provider codec render loop (OpenAI chat)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| render baseline (chat codec) | 184.41 / 5.4228 | 183.78 / 5.4413 |
-| render fit budget (chat codec) | 958.28 / 1.0435 | 138.01 / 7.2460 |
-| render tight budget (chat codec) | 955.80 / 1.0462 | 135.68 / 7.3703 |
-| render multi-strategy stress (chat codec) | 3,821.01 / 0.2617 | 50.2415 / 19.9039 |
-
-### Provider codec render loop (OpenAI responses)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| render baseline (responses codec) | 185.54 / 5.3898 | 186.19 / 5.3710 |
-| render fit budget (responses codec) | 965.21 / 1.0360 | 137.91 / 7.2511 |
-| render tight budget (responses codec) | 967.18 / 1.0339 | 139.05 / 7.1918 |
-| render multi-strategy stress (responses codec) | 3,786.00 / 0.2641 | 50.5045 / 19.8002 |
-
-### Provider codec render loop (AI SDK)
-
-| Scenario | Current (hz / mean ms) | Baseline (hz / mean ms) |
-| --- | --- | --- |
-| render baseline (ai-sdk codec) | 167.97 / 5.9533 | 170.25 / 5.8737 |
-| render fit budget (ai-sdk codec) | 960.08 / 1.0416 | 129.35 / 7.7308 |
-| render tight budget (ai-sdk codec) | 964.75 / 1.0365 | 128.15 / 7.8036 |
-| render multi-strategy stress (ai-sdk codec) | 3,659.61 / 0.2733 | 46.2523 / 21.6206 |
-
 ## Quick start
 
 ```bash

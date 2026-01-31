@@ -8,7 +8,6 @@ import type {
 } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
 import { ProtocolProvider, type ProviderAdapter } from "../provider";
-import type { PromptMessage } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -156,35 +155,6 @@ function countModelMessageTokens(message: ModelMessage): number {
   return tokens;
 }
 
-function countLayoutMessageTokens(message: PromptMessage<AiSdkToolIO>): number {
-  if (message.role === "tool") {
-    const output =
-      typeof message.output === "string"
-        ? message.output
-        : JSON.stringify(message.output);
-    return countText(output ?? "");
-  }
-
-  if (message.role !== "assistant") {
-    return countText(message.text);
-  }
-
-  let tokens = countText(message.text);
-  if (message.reasoning) {
-    tokens += countText(message.reasoning);
-  }
-  if (message.toolCalls) {
-    for (const call of message.toolCalls) {
-      const input =
-        typeof call.input === "string"
-          ? call.input
-          : JSON.stringify(call.input);
-      tokens += countText(call.toolName + (input ?? ""));
-    }
-  }
-  return tokens;
-}
-
 /**
  * AI SDK provider implementation using chat-completions protocol.
  */
@@ -198,10 +168,6 @@ export class AiSdkProvider extends ProtocolProvider<
   constructor(model: LanguageModel) {
     super(new ChatCompletionsProtocol<AiSdkToolIO>(), new AiSdkAdapter());
     this.model = model;
-  }
-
-  countMessageTokens(message: PromptMessage<AiSdkToolIO>): number {
-    return countLayoutMessageTokens(message);
   }
 
   /** Count tokens for the rendered AI SDK message array. */
