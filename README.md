@@ -1,10 +1,6 @@
 <h1 align="center">Cria</h1>
 
 <p align="center">
-  <b>Swap any component when something better drops.</b>
-</p>
-
-<p align="center">
   TypeScript prompt architecture for fast-moving teams and engineers.
 </p>
 
@@ -20,229 +16,52 @@
   </a>
 </p>
 
-Cria is a lightweight TypeScript prompt architecture layer for fast-moving teams.
-Compose reusable prompt blocks, wire in memory + retrieval, and **inspect exactly what gets sent** — across OpenAI, Anthropic, or Vercel AI SDK.
+The LLM space moves fast. New models drop often. Providers change APIs. Better vector stores emerge. New memory systems drop. **Your prompts shouldn't break every time the stack evolves.**
+
+Cria is prompt architecture as code. Same prompt logic, swap the building blocks underneath when you need to upgrade.
 
 ```ts
-const messages = await cria
-  .prompt(provider)
-  .system("You are a research assistant.")
-  .vectorSearch({ store, query, limit: 10 })
-  .summary(conversation, { id: "history", store: memory })
-  .user(query)
-  .render({ budget: 128_000 });
-```
-
-## Works with
-
-<details>
-<summary><strong>OpenAI (Chat Completions)</strong></summary>
-
-```ts
-import OpenAI from "openai";
+import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
-import { cria } from "@fastpaca/cria";
-
-const client = new OpenAI();
-const provider = createProvider(client, "gpt-4o-mini");
-
-const messages = await cria
-  .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget: 128_000 });
-
-const response = await client.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages,
-});
-```
-
-</details>
-
-<details>
-<summary><strong>OpenAI (Responses)</strong></summary>
-
-```ts
 import OpenAI from "openai";
-import { createResponsesProvider } from "@fastpaca/cria/openai";
-import { cria } from "@fastpaca/cria";
 
 const client = new OpenAI();
-const provider = createResponsesProvider(client, "gpt-4o");
-
-const input = await cria
-  .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget: 128_000 });
-
-const response = await client.responses.create({
-  model: "gpt-4o",
-  input,
-});
-```
-
-</details>
-
-<details>
-<summary><strong>Anthropic</strong></summary>
-
-```ts
-import Anthropic from "@anthropic-ai/sdk";
-import { createProvider } from "@fastpaca/cria/anthropic";
-import { cria } from "@fastpaca/cria";
-
-const client = new Anthropic();
-const provider = createProvider(client, "claude-sonnet-4-20250514");
-
-const { system, messages } = await cria
-  .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget: 128_000 });
-
-const response = await client.messages.create({
-  model: "claude-sonnet-4-20250514",
-  system,
-  messages,
-});
-```
-
-</details>
-
-<details>
-<summary><strong>Vercel AI SDK</strong></summary>
-
-```ts
-import { createProvider } from "@fastpaca/cria/ai-sdk";
-import { cria } from "@fastpaca/cria";
-import { generateText } from "ai";
-
-const provider = createProvider(model);
+const model = "gpt-5-nano";
+const provider = createProvider(client, model);
 
 const messages = await cria
-  .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget: 128_000 });
-
-const { text } = await generateText({ model, messages });
-```
-
-</details>
-
-<details>
-<summary><strong>Redis</strong></summary>
-
-```ts
-import { RedisStore } from "@fastpaca/cria/memory/redis";
-
-const store = new RedisStore<{ content: string }>({
-  host: "localhost",
-});
-
-await store.set("key-1", { content: "Hello" });
-const entry = await store.get("key-1");
-```
-
-</details>
-
-<details>
-<summary><strong>Postgres</strong></summary>
-
-```ts
-import { PostgresStore } from "@fastpaca/cria/memory/postgres";
-
-const store = new PostgresStore<{ content: string }>({
-  connectionString: "postgres://user:pass@localhost/mydb",
-});
-
-await store.set("key-1", { content: "Hello" });
-const entry = await store.get("key-1");
-```
-
-</details>
-
-<details>
-<summary><strong>Chroma</strong></summary>
-
-```ts
-import { ChromaClient } from "chromadb";
-import { ChromaStore } from "@fastpaca/cria/memory/chroma";
-
-const client = new ChromaClient({ path: "http://localhost:8000" });
-const collection = await client.getOrCreateCollection({ name: "my-docs" });
-
-const store = new ChromaStore({
-  collection,
-  embed: async (text) => await getEmbedding(text),
-});
-```
-
-</details>
-
-<details>
-<summary><strong>Qdrant</strong></summary>
-
-```ts
-import { QdrantClient } from "@qdrant/js-client-rest";
-import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
-
-const client = new QdrantClient({ url: "http://localhost:6333" });
-
-const store = new QdrantStore({
-  client,
-  collectionName: "my-docs",
-  embed: async (text) => await getEmbedding(text),
-});
-```
-
-</details>
-
-## Why Cria
-
-Cria is prompt architecture for teams that need to swap components without rewrites.
-It keeps prompt construction explicit and reviewable so you can move fast without breaking prompts.
-
-## Capabilities
-
-| Capability | Status |
-| --- | --- |
-| Component swapping via adapters | ✅ |
-| Memory + retrieval adapters | ✅ |
-| Token budgeting | ✅ |
-| Fit & compaction controls | ✅ |
-| OpenTelemetry integration | ✅ |
-| Render hooks | ✅ |
-| Prompt eval/test helpers | ✅ |
-| Local prompt inspector (DevTools-style) | 🛠️ |
-
-## Swap, don't rewrite
-
-Same prompt architecture, different components:
-
-```ts
-// Pseudocode identifiers; replace with your adapters.
-const build = (provider, memory, store) =>
-  cria
     .prompt(provider)
-    .system(SYSTEM_PROMPT)
+    .system("You are a research assistant.")
     .summary(conversation, { id: "history", store: memory })
     .vectorSearch({ store, query, limit: 8 })
     .user(query)
     .render({ budget: 128_000 });
 
-const messages = await build(openaiProvider, redisMemory, qdrantStore);
-const messages2 = await build(anthropicProvider, postgresMemory, chromaStore);
+const response = await client.chat.completions.create({ model, messages });
 ```
 
-## Use Cria if...
+## Why Cria?
 
-* You need to swap LLM APIs, memory, or retrieval without touching prompt logic.
-* You A/B test summarization or compaction strategies.
-* You migrate components frequently as the stack evolves.
-* You want to inspect what gets sent before it hits the model.
+When you run LLM features in production, you need to:
+
+1. **Build prompts that last** — Swap providers, models, memory, or retrieval without rewriting prompt logic. A/B test components as the stack evolves.
+2. **Test like code** — Evaluate prompts with LLM-as-a-judge. Run tests in CI. Catch drift when you swap building blocks.
+3. **Inspect what runs** — See exactly what gets sent to the model. Debug token budgets. See when your RAG input messes up the context. *(Local DevTools-style inspector: planned)*
+
+Cria gives you composable prompt blocks, explicit token budgets, and building blocks you can easily customise and adapt so you move fast without breaking prompts.
+
+## What you get
+
+| Capability | Status |
+| --- | --- |
+| Component swapping via adapters | ✅ |
+| Memory + vector search adapters | ✅ |
+| Token budgeting | ✅ |
+| Fit & compaction controls | ✅ |
+| Conversation summaries | ✅ |
+| OpenTelemetry integration | ✅ |
+| Prompt eval/test helpers | ✅ |
+| Local prompt inspector (DevTools-style) | planned |
 
 ## Quick start
 
@@ -256,7 +75,8 @@ import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
 const client = new OpenAI();
-const provider = createProvider(client, "gpt-4o-mini");
+const model = "gpt-5-nano";
+const provider = createProvider(client, model);
 
 const messages = await cria
   .prompt(provider)
@@ -264,141 +84,64 @@ const messages = await cria
   .user("What is the capital of France?")
   .render({ budget: 128_000 });
 
-const response = await client.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages,
-});
+const response = await client.chat.completions.create({ model, messages });
 ```
 
-## Docs
-
-* [Quickstart](docs/quickstart.md)
-* [RAG / vector search](docs/how-to/rag.md)
-* [Summarize long history](docs/how-to/summarize-history.md)
-* [Fit & compaction](docs/how-to/fit-and-compaction.md)
-* [Prompt evaluation](docs/how-to/prompt-evaluation.md)
-* [Full documentation](docs/README.md)
-
-## LLM APIs
+## Core patterns
 
 <details>
-<summary><strong>OpenAI Chat Completions</strong></summary>
+<summary><strong>RAG with vector search</strong></summary>
 
 ```ts
-import OpenAI from "openai";
-import { createProvider } from "@fastpaca/cria/openai";
-import { cria } from "@fastpaca/cria";
-
-const client = new OpenAI();
-const provider = createProvider(client, "gpt-4o-mini");
-
 const messages = await cria
   .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget });
-
-const response = await client.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages,
-});
+  .system("You are a research assistant.")
+  .vectorSearch({ store: qdrant, query, limit: 10 })
+  .user(query)
+  .render({ budget: 128_000 });
 ```
 
 </details>
 
 <details>
-<summary><strong>OpenAI Responses</strong></summary>
+<summary><strong>Summarize long conversation history</strong></summary>
 
 ```ts
-import OpenAI from "openai";
-import { createResponsesProvider } from "@fastpaca/cria/openai";
-import { cria } from "@fastpaca/cria";
-
-const client = new OpenAI();
-const provider = createResponsesProvider(client, "gpt-4o");
-
-const input = await cria
-  .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget });
-
-const response = await client.responses.create({
-  model: "gpt-4o",
-  input,
-});
-```
-
-</details>
-
-<details>
-<summary><strong>Anthropic</strong></summary>
-
-```ts
-import Anthropic from "@anthropic-ai/sdk";
-import { createProvider } from "@fastpaca/cria/anthropic";
-import { cria } from "@fastpaca/cria";
-
-const client = new Anthropic();
-const provider = createProvider(client, "claude-sonnet-4-20250514");
-
-const { system, messages } = await cria
-  .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget });
-
-const response = await client.messages.create({
-  model: "claude-sonnet-4-20250514",
-  system,
-  messages,
-});
-```
-
-</details>
-
-<details>
-<summary><strong>Vercel AI SDK</strong></summary>
-
-```ts
-import { createProvider } from "@fastpaca/cria/ai-sdk";
-import { cria } from "@fastpaca/cria";
-import { generateText } from "ai";
-
-const provider = createProvider(model);
-
 const messages = await cria
   .prompt(provider)
-  .system("You are helpful.")
-  .user(userQuestion)
-  .render({ budget });
-
-const { text } = await generateText({ model, messages });
+  .system("You are a helpful assistant.")
+  .summary(conversation, { id: "conv", store: redis, priority: 2 })
+  .last(conversation, { n: 20 })
+  .user(query)
+  .render({ budget: 128_000 });
 ```
 
 </details>
 
-## Memory & retrieval
-
-Cria has built-in support for the patterns you actually need:
+<details>
+<summary><strong>Token budgeting and compaction</strong></summary>
 
 ```ts
-// Summarize old conversation, keep recent messages
-.summary(conversation, { id: "conv", store: redis, priority: 2 })
-.last(conversation, { n: 20 })
-
-// Vector search with automatic context injection
-.vectorSearch({ store: qdrant, query, limit: 10 })
-
-// Drop optional context when budget is tight
-.omit(examples, { priority: 3 })
+const messages = await cria
+  .prompt(provider)
+  .system(SYSTEM_PROMPT)
+  // Dropped first when budget is tight
+  .omit(examples, { priority: 3 })
+  // Summaries are run ad-hoc once we hit budget limits
+  .summary(conversation, { id: "conv", store: redis, priority: 2 })
+  // Sacred, need to retain but limit to only 10 entries
+  .vectorSearch({ store: qdrant, query, limit: 10 })
+  .user(query)
+  // 128k token budget, once we hit the budget strategies
+  // will run based on priority & usage (e.g. summaries will
+  // trigger).
+  .render({ budget: 128_000 });
 ```
 
-Supported backends: Redis, Postgres, Chroma, Qdrant. Or bring your own.
+</details>
 
-## Evaluation
-
-Test your prompts like you test your code:
+<details>
+<summary><strong>Evaluate prompts like code</strong></summary>
 
 ```ts
 import { c, cria } from "@fastpaca/cria";
@@ -420,60 +163,203 @@ const prompt = await cria
 await judge(prompt).toPass(c`Provides clear, actionable steps`);
 ```
 
-Use it in your favorite test runner (we like vitest) and relax.
+</details>
+
+## Works with
 
 <details>
-<summary><strong>Snippets (LLM APIs + common operations)</strong></summary>
+<summary><strong>OpenAI (Chat Completions)</strong></summary>
 
 ```ts
-// OpenAI Chat Completions
 import OpenAI from "openai";
 import { createProvider } from "@fastpaca/cria/openai";
+import { cria } from "@fastpaca/cria";
 
-const openai = new OpenAI();
-const openaiProvider = createProvider(openai, "gpt-4o-mini");
-```
+const client = new OpenAI();
+const model = "gpt-5-nano";
+const provider = createProvider(client, model);
 
-```ts
-// OpenAI Responses
-import OpenAI from "openai";
-import { createResponsesProvider } from "@fastpaca/cria/openai";
-
-const openai = new OpenAI();
-const openaiResponsesProvider = createResponsesProvider(openai, "gpt-4o");
-```
-
-```ts
-// Anthropic
-import Anthropic from "@anthropic-ai/sdk";
-import { createProvider } from "@fastpaca/cria/anthropic";
-
-const anthropic = new Anthropic();
-const anthropicProvider = createProvider(anthropic, "claude-sonnet-4-20250514");
-```
-
-```ts
-// Vercel AI SDK
-import { createProvider } from "@fastpaca/cria/ai-sdk";
-
-// `model` is an AI SDK model instance
-const aiSdkProvider = createProvider(model);
-```
-
-```ts
-// Common operations
-// `redis`, `qdrant`, and `examples` are your own adapters/values
 const messages = await cria
   .prompt(provider)
-  .system(SYSTEM_PROMPT)
-  .summary(conversation, { id: "conv", store: redis, priority: 2 })
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const response = await client.chat.completions.create({ model, messages });
+```
+
+</details>
+
+<details>
+<summary><strong>OpenAI (Responses)</strong></summary>
+
+```ts
+import OpenAI from "openai";
+import { createResponsesProvider } from "@fastpaca/cria/openai";
+import { cria } from "@fastpaca/cria";
+
+const client = new OpenAI();
+const model = "gpt-5-nano";
+const provider = createResponsesProvider(client, model);
+
+const input = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const response = await client.responses.create({ model, input });
+```
+
+</details>
+
+<details>
+<summary><strong>Anthropic</strong></summary>
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { createProvider } from "@fastpaca/cria/anthropic";
+import { cria } from "@fastpaca/cria";
+
+const client = new Anthropic();
+const model = "claude-sonnet-4";
+const provider = createProvider(client, model);
+
+const { system, messages } = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const response = await client.messages.create({ model, system, messages });
+```
+
+</details>
+
+<details>
+<summary><strong>Vercel AI SDK</strong></summary>
+
+```ts
+import { createProvider } from "@fastpaca/cria/ai-sdk";
+import { cria } from "@fastpaca/cria";
+import { generateText } from "ai";
+
+const provider = createProvider(model);
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user(userQuestion)
+  .render({ budget: 128_000 });
+
+const { text } = await generateText({ model, messages });
+```
+
+</details>
+
+<details>
+<summary><strong>Redis (conversation summaries)</strong></summary>
+
+```ts
+import { RedisStore } from "@fastpaca/cria/memory/redis";
+import type { StoredSummary } from "@fastpaca/cria";
+
+const store = new RedisStore<StoredSummary>({
+  host: "localhost",
+  port: 6379,
+});
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a helpful assistant.")
+  .summary(conversation, { id: "conv-123", store, priority: 2 })
   .last(conversation, { n: 20 })
-  .vectorSearch({ store: qdrant, query, limit: 10 })
-  .omit(examples, { priority: 3 })
+  .user(query)
   .render({ budget: 128_000 });
 ```
 
 </details>
+
+<details>
+<summary><strong>Postgres (conversation summaries)</strong></summary>
+
+```ts
+import { PostgresStore } from "@fastpaca/cria/memory/postgres";
+import type { StoredSummary } from "@fastpaca/cria";
+
+const store = new PostgresStore<StoredSummary>({
+  connectionString: "postgres://user:pass@localhost/mydb",
+});
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a helpful assistant.")
+  .summary(conversation, { id: "conv-123", store, priority: 2 })
+  .last(conversation, { n: 20 })
+  .user(query)
+  .render({ budget: 128_000 });
+```
+
+</details>
+
+<details>
+<summary><strong>Chroma (vector search)</strong></summary>
+
+```ts
+import { ChromaClient } from "chromadb";
+import { ChromaStore } from "@fastpaca/cria/memory/chroma";
+
+const client = new ChromaClient({ path: "http://localhost:8000" });
+const collection = await client.getOrCreateCollection({ name: "my-docs" });
+
+const store = new ChromaStore({
+  collection,
+  embed: async (text) => await getEmbedding(text),
+});
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a research assistant.")
+  .vectorSearch({ store, query, limit: 10 })
+  .user(query)
+  .render({ budget: 128_000 });
+```
+
+</details>
+
+<details>
+<summary><strong>Qdrant (vector search)</strong></summary>
+
+```ts
+import { QdrantClient } from "@qdrant/js-client-rest";
+import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
+
+const client = new QdrantClient({ url: "http://localhost:6333" });
+
+const store = new QdrantStore({
+  client,
+  collectionName: "my-docs",
+  embed: async (text) => await getEmbedding(text),
+});
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a research assistant.")
+  .vectorSearch({ store, query, limit: 10 })
+  .user(query)
+  .render({ budget: 128_000 });
+```
+
+</details>
+
+## Documentation
+
+- [Quickstart](docs/quickstart.md)
+- [RAG / vector search](docs/how-to/rag.md)
+- [Summarize long history](docs/how-to/summarize-history.md)
+- [Fit & compaction](docs/how-to/fit-and-compaction.md)
+- [Prompt evaluation](docs/how-to/prompt-evaluation.md)
+- [Full documentation](docs/README.md)
 
 ## FAQ
 
@@ -483,17 +369,11 @@ Prompt structures/messages (via a provider adapter). You pass the rendered outpu
 **What works out of the box?**
 Provider adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK; store adapters for Redis, Postgres, Chroma, and Qdrant.
 
-**How do teams validate swaps?**
-Swap via adapters, then diff rendered prompt output and run prompt eval/tests to catch drift.
+**How do I validate component swaps?**
+Swap via adapters, diff the rendered prompt output, and run prompt eval/tests to catch drift.
 
-**How do I handle context limits?**
-Use token budgeting plus fit/compaction controls to stay within a budget.
-
-**What hooks exist for tracing and testing?**
-Render hooks + OpenTelemetry integration for tracing, plus prompt eval/test helpers.
-
-**What’s the status of the local inspector and API stability?**
-The DevTools-style local prompt inspector is planned (not shipped). We use Cria in production, but the API may change before 2.0 — pin versions and follow the changelog.
+**What's the API stability?**
+We use Cria in production, but the API may change before 2.0. Pin versions and follow the changelog.
 
 ## Contributing
 
