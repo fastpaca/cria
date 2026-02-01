@@ -10,7 +10,7 @@ Then explore integrations:
 
 - **rag-qdrant** - Vector search with real Qdrant (requires Docker)
 - **summary-redis** - Progressive summarization with real Redis (requires Docker)
-- **sqlite-stores** - SQLite KV + sqlite-vec (requires sqlite-vec extension)
+- **summary-sqlite** - Progressive summarization with SQLite (no external services)
 - **provider-cache-pinning** - OpenAI A/B test with pinned metadata
 
 ## Running

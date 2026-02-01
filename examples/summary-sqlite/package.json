@@ -1,12 +1,11 @@
 {
-  "name": "sqlite-stores",
+  "name": "summary-sqlite",
   "type": "module",
   "scripts": {
     "start": "npx tsx main.ts"
   },
   "dependencies": {
     "@fastpaca/cria": "workspace:*",
-    "better-sqlite3": "^12",
     "openai": "^4"
   },
   "devDependencies": {
