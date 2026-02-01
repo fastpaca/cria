@@ -22,6 +22,7 @@ const tokensFor = (text: string): number => provider.countTokens(text);
 const cacheProvider = new LayoutProvider();
 
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
+
 class LayoutCodec extends MessageCodec<
   { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext },
   ProviderToolIO
@@ -318,6 +319,7 @@ test("render: hook errors bubble (async error)", async () => {
   ).rejects.toThrow("Async hook error");
 });
 
+
 test("render: cache descriptor uses contiguous pinned prefix", async () => {
   const pinnedSystem = cria.prompt().system("Static rules").pin({
     id: "rules",
@@ -358,7 +360,6 @@ test("render: assistant message fields map to output", async () => {
   });
   expect(result).toContain("Hello");
 });
-
 test("render: pinned scopes after unpinned content throw", () => {
   const pinnedLater = cria.prompt().system("Pinned later").pin({
     id: "later",

@@ -34,6 +34,16 @@ const prompt = cria
   .user(userQuestion);
 ```
 
+### Pass render context explicitly
+
+Cache hints are passed through the render context. When you call a provider
+directly, use `renderWithContext` and pass the context to the provider:
+
+```ts
+const { output, context } = await prompt.renderWithContext();
+await provider.completion(output, context);
+```
+
 ### Rules to remember
 
 - `.pin()` can only be used once per prompt.
