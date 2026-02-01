@@ -1,4 +1,4 @@
-import { MessageCodec, type ProviderRenderContext } from "../provider";
+import { MessageCodec } from "../provider";
 import type { PromptLayout, PromptMessage } from "../types";
 
 /**
@@ -98,10 +98,7 @@ export class ResponsesProtocol extends MessageCodec<
   ResponsesToolIO
 > {
   /** Render PromptLayout into responses items. */
-  override render(
-    layout: PromptLayout<ResponsesToolIO>,
-    _context?: ProviderRenderContext
-  ): ResponsesInput {
+  override render(layout: PromptLayout<ResponsesToolIO>): ResponsesInput {
     let reasoningIndex = 0;
     return layout.flatMap((message) => {
       switch (message.role) {

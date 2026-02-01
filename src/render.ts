@@ -39,6 +39,22 @@ export interface RenderOptions<
   hooks?: RenderHooks<TToolIO>;
 }
 
+interface ContextualCodec<TRendered, TToolIO extends ProviderToolIO> {
+  render: (
+    layout: PromptLayout<TToolIO>,
+    context?: ProviderRenderContext
+  ) => TRendered;
+}
+
+const renderWithContext = <TRendered, TToolIO extends ProviderToolIO>(
+  provider: ModelProvider<TRendered, TToolIO>,
+  layout: PromptLayout<TToolIO>,
+  context: ProviderRenderContext
+): TRendered => {
+  const codec = provider.codec as ContextualCodec<TRendered, TToolIO>;
+  return codec.render(layout, context);
+};
+
 export interface FitStartEvent<
   TToolIO extends ProviderToolIO = ProviderToolIO,
 > {
@@ -119,7 +135,7 @@ function renderOutput<TRendered, TToolIO extends ProviderToolIO>(
   // Prompt tree composition is resolved before rendering; codecs only see layout.
   const { layout, cacheDescriptor } = layoutPromptWithCache(root);
   const context: ProviderRenderContext = { cache: cacheDescriptor };
-  const rendered = provider.codec.render(layout, context);
+  const rendered = renderWithContext(provider, layout, context);
   return rendered;
 }
 

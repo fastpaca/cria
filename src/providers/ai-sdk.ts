@@ -7,11 +7,7 @@ import type {
   ChatMessage,
 } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
-import {
-  ProtocolProvider,
-  type ProviderAdapter,
-  type ProviderRenderContext,
-} from "../provider";
+import { ProtocolProvider, type ProviderAdapter } from "../provider";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
@@ -41,10 +37,7 @@ export class AiSdkAdapter
   implements ProviderAdapter<ChatCompletionsInput<AiSdkToolIO>, ModelMessage[]>
 {
   /** Convert protocol messages into AI SDK message array. */
-  to(
-    input: ChatCompletionsInput<AiSdkToolIO>,
-    _context?: ProviderRenderContext
-  ): ModelMessage[] {
+  to(input: ChatCompletionsInput<AiSdkToolIO>): ModelMessage[] {
     return input.map((message) => {
       switch (message.role) {
         case "developer":
@@ -183,20 +176,13 @@ export class AiSdkProvider extends ProtocolProvider<
   }
 
   /** Generate a text completion using the AI SDK model. */
-  async completion(
-    messages: ModelMessage[],
-    _context?: ProviderRenderContext
-  ): Promise<string> {
+  async completion(messages: ModelMessage[]): Promise<string> {
     const result = await generateText({ model: this.model, messages });
     return result.text;
   }
 
   /** Generate a structured object using the AI SDK model. */
-  async object<T>(
-    messages: ModelMessage[],
-    schema: z.ZodType<T>,
-    _context?: ProviderRenderContext
-  ): Promise<T> {
+  async object<T>(messages: ModelMessage[], schema: z.ZodType<T>): Promise<T> {
     const result = await generateObject({
       model: this.model,
       schema,

@@ -8,10 +8,11 @@ import type {
 } from "./types";
 
 /**
- * Context passed into codec rendering and provider requests.
+ * Context passed into codec rendering.
  *
- * This is derived from the fitted prompt tree and allows providers to map
- * provider-agnostic hints (like cache pinning) to provider-native features.
+ * This is derived from the fitted prompt tree and allows providers/adapters to
+ * map provider-agnostic hints (like cache pinning) to provider-native features
+ * during render.
  */
 export interface ProviderRenderContext {
   cache?: CacheDescriptor | undefined;
@@ -21,10 +22,7 @@ export interface ProviderRenderContext {
  * Bidirectional codec between PromptLayout (IR) and provider-native input.
  */
 export abstract class MessageCodec<TRendered, TToolIO extends ProviderToolIO> {
-  abstract render(
-    layout: PromptLayout<TToolIO>,
-    context?: ProviderRenderContext
-  ): TRendered;
+  abstract render(layout: PromptLayout<TToolIO>): TRendered;
   abstract parse(rendered: TRendered): PromptLayout<TToolIO>;
 }
 
@@ -39,20 +37,15 @@ export abstract class ListMessageCodec<
   protected abstract toProviderMessage(args: {
     message: PromptMessage<TToolIO>;
     index: number;
-    context?: ProviderRenderContext;
   }): readonly TProviderMessage[];
   protected abstract fromProviderMessage(
     message: TProviderMessage
   ): readonly PromptMessage<TToolIO>[];
 
-  override render(
-    layout: PromptLayout<TToolIO>,
-    context?: ProviderRenderContext
-  ): readonly TProviderMessage[] {
-    return layout.flatMap((message, index) => {
-      const args = context ? { message, index, context } : { message, index };
-      return this.toProviderMessage(args);
-    });
+  override render(layout: PromptLayout<TToolIO>): readonly TProviderMessage[] {
+    return layout.flatMap((message, index) =>
+      this.toProviderMessage({ message, index })
+    );
   }
 
   override parse(rendered: readonly TProviderMessage[]): PromptLayout<TToolIO> {
@@ -80,10 +73,7 @@ export abstract class ModelProvider<
   abstract countTokens(rendered: TRendered): number;
 
   /** Generate a text completion from rendered prompt input. */
-  abstract completion(
-    rendered: TRendered,
-    context?: ProviderRenderContext
-  ): MaybePromise<string>;
+  abstract completion(rendered: TRendered): MaybePromise<string>;
 
   /**
    * Generate a structured object validated against the schema.
@@ -94,8 +84,7 @@ export abstract class ModelProvider<
    */
   abstract object<T>(
     rendered: TRendered,
-    schema: z.ZodType<T>,
-    context?: ProviderRenderContext
+    schema: z.ZodType<T>
   ): MaybePromise<T>;
 }
 
@@ -152,11 +141,12 @@ export class CompositeCodec<
   }
 
   /** Render PromptLayout into provider input via protocol + adapter. */
+  render(layout: PromptLayout<TToolIO>): TProviderInput;
   render(
     layout: PromptLayout<TToolIO>,
     context?: ProviderRenderContext
   ): TProviderInput {
-    const protocolInput = this.protocol.render(layout, context);
+    const protocolInput = this.protocol.render(layout);
     return this.adapter.to(protocolInput, context);
   }
 
