@@ -12,6 +12,7 @@ Cria treats prompts like a structured tree (similar to a UI component tree). Tha
 ## What Cria is not
 
 - Not an LLM SDK: you still call OpenAI/Anthropic/AI SDK yourself.
+- Not a provider wrapper: Cria providers are for rendering/token counting and internal helpers (summary/eval), not for issuing API calls.
 - Not a tool runner: Cria can represent tool calls/results in the prompt, but it doesn’t execute tools.
 
 ## Rendering vs calling a model

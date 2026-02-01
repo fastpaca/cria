@@ -34,10 +34,11 @@ const prompt = cria
   .user(userQuestion);
 ```
 
-### Using OpenAI without Cria providers
+### OpenAI requires `prompt_cache_key`
 
-OpenAI expects a `prompt_cache_key`. When you render with the OpenAI provider,
-the output includes an optional `cache_id` you can pass through:
+**You must pass the rendered `cache_id` as `prompt_cache_key` yourself.**
+Cria does **not** attach `prompt_cache_key` for you, even if you use the OpenAI
+provider to render.
 
 ```ts
 const { messages, cache_id } = await prompt.render();
@@ -57,10 +58,10 @@ await openai.chat.completions.create({
 
 ## Provider behavior
 
-Cria exposes a provider-agnostic cache descriptor during render. Providers translate it into their native hints:
+Cria exposes a provider-agnostic cache descriptor during render.
 
-- **OpenAI**: `prompt_cache_key` is derived from the pin `id` + `version`.
-- **Anthropic**: `cache_control` is applied to the pinned system prefix blocks.
+- **OpenAI**: you must forward `cache_id` to `prompt_cache_key` manually.
+- **Anthropic**: `cache_control` is applied to the pinned system prefix blocks in the rendered output.
 
 Providers may ignore these hints or apply different cache rules. Pinning works best when your prefix is stable and versioned.
 

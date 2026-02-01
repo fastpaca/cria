@@ -37,6 +37,9 @@ const response = await client.chat.completions.create({
 });
 ```
 
+**Cache pinning note:** OpenAI only caches when you pass `prompt_cache_key`.
+Always forward `cache_id` yourself — Cria does not attach it for you.
+
 Runnable example: [openai-chat-completions](../../examples/openai-chat-completions)
 
 ```bash
@@ -69,6 +72,9 @@ const response = await client.responses.create({
   ...(cache_id ? { prompt_cache_key: cache_id } : {}),
 });
 ```
+
+**Cache pinning note:** OpenAI only caches when you pass `prompt_cache_key`.
+Always forward `cache_id` yourself — Cria does not attach it for you.
 
 Runnable example: [openai-responses](../../examples/openai-responses)
 

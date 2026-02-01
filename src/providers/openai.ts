@@ -520,7 +520,6 @@ export class OpenAIChatProvider extends ProtocolProvider<
     const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
       messages: output.messages,
-      ...(output.cache_id ? { prompt_cache_key: output.cache_id } : {}),
     };
 
     const res = await this.client.chat.completions.create(request);
@@ -537,7 +536,6 @@ export class OpenAIChatProvider extends ProtocolProvider<
       model: this.model,
       messages: output.messages,
       response_format: { type: "json_object" as const },
-      ...(output.cache_id ? { prompt_cache_key: output.cache_id } : {}),
     };
 
     const res = await this.client.chat.completions.create(request);
@@ -578,7 +576,6 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
     const request: ResponseCreateParamsNonStreaming = {
       model: this.model,
       input: output.input,
-      ...(output.cache_id ? { prompt_cache_key: output.cache_id } : {}),
     };
 
     const res = await this.client.responses.create(request);

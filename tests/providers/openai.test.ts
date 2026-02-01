@@ -576,8 +576,5 @@ test("openai: derives prompt_cache_key from pinned prefix", async () => {
     throw new Error("Expected OpenAI request to be captured.");
   }
 
-  const promptCacheKey = capturedRequest.prompt_cache_key;
-  const expectedCacheKey = `cria:${MODEL}:tenant:acme:ttl:123:rules:v1`;
-
-  expect(promptCacheKey).toBe(expectedCacheKey);
+  expect(capturedRequest.prompt_cache_key).toBeUndefined();
 });

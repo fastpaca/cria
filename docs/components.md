@@ -12,6 +12,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 - `pin(...)`: mark the current prompt prefix as cache-pinned. Requires an explicit `id` + `version` to control cache reuse. Only one pin per prompt. After pinning, keep chaining to add the unpinned tail.
 - `prefix(...)`: place content at the start of the prompt so prefix caching can apply.
   Note: a pinned builder must be the first content in a prompt; merging a pinned builder after unpinned content throws.
+- OpenAI requires `prompt_cache_key`: always forward the rendered `cache_id` yourself.
 
 ## Fit & compaction
 
