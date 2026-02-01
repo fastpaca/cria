@@ -1,7 +1,7 @@
 /**
  * SQLite stores - KV + sqlite-vec in one example
  *
- * Requires: SQLITE_VEC_PATH (path to vec0 extension) + OPENAI_API_KEY
+ * Requires: OPENAI_API_KEY + SQLITE_VEC_PATH
  */
 
 import { cria, type StoredSummary } from "@fastpaca/cria";
@@ -10,7 +10,21 @@ import { SqliteVecStore } from "@fastpaca/cria/memory/sqlite-vec";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
-const openai = new OpenAI();
+<<<<<<< HEAD
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) {
+  throw new Error("Missing OPENAI_API_KEY.");
+}
+
+const openai = new OpenAI({ apiKey });
+=======
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) {
+  throw new Error("Missing OPENAI_API_KEY.");
+}
+
+const openai = new OpenAI({ apiKey });
+>>>>>>> 89727a7 (chore(examples): require openai env)
 const provider = createProvider(openai, "gpt-4o-mini");
 const embed = async (text: string) => {
   const response = await openai.embeddings.create({
@@ -20,13 +34,18 @@ const embed = async (text: string) => {
   return response.data[0]?.embedding ?? [];
 };
 
+const vecPath = process.env.SQLITE_VEC_PATH;
+if (!vecPath) {
+  throw new Error("Missing SQLITE_VEC_PATH.");
+}
+
 const summaryStore = new SqliteStore<StoredSummary>({
   filename: "cria.sqlite",
 });
 const vectorStore = new SqliteVecStore<string>({
   filename: "cria.sqlite",
   dimensions: 1536,
-  loadExtension: process.env.SQLITE_VEC_PATH ?? "/path/to/vec0",
+  loadExtension: vecPath,
   embed,
 });
 
