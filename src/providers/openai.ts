@@ -26,7 +26,7 @@ import {
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
-type OpenAIModel =
+export type OpenAIModel =
   | ChatCompletionCreateParamsNonStreaming["model"]
   | ResponseCreateParamsNonStreaming["model"];
 
@@ -35,7 +35,7 @@ function derivePromptCacheKey(
   model: OpenAIModel
 ): string | undefined {
   const descriptor = context?.cache;
-  const pinId = descriptor?.pinIdsInPrefix[0];
+  const pinId = descriptor?.pinIdInPrefix;
   const pinVersion = descriptor?.pinVersionInPrefix;
   if (!(pinId && pinVersion)) {
     return undefined;
@@ -48,6 +48,16 @@ function derivePromptCacheKey(
       : "ttl:default";
 
   return `cria:${model}:${scopeKey}:${ttlSegment}:${pinId}:${pinVersion}`;
+}
+
+export interface OpenAIChatRenderOutput {
+  messages: ChatCompletionMessageParam[];
+  cache_id?: string | undefined;
+}
+
+export interface OpenAIResponsesRenderOutput {
+  input: OpenAIResponses;
+  cache_id?: string | undefined;
 }
 
 /** OpenAI tool IO matches the responses protocol tool IO. */
@@ -63,23 +73,26 @@ export type OpenAIResponses = OpenAIResponsePart[];
  */
 export class OpenAIChatAdapter
   implements
-    ProviderAdapter<
-      ChatCompletionsInput<OpenAiToolIO>,
-      ChatCompletionMessageParam[]
-    >
+    ProviderAdapter<ChatCompletionsInput<OpenAiToolIO>, OpenAIChatRenderOutput>
 {
+  private readonly model: OpenAIModel;
+
+  constructor(model: OpenAIModel) {
+    this.model = model;
+  }
+
   /** Convert protocol messages into OpenAI chat messages. */
   to(
     input: ChatCompletionsInput<OpenAiToolIO>,
-    _context?: ProviderRenderContext
-  ): ChatCompletionMessageParam[] {
-    return input.flatMap((message) => {
+    context?: ProviderRenderContext
+  ): OpenAIChatRenderOutput {
+    const messages: ChatCompletionMessageParam[] = input.flatMap((message) => {
       switch (message.role) {
         case "assistant":
           return [renderOpenAiAssistantMessage(message.content)];
         case "tool":
           return message.content.map((result) => ({
-            role: "tool",
+            role: "tool" as const,
             tool_call_id: result.toolCallId,
             content: result.output,
           }));
@@ -87,15 +100,17 @@ export class OpenAIChatAdapter
           return [{ role: message.role, content: message.content }];
       }
     });
+
+    const cache_id = derivePromptCacheKey(context, this.model);
+    return cache_id ? { messages, cache_id } : { messages };
   }
 
   /** Convert OpenAI chat messages into protocol messages. */
-  from(
-    input: ChatCompletionMessageParam[]
-  ): ChatCompletionsInput<OpenAiToolIO> {
+  from(input: OpenAIChatRenderOutput): ChatCompletionsInput<OpenAiToolIO> {
     const toolNameById = new Map<string, string>();
+    const messages = input.messages;
 
-    return input.map((message) => {
+    return messages.map((message) => {
       switch (message.role) {
         case "assistant": {
           const text = chatText(message.content);
@@ -172,18 +187,30 @@ export class OpenAIChatAdapter
  * Adapter between responses protocol items and OpenAI responses items.
  */
 export class OpenAIResponsesAdapter
-  implements ProviderAdapter<ResponsesInput, OpenAIResponses>
+  implements ProviderAdapter<ResponsesInput, OpenAIResponsesRenderOutput>
 {
+  private readonly model: OpenAIModel;
+
+  constructor(model: OpenAIModel) {
+    this.model = model;
+  }
+
   /** Convert protocol items into OpenAI responses input. */
-  to(input: ResponsesInput, _context?: ProviderRenderContext): OpenAIResponses {
-    return input.flatMap((item, index) =>
+  to(
+    input: ResponsesInput,
+    context?: ProviderRenderContext
+  ): OpenAIResponsesRenderOutput {
+    const items = input.flatMap((item, index) =>
       mapResponsesItemToOpenAi(item, index)
     );
+
+    const cache_id = derivePromptCacheKey(context, this.model);
+    return cache_id ? { input: items, cache_id } : { input: items };
   }
 
   /** Convert OpenAI responses input into protocol items. */
-  from(input: OpenAIResponses): ResponsesInput {
-    return input.flatMap((item) => mapOpenAiItemToResponses(item));
+  from(input: OpenAIResponsesRenderOutput): ResponsesInput {
+    return input.input.flatMap((item) => mapOpenAiItemToResponses(item));
   }
 }
 
@@ -461,7 +488,7 @@ function responsesText(content: string | ResponsesContentPart[]): string {
  * OpenAI provider using the chat completions protocol.
  */
 export class OpenAIChatProvider extends ProtocolProvider<
-  ChatCompletionMessageParam[],
+  OpenAIChatRenderOutput,
   ChatCompletionsInput<OpenAiToolIO>,
   OpenAiToolIO
 > {
@@ -472,29 +499,29 @@ export class OpenAIChatProvider extends ProtocolProvider<
     client: OpenAI,
     model: ChatCompletionCreateParamsNonStreaming["model"]
   ) {
-    super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
+    super(
+      new ChatCompletionsProtocol<OpenAiToolIO>(),
+      new OpenAIChatAdapter(model)
+    );
     this.client = client;
     this.model = model;
   }
 
   /** Count tokens for OpenAI chat messages. */
-  countTokens(messages: ChatCompletionMessageParam[]): number {
-    return messages.reduce((n, m) => n + countChatMessageTokens(m), 0);
+  countTokens(output: OpenAIChatRenderOutput): number {
+    return output.messages.reduce((n, m) => n + countChatMessageTokens(m), 0);
   }
 
   /** Generate a text completion using chat completions. */
   async completion(
-    messages: ChatCompletionMessageParam[],
-    context?: ProviderRenderContext
+    output: OpenAIChatRenderOutput,
+    _context?: ProviderRenderContext
   ): Promise<string> {
-    const promptCacheKey = derivePromptCacheKey(context, this.model);
     const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
-      messages,
+      messages: output.messages,
+      ...(output.cache_id ? { prompt_cache_key: output.cache_id } : {}),
     };
-    if (promptCacheKey) {
-      request.prompt_cache_key = promptCacheKey;
-    }
 
     const res = await this.client.chat.completions.create(request);
     return res.choices[0]?.message?.content ?? "";
@@ -502,19 +529,16 @@ export class OpenAIChatProvider extends ProtocolProvider<
 
   /** Generate a structured object using chat completions. */
   async object<T>(
-    messages: ChatCompletionMessageParam[],
+    output: OpenAIChatRenderOutput,
     schema: z.ZodType<T>,
-    context?: ProviderRenderContext
+    _context?: ProviderRenderContext
   ): Promise<T> {
-    const promptCacheKey = derivePromptCacheKey(context, this.model);
     const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
-      messages,
+      messages: output.messages,
       response_format: { type: "json_object" as const },
+      ...(output.cache_id ? { prompt_cache_key: output.cache_id } : {}),
     };
-    if (promptCacheKey) {
-      request.prompt_cache_key = promptCacheKey;
-    }
 
     const res = await this.client.chat.completions.create(request);
     return schema.parse(JSON.parse(res.choices[0]?.message?.content ?? ""));
@@ -525,7 +549,7 @@ export class OpenAIChatProvider extends ProtocolProvider<
  * OpenAI provider using the responses protocol.
  */
 export class OpenAIResponsesProvider extends ProtocolProvider<
-  OpenAIResponses,
+  OpenAIResponsesRenderOutput,
   ResponsesInput,
   OpenAiToolIO
 > {
@@ -536,29 +560,26 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
     client: OpenAI,
     model: ResponseCreateParamsNonStreaming["model"]
   ) {
-    super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
+    super(new ResponsesProtocol(), new OpenAIResponsesAdapter(model));
     this.client = client;
     this.model = model;
   }
 
   /** Count tokens for OpenAI responses items. */
-  countTokens(items: OpenAIResponses): number {
-    return items.reduce((n, i) => n + countResponseItemTokens(i), 0);
+  countTokens(output: OpenAIResponsesRenderOutput): number {
+    return output.input.reduce((n, i) => n + countResponseItemTokens(i), 0);
   }
 
   /** Generate a text completion using the responses API. */
   async completion(
-    items: OpenAIResponses,
-    context?: ProviderRenderContext
+    output: OpenAIResponsesRenderOutput,
+    _context?: ProviderRenderContext
   ): Promise<string> {
-    const promptCacheKey = derivePromptCacheKey(context, this.model);
     const request: ResponseCreateParamsNonStreaming = {
       model: this.model,
-      input: items,
+      input: output.input,
+      ...(output.cache_id ? { prompt_cache_key: output.cache_id } : {}),
     };
-    if (promptCacheKey) {
-      request.prompt_cache_key = promptCacheKey;
-    }
 
     const res = await this.client.responses.create(request);
     return res.output_text ?? "";
@@ -566,11 +587,11 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
 
   /** Generate a structured object using the responses API. */
   async object<T>(
-    items: OpenAIResponses,
+    output: OpenAIResponsesRenderOutput,
     schema: z.ZodType<T>,
-    context?: ProviderRenderContext
+    _context?: ProviderRenderContext
   ): Promise<T> {
-    return schema.parse(JSON.parse(await this.completion(items, context)));
+    return schema.parse(JSON.parse(await this.completion(output)));
   }
 }
 

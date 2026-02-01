@@ -34,14 +34,18 @@ const prompt = cria
   .user(userQuestion);
 ```
 
-### Pass render context explicitly
+### Using OpenAI without Cria providers
 
-Cache hints are passed through the render context. When you call a provider
-directly, use `renderWithContext` and pass the context to the provider:
+OpenAI expects a `prompt_cache_key`. When you render with the OpenAI provider,
+the output includes an optional `cache_id` you can pass through:
 
 ```ts
-const { output, context } = await prompt.renderWithContext();
-await provider.completion(output, context);
+const { messages, cache_id } = await prompt.render();
+await openai.chat.completions.create({
+  model,
+  messages,
+  ...(cache_id ? { prompt_cache_key: cache_id } : {}),
+});
 ```
 
 ### Rules to remember
@@ -86,6 +90,5 @@ pnpm install
 pnpm start
 ```
 
-This example uses **OpenAI chat completions only**. It pins a large system prefix,
-reuses it across requests, and throws if the `prompt_cache_key` wiring is not
-stable for pinned prefixes or missing for unpinned prompts.
+This example uses **OpenAI chat completions only**. It pins a large system prefix
+and forwards the rendered `cache_id` to OpenAI as `prompt_cache_key`.

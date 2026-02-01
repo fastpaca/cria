@@ -82,10 +82,9 @@ export type {
   FitStartEvent,
   RenderHooks,
   RenderOptions,
-  RenderResult,
   StrategyAppliedEvent,
 } from "./render";
-export { render, renderWithContext } from "./render";
+export { render } from "./render";
 export type {
   CacheDescriptor,
   CacheHint,

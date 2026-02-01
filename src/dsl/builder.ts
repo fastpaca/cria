@@ -9,12 +9,8 @@ import type {
   ModelProvider,
   PromptInput,
 } from "../provider";
-import type { RenderOptions, RenderResult } from "../render";
-import {
-  assertValidMessageScope,
-  render as renderPrompt,
-  renderWithContext as renderPromptWithContext,
-} from "../render";
+import type { RenderOptions } from "../render";
+import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
   CacheHint,
   CriaContext,
@@ -951,48 +947,6 @@ export class PromptBuilder<
     }
 
     return await renderPrompt(element, {
-      ...(options ?? {}),
-      provider: this.boundProvider,
-    });
-  }
-
-  /**
-   * Render the prompt and return the output alongside its render context.
-   * Equivalent to `renderWithContext(await builder.build(), options)`.
-   */
-  async renderWithContext<TProvider extends BoundProvider>(
-    this: PromptBuilder<TProvider, PinState>,
-    options?: RenderOptionsWithoutProvider<
-      RenderedForProvider<TProvider>,
-      ToolIOForProvider<TProvider>
-    >
-  ): Promise<RenderResult<RenderedForProvider<TProvider>>>;
-  async renderWithContext<TProvider extends BoundProvider>(
-    this: PromptBuilder<unknown, PinState>,
-    options: RenderOptions<
-      RenderedForProvider<TProvider>,
-      ToolIOForProvider<TProvider>
-    > & { provider: TProvider }
-  ): Promise<RenderResult<RenderedForProvider<TProvider>>>;
-  async renderWithContext(
-    options?: RenderOptions<unknown, ProviderToolIO>
-  ): Promise<RenderResult<unknown>> {
-    const element = await this.build();
-    const providerOverride = options?.provider;
-    if (providerOverride) {
-      return await renderPromptWithContext(element, {
-        ...(options ?? {}),
-        provider: providerOverride,
-      });
-    }
-
-    if (!this.boundProvider) {
-      throw new Error(
-        "Rendering requires a provider. Bind one with cria.prompt(provider) or cria.prompt().provider(provider), or pass a provider to render()."
-      );
-    }
-
-    return await renderPromptWithContext(element, {
       ...(options ?? {}),
       provider: this.boundProvider,
     });

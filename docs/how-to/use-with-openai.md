@@ -24,7 +24,7 @@ import { createProvider } from "@fastpaca/cria/openai";
 const client = new OpenAI();
 const provider = createProvider(client, "gpt-4o-mini");
 
-const messages = await cria
+const { messages, cache_id } = await cria
   .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
@@ -33,6 +33,7 @@ const messages = await cria
 const response = await client.chat.completions.create({
   model: "gpt-4o-mini",
   messages,
+  ...(cache_id ? { prompt_cache_key: cache_id } : {}),
 });
 ```
 
@@ -56,13 +57,17 @@ import { createResponsesProvider } from "@fastpaca/cria/openai";
 const client = new OpenAI();
 const provider = createResponsesProvider(client, "o3");
 
-const input = await cria
+const { input, cache_id } = await cria
   .prompt(provider)
   .system("You are helpful.")
   .user(userQuestion)
   .render({ budget: 8000 });
 
-const response = await client.responses.create({ model: "o3", input });
+const response = await client.responses.create({
+  model: "o3",
+  input,
+  ...(cache_id ? { prompt_cache_key: cache_id } : {}),
+});
 ```
 
 Runnable example: [openai-responses](../../examples/openai-responses)
