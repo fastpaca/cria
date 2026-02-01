@@ -270,6 +270,12 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
  * Every method returns a new immutable builder instance; large chains will copy
  * child arrays, so keep prompts reasonably sized.
  * Call `.build()` to get the final `PromptTree`.
+ *
+ * Cache pinning behavior:
+ * - `.pin()` may only be called once and always pins the current prompt prefix.
+ * - After `.pin()`, continue chaining to add the unpinned tail.
+ * - `prefix(pinnedBuilder)` adopts the pinned prefix when it is the first content.
+ * - Merging a pinned builder after unpinned content throws.
  */
 export class PromptBuilder<
   P = unknown,
@@ -410,6 +416,7 @@ export class PromptBuilder<
           throw new Error("Prompt is already pinned.");
         }
 
+        // When prefixing a pinned builder, adopt its pinned prefix.
         const adoptedPinState = this.clonePinState(content.pinState);
         const combinedChildren = [...content.children, ...this.children];
         return new PromptBuilder<P, "pinned">(
@@ -432,6 +439,7 @@ export class PromptBuilder<
     );
 
     if (this.pinState) {
+      // Once pinned, prefix additions expand the pinned prefix itself.
       const nextPinState: PinnedPrefix<P> = {
         ...this.pinState,
         children: [element, ...this.pinState.children],
@@ -618,6 +626,8 @@ export class PromptBuilder<
       children: [...this.children],
     };
 
+    // After pinning, the current children become the pinned prefix.
+    // Further builder chaining appends the unpinned tail.
     return new PromptBuilder<P, "pinned">(
       [],
       this.context,
@@ -863,6 +873,8 @@ export class PromptBuilder<
       return resolvedChildren;
     }
 
+    // The pinned prefix is emitted as the first scope in the tree,
+    // followed by any unpinned tail content.
     const pinnedChildren = await resolveScopeChildren(this.pinState.children);
     const pinnedScope = createScope<ToolIOFor<P>>(pinnedChildren, {
       cache: this.pinState.hint,
