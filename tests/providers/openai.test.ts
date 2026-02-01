@@ -3,7 +3,10 @@ import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-complet
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
 import type { ResponsesInput } from "@fastpaca/cria/protocols/responses";
 import { ResponsesProtocol } from "@fastpaca/cria/protocols/responses";
-import { ProtocolProvider, type ProviderRenderContext } from "@fastpaca/cria/provider";
+import {
+  ProtocolProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import {
   OpenAIChatAdapter,
   OpenAIChatProvider,

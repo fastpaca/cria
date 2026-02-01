@@ -1,6 +1,9 @@
 import { c, cria } from "@fastpaca/cria/dsl";
 import { createJudge } from "@fastpaca/cria/eval";
-import { ModelProvider, type ProviderRenderContext } from "@fastpaca/cria/provider";
+import {
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import { getEncoding } from "js-tiktoken";
 import { describe, expect, test } from "vitest";
 import type { z } from "zod";

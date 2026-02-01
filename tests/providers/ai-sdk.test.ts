@@ -1,7 +1,10 @@
 import { cria } from "@fastpaca/cria/dsl";
 import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
-import { ProtocolProvider, type ProviderRenderContext } from "@fastpaca/cria/provider";
+import {
+  ProtocolProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import {
   AiSdkAdapter,
   type AiSdkToolIO,
@@ -9,8 +12,8 @@ import {
 import { render } from "@fastpaca/cria/render";
 import type { PromptMessageNode } from "@fastpaca/cria/types";
 import type { ModelMessage } from "ai";
-import type { z } from "zod";
 import { expect, test } from "vitest";
+import type { z } from "zod";
 
 class RenderOnlyProvider extends ProtocolProvider<
   ModelMessage[],
@@ -25,7 +28,10 @@ class RenderOnlyProvider extends ProtocolProvider<
     return 0;
   }
 
-  completion(_rendered: ModelMessage[], _context?: ProviderRenderContext): string {
+  completion(
+    _rendered: ModelMessage[],
+    _context?: ProviderRenderContext
+  ): string {
     return "";
   }
 

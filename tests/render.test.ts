@@ -1,10 +1,10 @@
 import { cria, render } from "@fastpaca/cria";
-import type { FitErrorEvent } from "@fastpaca/cria/render";
 import {
   MessageCodec,
   ModelProvider,
   type ProviderRenderContext,
 } from "@fastpaca/cria/provider";
+import type { FitErrorEvent } from "@fastpaca/cria/render";
 import type {
   PromptLayout,
   PromptMessageNode,
@@ -18,8 +18,6 @@ import { createTestProvider } from "./utils/plaintext";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
-
-const cacheProvider = new LayoutProvider();
 
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
 
@@ -70,6 +68,7 @@ class LayoutProvider extends ModelProvider<
   }
 }
 
+const cacheProvider = new LayoutProvider();
 
 /**
  * Creates an omit scope with a custom strategy for testing render behavior.
@@ -318,7 +317,6 @@ test("render: hook errors bubble (async error)", async () => {
     })
   ).rejects.toThrow("Async hook error");
 });
-
 
 test("render: cache descriptor uses contiguous pinned prefix", async () => {
   const pinnedSystem = cria.prompt().system("Static rules").pin({
