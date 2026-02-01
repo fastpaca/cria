@@ -545,29 +545,6 @@ const validatePinnedPrefixChange = async (options: {
   return pinnedRun.key;
 };
 
-const validatePinOutsidePrefix = async (
-  provider: OpenAIChatProvider,
-  requests: unknown[]
-): Promise<void> => {
-  const pinnedLater = cria
-    .prompt()
-    .system("Pinned later")
-    .pin({ id: "later:v1", scopeKey: SCOPE_KEY, ttlSeconds: TTL_SECONDS });
-
-  const renderedLater = await cria
-    .prompt(provider)
-    .user("Unpinned start")
-    .merge(pinnedLater)
-    .render();
-  await provider.completion(renderedLater);
-  const keyLater = getPromptCacheKey(requests.at(-1));
-  ensureEqual(
-    keyLater,
-    undefined,
-    "Expected no prompt_cache_key when pins are not in the prefix."
-  );
-};
-
 async function runOpenAiAbTest(): Promise<void> {
   const apiKey = requireEnv("OPENAI_API_KEY");
   const baseClient = new OpenAI({ apiKey });
@@ -596,8 +573,6 @@ async function runOpenAiAbTest(): Promise<void> {
     renderWithSystem,
     pinnedKey: series.pinnedKey,
   });
-
-  await validatePinOutsidePrefix(provider, requests);
 
   const sampleIndex = Math.min(1, RUNS - 1);
   const unpinnedStats = series.unpinnedStatsList[sampleIndex];
@@ -689,23 +664,6 @@ async function verifyAnthropicCacheControl(): Promise<void> {
   ensure(
     isEphemeralOneHourCacheControl(cacheControl),
     'Expected Anthropic cache_control to be { type: "ephemeral", ttl: "1h" }.'
-  );
-
-  const pinnedLater = cria
-    .prompt()
-    .system("Pinned later")
-    .pin({ id: "later:v1", ttlSeconds: TTL_SECONDS });
-
-  const renderedLater = await cria
-    .prompt(provider)
-    .user("Unpinned start")
-    .merge(pinnedLater)
-    .render();
-
-  ensureEqual(
-    typeof renderedLater.system,
-    "string",
-    "Expected no cache_control when pins are not in the prefix."
   );
 
   console.log("\nAnthropic cache_control verified.");
