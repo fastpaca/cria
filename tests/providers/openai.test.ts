@@ -3,58 +3,85 @@ import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-complet
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
 import type { ResponsesInput } from "@fastpaca/cria/protocols/responses";
 import { ResponsesProtocol } from "@fastpaca/cria/protocols/responses";
-import { ProtocolProvider } from "@fastpaca/cria/provider";
+import { ProtocolProvider, type ProviderRenderContext } from "@fastpaca/cria/provider";
 import {
   OpenAIChatAdapter,
+  OpenAIChatProvider,
+  type OpenAIChatRenderOutput,
   type OpenAIResponses,
   OpenAIResponsesAdapter,
+  type OpenAIResponsesRenderOutput,
   type OpenAiToolIO,
 } from "@fastpaca/cria/providers/openai";
 import { render } from "@fastpaca/cria/render";
 import type { PromptMessageNode } from "@fastpaca/cria/types";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import OpenAI from "openai";
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
 import { expect, test } from "vitest";
+import type { ZodType } from "zod";
+
+const MODEL = "gpt-4o-mini";
 
 class RenderOnlyChatProvider extends ProtocolProvider<
-  ChatCompletionMessageParam[],
+  OpenAIChatRenderOutput,
   ChatCompletionsInput<OpenAiToolIO>,
   OpenAiToolIO
 > {
   constructor() {
-    super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
+    super(
+      new ChatCompletionsProtocol<OpenAiToolIO>(),
+      new OpenAIChatAdapter(MODEL)
+    );
   }
 
-  countTokens(): number {
+  countTokens(_rendered: OpenAIChatRenderOutput): number {
     return 0;
   }
 
-  completion(): string {
+  completion(
+    _rendered: OpenAIChatRenderOutput,
+    _context?: ProviderRenderContext
+  ): string {
     return "";
   }
 
-  object(): never {
+  object<TOut>(
+    _rendered: OpenAIChatRenderOutput,
+    _schema: ZodType<TOut>,
+    _context?: ProviderRenderContext
+  ): never {
     throw new Error("Not implemented");
   }
 }
 
 class RenderOnlyResponsesProvider extends ProtocolProvider<
-  OpenAIResponses,
+  OpenAIResponsesRenderOutput,
   ResponsesInput,
   OpenAiToolIO
 > {
   constructor() {
-    super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
+    super(new ResponsesProtocol(), new OpenAIResponsesAdapter(MODEL));
   }
 
-  countTokens(): number {
+  countTokens(_rendered: OpenAIResponsesRenderOutput): number {
     return 0;
   }
 
-  completion(): string {
+  completion(
+    _rendered: OpenAIResponsesRenderOutput,
+    _context?: ProviderRenderContext
+  ): string {
     return "";
   }
 
-  object(): never {
+  object<TOut>(
+    _rendered: OpenAIResponsesRenderOutput,
+    _schema: ZodType<TOut>,
+    _context?: ProviderRenderContext
+  ): never {
     throw new Error("Not implemented");
   }
 }
@@ -77,12 +104,12 @@ function messageWithParts(
 test("chatCompletions: renders system message", async () => {
   const prompt = cria.scope([cria.system("You are a helpful assistant.")]);
 
-  const messages = await render(prompt, {
+  const output = await render(prompt, {
     provider: chatProvider,
   });
 
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toEqual({
+  expect(output.messages).toHaveLength(1);
+  expect(output.messages[0]).toEqual({
     role: "system",
     content: "You are a helpful assistant.",
   });
@@ -94,13 +121,13 @@ test("chatCompletions: renders user and assistant messages", async () => {
     cria.assistant("Hi there! How can I help?"),
   ]);
 
-  const messages = await render(prompt, {
+  const output = await render(prompt, {
     provider: chatProvider,
   });
 
-  expect(messages).toHaveLength(2);
-  expect(messages[0]).toEqual({ role: "user", content: "Hello!" });
-  expect(messages[1]).toEqual({
+  expect(output.messages).toHaveLength(2);
+  expect(output.messages[0]).toEqual({ role: "user", content: "Hello!" });
+  expect(output.messages[1]).toEqual({
     role: "assistant",
     content: "Hi there! How can I help?",
   });
@@ -119,12 +146,12 @@ test("chatCompletions: renders tool calls on assistant message", async () => {
     ]),
   ]);
 
-  const messages = await render(prompt, {
+  const output = await render(prompt, {
     provider: chatProvider,
   });
 
-  expect(messages).toHaveLength(1);
-  expect(messages[0]).toEqual({
+  expect(output.messages).toHaveLength(1);
+  expect(output.messages[0]).toEqual({
     role: "assistant",
     content: "Let me check the weather.",
     tool_calls: [
@@ -160,12 +187,12 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
     ]),
   ]);
 
-  const messages = await render(prompt, {
+  const output = await render(prompt, {
     provider: chatProvider,
   });
 
-  expect(messages).toHaveLength(2);
-  expect(messages[0]).toEqual({
+  expect(output.messages).toHaveLength(2);
+  expect(output.messages[0]).toEqual({
     role: "assistant",
     tool_calls: [
       {
@@ -178,7 +205,7 @@ test("chatCompletions: renders tool results as separate tool messages", async ()
       },
     ],
   });
-  expect(messages[1]).toEqual({
+  expect(output.messages[1]).toEqual({
     role: "tool",
     tool_call_id: "call_123",
     content: '{"temperature":20}',
@@ -208,11 +235,11 @@ test("chatCompletions: full conversation flow", async () => {
     cria.assistant("The weather in Paris is sunny with a temperature of 18°C."),
   ]);
 
-  const messages = await render(prompt, {
+  const output = await render(prompt, {
     provider: chatProvider,
   });
 
-  expect(messages).toEqual([
+  expect(output.messages).toEqual([
     {
       role: "system",
       content: "You are a weather assistant.",
@@ -252,11 +279,11 @@ test("responses: renders messages as message items", async () => {
     cria.user("Hello!"),
   ]);
 
-  const input = await render(prompt, {
+  const output = await render(prompt, {
     provider: responsesProvider,
   });
 
-  expect(input).toEqual([
+  expect(output.input).toEqual([
     {
       type: "message",
       role: "system",
@@ -278,11 +305,11 @@ test("responses: renders tool calls as function_call items", async () => {
     ]),
   ]);
 
-  const input = await render(prompt, {
+  const output = await render(prompt, {
     provider: responsesProvider,
   });
 
-  expect(input).toEqual([
+  expect(output.input).toEqual([
     {
       type: "function_call",
       call_id: "call_123",
@@ -304,11 +331,11 @@ test("responses: renders tool results as function_call_output items", async () =
     ]),
   ]);
 
-  const input = await render(prompt, {
+  const output = await render(prompt, {
     provider: responsesProvider,
   });
 
-  expect(input).toEqual([
+  expect(output.input).toEqual([
     {
       type: "function_call_output",
       call_id: "call_123",
@@ -324,11 +351,11 @@ test("responses: renders reasoning as native reasoning item", async () => {
     ]),
   ]);
 
-  const input = await render(prompt, {
+  const output = await render(prompt, {
     provider: responsesProvider,
   });
 
-  expect(input).toEqual([
+  expect(output.input).toEqual([
     {
       id: "reasoning_0",
       type: "reasoning",
@@ -352,11 +379,11 @@ test("responses: emits text before reasoning and tool calls", async () => {
     ]),
   ]);
 
-  const input = await render(prompt, {
+  const output = await render(prompt, {
     provider: responsesProvider,
   });
 
-  expect(input).toEqual([
+  expect(output.input).toEqual([
     { type: "message", role: "assistant", content: "BeforeAfter" },
     {
       id: "reasoning_0",
@@ -382,11 +409,11 @@ test("responses: full conversation with reasoning", async () => {
     cria.assistant("The answer is 4."),
   ]);
 
-  const input = await render(prompt, {
+  const output = await render(prompt, {
     provider: responsesProvider,
   });
 
-  expect(input).toEqual([
+  expect(output.input).toEqual([
     {
       type: "message",
       role: "system",
@@ -427,10 +454,10 @@ test("chatCompletions: round-trips messages", () => {
     },
   ];
 
-  const layout = chatProvider.codec.parse(input);
+  const layout = chatProvider.codec.parse({ messages: input });
   const output = chatProvider.codec.render(layout);
 
-  expect(output).toEqual(input);
+  expect(output.messages).toEqual(input);
 });
 
 test("responses: round-trips items", () => {
@@ -455,10 +482,10 @@ test("responses: round-trips items", () => {
     },
   ];
 
-  const layout = responsesProvider.codec.parse(input);
+  const layout = responsesProvider.codec.parse({ input });
   const output = responsesProvider.codec.render(layout);
 
-  expect(output).toEqual([
+  expect(output.input).toEqual([
     { type: "message", role: "user", content: "Hello" },
     { type: "message", role: "assistant", content: "Let me check." },
     {
@@ -478,4 +505,76 @@ test("responses: round-trips items", () => {
       output: '{"temp":18}',
     },
   ]);
+});
+
+test("openai: derives prompt_cache_key from pinned prefix", async () => {
+  let capturedRequest: ChatCompletionCreateParamsNonStreaming | undefined;
+  const isChatRequest = (
+    value: unknown
+  ): value is ChatCompletionCreateParamsNonStreaming =>
+    typeof value === "object" &&
+    value !== null &&
+    "model" in value &&
+    "messages" in value;
+  const fetch: typeof globalThis.fetch = (_input, init) => {
+    if (!init?.body || typeof init.body !== "string") {
+      throw new Error("Expected OpenAI request body to be a JSON string.");
+    }
+    const parsed = JSON.parse(init.body);
+    if (!isChatRequest(parsed)) {
+      throw new Error("Expected OpenAI request body to be a chat request.");
+    }
+    capturedRequest = parsed;
+    const responseBody = {
+      id: "chatcmpl_test",
+      object: "chat.completion",
+      created: 0,
+      model: MODEL,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "ok" },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    };
+    return Promise.resolve(
+      new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+  };
+  const client = new OpenAI({
+    apiKey: "test",
+    baseURL: "http://localhost",
+    fetch,
+  });
+  const provider = new OpenAIChatProvider(client, MODEL);
+
+  const pinnedSystem = cria.prompt().system("Stable rules").pin({
+    id: "rules",
+    version: "v1",
+    scopeKey: "tenant:acme",
+    ttlSeconds: 123,
+  });
+
+  const output = await cria
+    .prompt(provider)
+    .prefix(pinnedSystem)
+    .user("Hi")
+    .render();
+
+  await provider.completion(output);
+  expect(output.cache_id).toBe(`cria:${MODEL}:tenant:acme:ttl:123:rules:v1`);
+
+  if (!capturedRequest) {
+    throw new Error("Expected OpenAI request to be captured.");
+  }
+
+  const promptCacheKey = capturedRequest.prompt_cache_key;
+  const expectedCacheKey = `cria:${MODEL}:tenant:acme:ttl:123:rules:v1`;
+
+  expect(promptCacheKey).toBe(expectedCacheKey);
 });

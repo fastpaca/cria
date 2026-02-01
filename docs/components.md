@@ -7,6 +7,12 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 - `Scope`: groups children into a logical block (a “subtree” you can prioritize and compact).
 - `Message`: semantic messages with roles (`system`, `developer`, `user`, `assistant`, `tool`). Tool messages must contain only `ToolResult`.
 
+## Provider Cache Pinning
+
+- `pin(...)`: mark a region as cache-pinned (use stable ids when possible).
+- `prefix(...)`: place content at the start of the prompt so prefix caching can apply.
+- `cachePin(...)`: wrap provided content in a pinned scope.
+
 ## Fit & compaction
 
 - `Truncate`: shrink content to a token budget when fitting.

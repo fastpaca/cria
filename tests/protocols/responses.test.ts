@@ -3,10 +3,15 @@ import {
   ResponsesProtocol,
   type ResponsesToolIO,
 } from "@fastpaca/cria/protocols/responses";
-import { type MessageCodec, ModelProvider } from "@fastpaca/cria/provider";
+import {
+  type MessageCodec,
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import { render } from "@fastpaca/cria/render";
 import type { PromptMessageNode } from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
+import type { z } from "zod";
 
 class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {
   readonly codec: MessageCodec<T, ResponsesToolIO>;
@@ -20,11 +25,15 @@ class RenderOnlyProvider<T> extends ModelProvider<T, ResponsesToolIO> {
     return 0;
   }
 
-  completion(): string {
+  completion(_rendered: T, _context?: ProviderRenderContext): string {
     return "";
   }
 
-  object(): never {
+  object<TOut>(
+    _rendered: T,
+    _schema: z.ZodType<TOut>,
+    _context?: ProviderRenderContext
+  ): never {
     throw new Error("Not implemented");
   }
 }

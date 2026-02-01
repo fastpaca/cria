@@ -1,5 +1,4 @@
 import { getEncoding } from "js-tiktoken";
-import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { z } from "zod";
@@ -11,10 +10,57 @@ import type {
   ResponsesToolIO,
 } from "../protocols/responses";
 import { ResponsesProtocol } from "../protocols/responses";
-import { ProtocolProvider, type ProviderAdapter } from "../provider";
+import {
+  getRenderContext,
+  ProtocolProvider,
+  type ProviderAdapter,
+  type ProviderRenderContext,
+} from "../provider";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
+
+interface OpenAIChatCompletionResponse {
+  choices: Array<{
+    message?: { content?: string | null } | null;
+  }>;
+}
+
+interface OpenAIResponsesCreateResponse {
+  output_text?: string | null;
+}
+
+interface OpenAIChatClientLike {
+  chat: {
+    completions: {
+      create(params: unknown): Promise<OpenAIChatCompletionResponse>;
+    };
+  };
+}
+
+interface OpenAIResponsesClientLike {
+  responses: {
+    create(params: unknown): Promise<OpenAIResponsesCreateResponse>;
+  };
+}
+
+function derivePromptCacheKey(
+  context: ProviderRenderContext | undefined,
+  model: string
+): string | undefined {
+  const descriptor = context?.cache;
+  if (!descriptor?.pinnedPrefixHash) {
+    return undefined;
+  }
+
+  const scopeKey = descriptor.scopeKey ?? "global";
+  const ttlSegment =
+    descriptor.ttlSeconds !== undefined
+      ? `ttl:${descriptor.ttlSeconds}`
+      : "ttl:default";
+
+  return `cria:${model}:${scopeKey}:${ttlSegment}:${descriptor.pinnedPrefixHash}`;
+}
 
 /** OpenAI tool IO matches the responses protocol tool IO. */
 export type OpenAiToolIO = ResponsesToolIO;
@@ -35,7 +81,10 @@ export class OpenAIChatAdapter
     >
 {
   /** Convert protocol messages into OpenAI chat messages. */
-  to(input: ChatCompletionsInput<OpenAiToolIO>): ChatCompletionMessageParam[] {
+  to(
+    input: ChatCompletionsInput<OpenAiToolIO>,
+    _context?: ProviderRenderContext
+  ): ChatCompletionMessageParam[] {
     return input.flatMap((message) => {
       switch (message.role) {
         case "assistant":
@@ -138,7 +187,7 @@ export class OpenAIResponsesAdapter
   implements ProviderAdapter<ResponsesInput, OpenAIResponses>
 {
   /** Convert protocol items into OpenAI responses input. */
-  to(input: ResponsesInput): OpenAIResponses {
+  to(input: ResponsesInput, _context?: ProviderRenderContext): OpenAIResponses {
     return input.flatMap((item, index) =>
       mapResponsesItemToOpenAi(item, index)
     );
@@ -428,10 +477,10 @@ export class OpenAIChatProvider extends ProtocolProvider<
   ChatCompletionsInput<OpenAiToolIO>,
   OpenAiToolIO
 > {
-  private readonly client: OpenAI;
+  private readonly client: OpenAIChatClientLike;
   private readonly model: string;
 
-  constructor(client: OpenAI, model: string) {
+  constructor(client: OpenAIChatClientLike, model: string) {
     super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
     this.client = client;
     this.model = model;
@@ -443,24 +492,39 @@ export class OpenAIChatProvider extends ProtocolProvider<
   }
 
   /** Generate a text completion using chat completions. */
-  async completion(messages: ChatCompletionMessageParam[]): Promise<string> {
-    const res = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
-    });
+  async completion(
+    messages: ChatCompletionMessageParam[],
+    context?: ProviderRenderContext
+  ): Promise<string> {
+    const effectiveContext = context ?? getRenderContext(messages);
+    const promptCacheKey = derivePromptCacheKey(effectiveContext, this.model);
+    const request = { model: this.model, messages };
+    if (promptCacheKey) {
+      Reflect.set(request, "prompt_cache_key", promptCacheKey);
+    }
+
+    const res = await this.client.chat.completions.create(request);
     return res.choices[0]?.message?.content ?? "";
   }
 
   /** Generate a structured object using chat completions. */
   async object<T>(
     messages: ChatCompletionMessageParam[],
-    schema: z.ZodType<T>
+    schema: z.ZodType<T>,
+    context?: ProviderRenderContext
   ): Promise<T> {
-    const res = await this.client.chat.completions.create({
+    const effectiveContext = context ?? getRenderContext(messages);
+    const promptCacheKey = derivePromptCacheKey(effectiveContext, this.model);
+    const request = {
       model: this.model,
       messages,
-      response_format: { type: "json_object" },
-    });
+      response_format: { type: "json_object" as const },
+    };
+    if (promptCacheKey) {
+      Reflect.set(request, "prompt_cache_key", promptCacheKey);
+    }
+
+    const res = await this.client.chat.completions.create(request);
     return schema.parse(JSON.parse(res.choices[0]?.message?.content ?? ""));
   }
 }
@@ -473,10 +537,10 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
   ResponsesInput,
   OpenAiToolIO
 > {
-  private readonly client: OpenAI;
+  private readonly client: OpenAIResponsesClientLike;
   private readonly model: string;
 
-  constructor(client: OpenAI, model: string) {
+  constructor(client: OpenAIResponsesClientLike, model: string) {
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
     this.client = client;
     this.model = model;
@@ -488,23 +552,34 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
   }
 
   /** Generate a text completion using the responses API. */
-  async completion(items: OpenAIResponses): Promise<string> {
-    const res = await this.client.responses.create({
-      model: this.model,
-      input: items,
-    });
+  async completion(
+    items: OpenAIResponses,
+    context?: ProviderRenderContext
+  ): Promise<string> {
+    const effectiveContext = context ?? getRenderContext(items);
+    const promptCacheKey = derivePromptCacheKey(effectiveContext, this.model);
+    const request = { model: this.model, input: items };
+    if (promptCacheKey) {
+      Reflect.set(request, "prompt_cache_key", promptCacheKey);
+    }
+
+    const res = await this.client.responses.create(request);
     return res.output_text ?? "";
   }
 
   /** Generate a structured object using the responses API. */
-  async object<T>(items: OpenAIResponses, schema: z.ZodType<T>): Promise<T> {
-    return schema.parse(JSON.parse(await this.completion(items)));
+  async object<T>(
+    items: OpenAIResponses,
+    schema: z.ZodType<T>,
+    context?: ProviderRenderContext
+  ): Promise<T> {
+    return schema.parse(JSON.parse(await this.completion(items, context)));
   }
 }
 
 /** Convenience creator for the OpenAI chat provider. */
 export function createProvider(
-  client: OpenAI,
+  client: OpenAIChatClientLike,
   model: string
 ): OpenAIChatProvider {
   return new OpenAIChatProvider(client, model);
@@ -512,7 +587,7 @@ export function createProvider(
 
 /** Convenience creator for the OpenAI responses provider. */
 export function createResponsesProvider(
-  client: OpenAI,
+  client: OpenAIResponsesClientLike,
   model: string
 ): OpenAIResponsesProvider {
   return new OpenAIResponsesProvider(client, model);

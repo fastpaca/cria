@@ -1,17 +1,75 @@
 import { cria, render } from "@fastpaca/cria";
 import type { FitErrorEvent } from "@fastpaca/cria/render";
+import {
+  MessageCodec,
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import type {
+  PromptLayout,
   PromptMessageNode,
   PromptScope,
+  ProviderToolIO,
   Strategy,
 } from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
+import type { ZodType } from "zod";
 import { createTestProvider } from "./utils/plaintext";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
 
+const cacheProvider = new LayoutProvider();
+
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
+
+class LayoutCodec extends MessageCodec<
+  { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext },
+  ProviderToolIO
+> {
+  override render(
+    layout: PromptLayout<ProviderToolIO>,
+    context?: ProviderRenderContext
+  ): { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext } {
+    return { layout: [...layout], ...(context ? { context } : {}) };
+  }
+
+  override parse(rendered: {
+    layout: PromptLayout<ProviderToolIO>;
+  }): PromptLayout<ProviderToolIO> {
+    return rendered.layout;
+  }
+}
+
+class LayoutProvider extends ModelProvider<
+  { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext },
+  ProviderToolIO
+> {
+  readonly codec = new LayoutCodec();
+
+  countTokens(rendered: {
+    layout: PromptLayout<ProviderToolIO>;
+    context?: ProviderRenderContext;
+  }): number {
+    return JSON.stringify(rendered).length;
+  }
+
+  completion(
+    _rendered: { layout: PromptLayout<ProviderToolIO> },
+    _context?: ProviderRenderContext
+  ): string {
+    return "";
+  }
+
+  object<T>(
+    _rendered: { layout: PromptLayout<ProviderToolIO> },
+    _schema: ZodType<T>,
+    _context?: ProviderRenderContext
+  ): never {
+    throw new Error("Not implemented");
+  }
+}
+
 
 /**
  * Creates an omit scope with a custom strategy for testing render behavior.
@@ -259,6 +317,28 @@ test("render: hook errors bubble (async error)", async () => {
       },
     })
   ).rejects.toThrow("Async hook error");
+});
+
+
+test("render: cache descriptor uses contiguous pinned prefix", async () => {
+  const pinnedSystem = cria.prompt().system("Static rules").pin({
+    id: "rules",
+    version: "v1",
+    scopeKey: "tenant:acme",
+    ttlSeconds: 3600,
+  });
+
+  const prompt = cria.prompt().prefix(pinnedSystem).user("Question");
+  const result = await render(await prompt.build(), {
+    provider: cacheProvider,
+  });
+  const context = result.context;
+
+  expect(context?.cache.pinnedPrefixMessageCount).toBe(1);
+  expect(context?.cache.pinIdInPrefix).toBe("rules");
+  expect(context?.cache.pinVersionInPrefix).toBe("v1");
+  expect(context?.cache.scopeKey).toBe("tenant:acme");
+  expect(context?.cache.ttlSeconds).toBe(3600);
 });
 
 test("render: assistant message fields map to output", async () => {

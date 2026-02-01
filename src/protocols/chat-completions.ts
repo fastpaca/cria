@@ -1,4 +1,4 @@
-import { MessageCodec } from "../provider";
+import { MessageCodec, type ProviderRenderContext } from "../provider";
 import type {
   PromptLayout,
   PromptMessage,
@@ -55,7 +55,8 @@ export class ChatCompletionsProtocol<
 > extends MessageCodec<ChatCompletionsInput<TToolIO>, TToolIO> {
   /** Render PromptLayout into chat-completions protocol input. */
   override render(
-    layout: PromptLayout<TToolIO>
+    layout: PromptLayout<TToolIO>,
+    _context?: ProviderRenderContext
   ): ChatCompletionsInput<TToolIO> {
     return layout.map((message) => renderChatMessage(message));
   }
