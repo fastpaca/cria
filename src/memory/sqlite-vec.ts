@@ -24,7 +24,7 @@ interface SqliteVecRow {
 }
 
 interface SqliteVecKeyRow {
-  rowid: number;
+  rowid: number | bigint;
   created_at?: number;
 }
 
@@ -246,10 +246,10 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
       )
       .get(key);
 
-    let rowid: number;
+    let rowid: bigint;
 
     if (existing) {
-      rowid = existing.rowid;
+      rowid = BigInt(existing.rowid);
       this.db
         .prepare(
           `UPDATE ${this.tableName} SET data = ?, updated_at = ?, metadata = ? WHERE key = ?`
@@ -274,7 +274,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
         );
       }
 
-      rowid = inserted.rowid;
+      rowid = BigInt(inserted.rowid);
     }
 
     const textToEmbed = typeof data === "string" ? data : serializedData;
@@ -305,7 +305,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
 
     this.db
       .prepare(`DELETE FROM ${this.vectorTableName} WHERE rowid = ?`)
-      .run(row.rowid);
+      .run(BigInt(row.rowid));
 
     return true;
   }

@@ -255,12 +255,13 @@ const { resetState, MockDatabase } = vi.hoisted(() => {
         const tableName = normalizeTableName(insertVecMatch[1]);
         return {
           get: () => undefined,
-          run: (rowid: number, embedding: string) => {
+          run: (rowid: number | bigint, embedding: string) => {
             const table = vecTables.get(tableName);
             if (!table) {
               return { changes: 0 };
             }
-            table.rows.set(rowid, { embedding: parseVector(embedding) });
+            const key = typeof rowid === "bigint" ? Number(rowid) : rowid;
+            table.rows.set(key, { embedding: parseVector(embedding) });
             return { changes: 1 };
           },
           all: () => [],
@@ -286,9 +287,10 @@ const { resetState, MockDatabase } = vi.hoisted(() => {
         const tableName = normalizeTableName(deleteVecMatch[1]);
         return {
           get: () => undefined,
-          run: (rowid: number) => {
+          run: (rowid: number | bigint) => {
             const table = vecTables.get(tableName);
-            const existed = table?.rows.delete(rowid) ?? false;
+            const key = typeof rowid === "bigint" ? Number(rowid) : rowid;
+            const existed = table?.rows.delete(key) ?? false;
             return { changes: existed ? 1 : 0 };
           },
           all: () => [],
