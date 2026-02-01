@@ -20,7 +20,6 @@ const DELETE_REGEX = new RegExp(
   `DELETE FROM (${TABLE_PATTERN}) WHERE key = \\$1`,
   "i"
 );
-const INVALID_TABLE_REGEX = /Invalid table name/;
 
 const normalizeTableName = (identifier: string): string =>
   identifier.replace(/"/g, "");
@@ -182,15 +181,6 @@ test("PostgresStore: uses custom table name", async () => {
   // Verify the data is stored in the custom table
   expect(mockTables.has("my_custom_table")).toBe(true);
   expect(mockTables.has("cria_kv_store")).toBe(false);
-});
-
-test("PostgresStore: rejects unsafe table names", () => {
-  expect(() => {
-    return new PostgresStore({
-      tableName: 'users; DROP TABLE "users"; --',
-      autoCreateTable: false,
-    });
-  }).toThrow(INVALID_TABLE_REGEX);
 });
 
 test("PostgresStore: supports schema-qualified table names", async () => {

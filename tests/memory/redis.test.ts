@@ -108,22 +108,12 @@ test("RedisStore: uses default prefix", async () => {
 });
 
 const INVALID_JSON_REGEX = /invalid JSON/;
-const MISSING_CREATED_AT_REGEX = /missing createdAt/;
 
 test("RedisStore: rejects invalid JSON payloads", async () => {
   const store = new RedisStore<string>();
   mockData.set("cria:kv:bad", "{this is not json");
 
   await expect(store.get("bad")).rejects.toThrow(INVALID_JSON_REGEX);
-});
-
-test("RedisStore: rejects malformed stored shapes", async () => {
-  const store = new RedisStore<string>();
-  mockData.set("cria:kv:bad-shape", JSON.stringify({ data: "x" }));
-
-  await expect(store.get("bad-shape")).rejects.toThrow(
-    MISSING_CREATED_AT_REGEX
-  );
 });
 
 test("RedisStore: disconnect calls quit", async () => {

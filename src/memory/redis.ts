@@ -32,45 +32,14 @@ interface StoredEntry<T> {
   metadata?: Record<string, unknown>;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    return JSON.parse(raw) as StoredEntry<T>;
   } catch (error) {
     throw new Error(
       `RedisStore: invalid JSON stored for key "${key}": ${String(error)}`
     );
   }
-
-  if (!isRecord(parsed)) {
-    throw new Error(
-      `RedisStore: stored value for key "${key}" is not an object`
-    );
-  }
-
-  const { data, createdAt, updatedAt, metadata } = parsed;
-
-  if (typeof createdAt !== "number" || typeof updatedAt !== "number") {
-    throw new Error(
-      `RedisStore: stored value for key "${key}" is missing createdAt/updatedAt timestamps`
-    );
-  }
-
-  if (metadata !== undefined && !isRecord(metadata)) {
-    throw new Error(
-      `RedisStore: stored metadata for key "${key}" must be an object if present`
-    );
-  }
-
-  return {
-    data: data as T,
-    createdAt,
-    updatedAt,
-    ...(metadata ? { metadata } : {}),
-  };
 };
 
 /**

@@ -7,9 +7,6 @@ import type {
   VectorSearchResult,
 } from "./vector";
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const parseJson = <T>(raw: string, context: string): T => {
   try {
     return JSON.parse(raw) as T;
@@ -32,16 +29,6 @@ const serializeJson = (value: unknown, context: string): string => {
       cause: error,
     });
   }
-};
-
-const ensureRecord = (value: unknown, key: string): Record<string, unknown> => {
-  if (!isRecord(value)) {
-    throw new Error(
-      `SqliteVecStore: stored metadata for key "${key}" must be an object if present`
-    );
-  }
-
-  return value;
 };
 
 /**
@@ -269,14 +256,13 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     }
 
     const data = parseJson<T>(row.data, `for key "${key}"`);
-    const parsedMetadata =
+    const metadata =
       row.metadata === null
         ? undefined
-        : parseJson<unknown>(row.metadata, `metadata for key "${key}"`);
-    const metadata =
-      parsedMetadata === undefined
-        ? undefined
-        : ensureRecord(parsedMetadata, key);
+        : parseJson<Record<string, unknown>>(
+            row.metadata,
+            `metadata for key "${key}"`
+          );
 
     return {
       data,
@@ -404,14 +390,13 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
       }
 
       const data = parseJson<T>(row.data, `for key "${row.key}"`);
-      const parsedMetadata =
+      const metadata =
         row.metadata === null
           ? undefined
-          : parseJson<unknown>(row.metadata, `metadata for key "${row.key}"`);
-      const metadata =
-        parsedMetadata === undefined
-          ? undefined
-          : ensureRecord(parsedMetadata, row.key);
+          : parseJson<Record<string, unknown>>(
+              row.metadata,
+              `metadata for key "${row.key}"`
+            );
 
       results.push({
         key: row.key,
