@@ -4,32 +4,12 @@ import type { KVMemory, MemoryEntry } from "./key-value";
 /**
  * Connection options for a SQLite database.
  */
-export interface SqliteConnectionOptions {
-  /** Open database in read-only mode */
-  readonly?: boolean;
-  /** Require the database file to already exist */
-  fileMustExist?: boolean;
-  /** Busy timeout in milliseconds */
-  timeout?: number;
-  /** Verbose logging callback */
-  verbose?: (message?: unknown, ...additionalArgs: unknown[]) => void;
-  /** Custom native binding path (advanced) */
-  nativeBinding?: string;
-}
+export type SqliteConnectionOptions = Database.Options;
 
 /**
- * Minimal SQLite database interface used by the store.
+ * better-sqlite3 Database instance used by the store.
  */
-export interface SqliteDatabase {
-  exec(sql: string): void;
-  prepare<T extends SqliteRow = SqliteRow>(sql: string): SqliteStatement<T>;
-  close(): void;
-}
-
-export interface SqliteStatement<T extends SqliteRow = SqliteRow> {
-  get(...params: readonly unknown[]): T | undefined;
-  run(...params: readonly unknown[]): { changes: number };
-}
+export type SqliteDatabase = Database.Database;
 
 interface SqliteRow {
   key: string;
@@ -131,7 +111,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
     this.ensureTable();
 
     const row = this.db
-      .prepare<SqliteRow>(
+      .prepare<unknown[], SqliteRow>(
         `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = ?`
       )
       .get(key);

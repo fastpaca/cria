@@ -28,17 +28,6 @@ interface SqliteVecKeyRow {
   created_at?: number;
 }
 
-interface SqliteVecStatement<T> {
-  get(...params: readonly unknown[]): T | undefined;
-  run(...params: readonly unknown[]): { changes: number };
-  all(...params: readonly unknown[]): T[];
-}
-
-interface SqliteVecDatabase extends SqliteDatabase {
-  loadExtension?: (path: string) => void;
-  prepare<T>(sql: string): SqliteVecStatement<T>;
-}
-
 /**
  * Configuration options for the SQLite vec0 store.
  */
@@ -72,7 +61,7 @@ export interface SqliteVecStoreOptions {
  * key/value data, then joins them during search.
  */
 export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
-  private readonly db: SqliteVecDatabase;
+  private readonly db: SqliteDatabase;
   private readonly tableName: string;
   private readonly vectorTableName: string;
   private readonly embedFn: EmbeddingFunction;
@@ -104,8 +93,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     const baseName = tableName ?? "cria_vec_store";
     const vecName = vectorTableName ?? `${baseName}_vec`;
 
-    this.db = (database ??
-      new Database(filename ?? ":memory:", dbOptions)) as SqliteVecDatabase;
+    this.db = database ?? new Database(filename ?? ":memory:", dbOptions);
     this.tableName = baseName;
     this.vectorTableName = vecName;
     this.embedFn = embed;
@@ -121,12 +109,6 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     }
 
     if (this.loadExtensionPath) {
-      if (typeof this.db.loadExtension !== "function") {
-        throw new Error(
-          "SqliteVecStore: loadExtension is not available on the provided database"
-        );
-      }
-
       this.db.loadExtension(this.loadExtensionPath);
     }
 
@@ -222,7 +204,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     this.ensureTables();
 
     const row = this.db
-      .prepare<SqliteVecRow>(
+      .prepare<unknown[], SqliteVecRow>(
         `SELECT key, data, created_at, updated_at, metadata, 0 as distance FROM ${this.tableName} WHERE key = ?`
       )
       .get(key);
@@ -259,7 +241,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
       metadata !== undefined ? JSON.stringify(metadata) : null;
 
     const existing = this.db
-      .prepare<SqliteVecKeyRow>(
+      .prepare<unknown[], SqliteVecKeyRow>(
         `SELECT rowid, created_at FROM ${this.tableName} WHERE key = ?`
       )
       .get(key);
@@ -281,7 +263,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
         .run(key, serializedData, now, now, serializedMetadata);
 
       const inserted = this.db
-        .prepare<SqliteVecKeyRow>(
+        .prepare<unknown[], SqliteVecKeyRow>(
           `SELECT rowid FROM ${this.tableName} WHERE key = ?`
         )
         .get(key);
@@ -310,7 +292,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     this.ensureTables();
 
     const row = this.db
-      .prepare<SqliteVecKeyRow>(
+      .prepare<unknown[], SqliteVecKeyRow>(
         `SELECT rowid FROM ${this.tableName} WHERE key = ?`
       )
       .get(key);
@@ -342,7 +324,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     const vectorLiteral = this.serializeVector(queryVector, "search");
 
     const rows = this.db
-      .prepare<SqliteVecRow>(
+      .prepare<unknown[], SqliteVecRow>(
         `SELECT base.key as key, base.data as data, base.created_at as created_at, base.updated_at as updated_at, base.metadata as metadata, vec.distance as distance
          FROM ${this.vectorTableName} AS vec
          JOIN ${this.tableName} AS base ON base.rowid = vec.rowid
