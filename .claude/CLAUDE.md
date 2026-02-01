@@ -24,6 +24,17 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 - Leverage TypeScript's type narrowing instead of type assertions
 - Use meaningful variable names instead of magic numbers - extract constants with descriptive names
 
+### Strictness & Explicitness (Cria)
+
+- Treat Cria as a closed system: prefer strict contracts over defensive runtime checks
+- If a constraint matters, enforce it with types + tests; avoid runtime guards for trusted internal data
+- No silent failures: avoid try-catch that swallows errors; if it fails, it must throw
+- No implicit context propagation; require explicit parameters
+- Use SDK types directly in providers; do not invent "client-like" interfaces
+- Avoid Reflect or mutation hacks to inject fields; use explicit typed request shapes
+- Cache pinning must be explicit: use `pin({ id, version })` directly; no hashing or JSON serialization
+- Avoid redundant traversals when the DSL already defines boundaries
+
 ### Modern JavaScript/TypeScript
 
 - Use arrow functions for callbacks and short functions

@@ -79,10 +79,10 @@ function inputLayout<TToolIO extends ProviderToolIO>(
   return { kind: "input-layout", value };
 }
 
-function createPrompt(): PromptBuilder<unknown>;
+function createPrompt(): PromptBuilder<unknown, "unpinned">;
 function createPrompt<TProvider extends ModelProvider<unknown, ProviderToolIO>>(
   provider: TProvider
-): PromptBuilder<TProvider>;
+): PromptBuilder<TProvider, "unpinned">;
 function createPrompt(provider?: ModelProvider<unknown, ProviderToolIO>) {
   if (provider === undefined) {
     return PromptBuilder.create();
@@ -112,7 +112,7 @@ function createPrompt(provider?: ModelProvider<unknown, ProviderToolIO>) {
 export const cria = {
   prompt: createPrompt,
   c: templateC,
-  merge: (...builders: PromptBuilder[]) => {
+  merge: (...builders: PromptBuilder<unknown, "unpinned" | "pinned">[]) => {
     const [first, ...rest] = builders;
     if (!first) {
       return PromptBuilder.create();
@@ -138,7 +138,8 @@ export const prompt = createPrompt;
 /**
  * Merge multiple builders into one (zod-like merge).
  */
-export const merge = (...builders: PromptBuilder[]): PromptBuilder =>
-  cria.merge(...builders);
+export const merge = (
+  ...builders: PromptBuilder<unknown, "unpinned" | "pinned">[]
+): PromptBuilder<unknown, "unpinned" | "pinned"> => cria.merge(...builders);
 
 export { input, inputLayout };

@@ -64,12 +64,12 @@ const prompt = cria
 
 async function main(): Promise<void> {
   const budget = 500;
-  const messages = await prompt.render({ budget });
+  const { messages } = await prompt.render({ budget });
 
   console.log("=== Messages ===");
   console.log(JSON.stringify(messages, null, 2));
   console.log(
-    `\n=== Token count: ${provider.countTokens(messages)} / ${budget} ===\n`
+    `\n=== Token count: ${provider.countTokens({ messages })} / ${budget} ===\n`
   );
 
   const completion = await client.chat.completions.create({

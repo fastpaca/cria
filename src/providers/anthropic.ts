@@ -3,6 +3,7 @@ import type {
   ContentBlockParam,
   MessageParam,
   Model,
+  TextBlockParam,
   ToolResultBlockParam,
   ToolUseBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
@@ -13,17 +14,198 @@ import type {
   ChatMessage,
 } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
-import { ProtocolProvider, type ProviderAdapter } from "../provider";
+import {
+  ProtocolProvider,
+  type ProviderAdapter,
+  type ProviderRenderContext,
+} from "../provider";
 import type { ToolCallPart } from "../types";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
+type AnthropicAssistantContent = Extract<
+  ChatMessage<AnthropicToolIO>,
+  { role: "assistant" }
+>["content"];
+
+interface AnthropicUserMessage {
+  role: "user";
+  content: string;
+}
+interface AnthropicAssistantMessage {
+  role: "assistant";
+  content: AnthropicAssistantContent;
+}
+type AnthropicUserOrAssistantMessage =
+  | AnthropicUserMessage
+  | AnthropicAssistantMessage;
+
+type AnthropicSystem = string | TextBlockParam[];
+
+interface AnthropicCacheControl {
+  type: "ephemeral";
+  ttl?: "5m" | "1h";
+}
+
+type CacheableContentBlockParam = ContentBlockParam & {
+  cache_control?: AnthropicCacheControl | undefined;
+};
+
+const toAnthropicTtl = (
+  ttlSeconds: number | undefined
+): "5m" | "1h" | undefined => {
+  if (ttlSeconds === undefined) {
+    return undefined;
+  }
+  return ttlSeconds >= 60 * 60 ? "1h" : "5m";
+};
+
+function buildCacheControl(
+  ttlSeconds: number | undefined
+): AnthropicCacheControl {
+  const ttl = toAnthropicTtl(ttlSeconds);
+  return ttl ? { type: "ephemeral", ttl } : { type: "ephemeral" };
+}
+
+function applyCacheControlToBlock<T extends ContentBlockParam>(
+  block: T,
+  cacheControl: AnthropicCacheControl
+): T & CacheableContentBlockParam {
+  return {
+    ...block,
+    cache_control: cacheControl,
+  } as T & CacheableContentBlockParam;
+}
+
+function toContentBlocks(
+  content: MessageParam["content"]
+): ContentBlockParam[] {
+  if (typeof content === "string") {
+    return content ? [{ type: "text", text: content }] : [];
+  }
+  return [...content];
+}
+
+function applyCacheControlToMessage(
+  message: MessageParam,
+  cacheControl: AnthropicCacheControl
+): MessageParam {
+  const blocks = toContentBlocks(message.content);
+  if (blocks.length === 0) {
+    return message;
+  }
+  const lastIndex = blocks.length - 1;
+  const lastBlock = blocks[lastIndex];
+  if (lastBlock) {
+    blocks[lastIndex] = applyCacheControlToBlock(lastBlock, cacheControl);
+  }
+  return { ...message, content: blocks };
+}
+
+function resolveCacheControlState(context: ProviderRenderContext | undefined): {
+  lastPinnedIndex: number;
+  cacheControl?: AnthropicCacheControl;
+} {
+  const pinnedPrefixCount = context?.cache?.pinnedPrefixMessageCount ?? 0;
+  const lastPinnedIndex = pinnedPrefixCount > 0 ? pinnedPrefixCount - 1 : -1;
+  const cacheControl =
+    lastPinnedIndex >= 0
+      ? buildCacheControl(context?.cache?.ttlSeconds)
+      : undefined;
+  if (cacheControl) {
+    return { lastPinnedIndex, cacheControl };
+  }
+  return { lastPinnedIndex };
+}
+
+function createTextBlock(text: string): TextBlockParam {
+  return { type: "text", text };
+}
+
+function maybeApplyCacheControl<T extends ContentBlockParam>(
+  block: T,
+  shouldMarkCache: boolean,
+  cacheControl: AnthropicCacheControl | undefined
+): T | (T & CacheableContentBlockParam) {
+  if (!(shouldMarkCache && cacheControl)) {
+    return block;
+  }
+  return applyCacheControlToBlock(block, cacheControl);
+}
+
+function renderToolResultMessages(
+  message: Extract<ChatMessage<AnthropicToolIO>, { role: "tool" }>,
+  shouldMarkCache: boolean,
+  cacheControl: AnthropicCacheControl | undefined
+): MessageParam[] {
+  return message.content.map((result) => {
+    const block: ContentBlockParam = {
+      type: "tool_result",
+      tool_use_id: result.toolCallId,
+      content: result.output ?? "",
+    };
+    const resolvedBlock = maybeApplyCacheControl(
+      block,
+      shouldMarkCache,
+      cacheControl
+    );
+    return { role: "user", content: [resolvedBlock] };
+  });
+}
+
+function renderUserOrAssistantMessage(
+  message: AnthropicUserOrAssistantMessage,
+  shouldMarkCache: boolean,
+  cacheControl: AnthropicCacheControl | undefined
+): MessageParam | null {
+  const rendered = renderAnthropicMessage(message);
+  if (!rendered.message) {
+    return null;
+  }
+  if (shouldMarkCache && cacheControl) {
+    return applyCacheControlToMessage(rendered.message, cacheControl);
+  }
+  return rendered.message;
+}
+
+function systemToString(
+  system: AnthropicSystem | undefined
+): string | undefined {
+  if (!system) {
+    return undefined;
+  }
+  if (typeof system === "string") {
+    return system;
+  }
+  return system.map((block) => block.text).join("\n\n");
+}
+
+function systemToBlocks(system: AnthropicSystem | undefined): TextBlockParam[] {
+  if (!system) {
+    return [];
+  }
+  if (typeof system === "string") {
+    return system ? [{ type: "text", text: system }] : [];
+  }
+  return [...system];
+}
+
+function countSystemTokens(system: AnthropicSystem | undefined): number {
+  if (!system) {
+    return 0;
+  }
+  if (typeof system === "string") {
+    return countText(system);
+  }
+  return system.reduce((total, block) => total + countText(block.text), 0);
+}
+
 /**
  * Rendered Anthropic input (system + messages array).
  */
 export interface AnthropicRenderResult {
-  system?: string;
+  system?: AnthropicSystem;
   messages: MessageParam[];
 }
 
@@ -34,11 +216,6 @@ export interface AnthropicToolIO {
   callInput: ToolUseBlockParam["input"];
   resultOutput: ToolResultBlockParam["content"];
 }
-
-type AnthropicAssistantContent = Extract<
-  ChatMessage<AnthropicToolIO>,
-  { role: "assistant" }
->["content"];
 
 /**
  * Adapter between chat-completions protocol messages and Anthropic messages.
@@ -51,37 +228,71 @@ export class AnthropicAdapter
     >
 {
   /** Convert protocol messages into Anthropic input. */
-  to(input: ChatCompletionsInput<AnthropicToolIO>): AnthropicRenderResult {
+  to(
+    input: ChatCompletionsInput<AnthropicToolIO>,
+    context?: ProviderRenderContext
+  ): AnthropicRenderResult {
     const messages: MessageParam[] = [];
-    let system = "";
+    const systemBlocks: TextBlockParam[] = [];
+    const { lastPinnedIndex, cacheControl } = resolveCacheControlState(context);
+    let hasSystemCacheControl = false;
 
-    for (const message of input) {
+    for (const [index, message] of input.entries()) {
+      const shouldMarkCache = index === lastPinnedIndex;
       switch (message.role) {
         case "system":
-        case "developer":
-          // Anthropic uses a single system string; merge system + developer.
-          system = system ? `${system}\n\n${message.content}` : message.content;
+        case "developer": {
+          // Anthropic uses a system field; keep system messages as text blocks.
+          if (!message.content) {
+            break;
+          }
+          const block = createTextBlock(message.content);
+          const shouldApplyCache = Boolean(shouldMarkCache && cacheControl);
+          const resolvedBlock = maybeApplyCacheControl(
+            block,
+            shouldMarkCache,
+            cacheControl
+          );
+          hasSystemCacheControl = shouldApplyCache || hasSystemCacheControl;
+          systemBlocks.push(resolvedBlock);
           break;
+        }
         case "tool":
           // Tool results are represented as user tool_result blocks.
-          for (const result of message.content) {
-            messages.push({
-              role: "user",
-              content: [
-                {
-                  type: "tool_result",
-                  tool_use_id: result.toolCallId,
-                  content: result.output ?? "",
-                },
-              ],
-            });
+          messages.push(
+            ...renderToolResultMessages(message, shouldMarkCache, cacheControl)
+          );
+          break;
+        case "user": {
+          const userMessage: { role: "user"; content: string } = {
+            role: "user",
+            content: message.content,
+          };
+          const rendered = renderUserOrAssistantMessage(
+            userMessage,
+            shouldMarkCache,
+            cacheControl
+          );
+          if (rendered) {
+            messages.push(rendered);
           }
           break;
-        case "user":
+        }
         case "assistant": {
-          const rendered = renderAnthropicMessage(message);
-          if (rendered.message) {
-            messages.push(rendered.message);
+          const assistantMessage: {
+            role: "assistant";
+            content: AnthropicAssistantContent;
+          } = {
+            role: "assistant",
+            content: message.content,
+          };
+          const rendered = renderUserOrAssistantMessage(
+            assistantMessage,
+            shouldMarkCache,
+            cacheControl
+          );
+          if (rendered) {
+            messages.push(rendered);
           }
           break;
         }
@@ -90,6 +301,12 @@ export class AnthropicAdapter
       }
     }
 
+    let system: AnthropicSystem | undefined;
+    if (systemBlocks.length > 0) {
+      system = hasSystemCacheControl
+        ? systemBlocks
+        : systemToString(systemBlocks);
+    }
     return system ? { system, messages } : { messages };
   }
 
@@ -98,8 +315,9 @@ export class AnthropicAdapter
     const output: ChatMessage<AnthropicToolIO>[] = [];
     const toolNameById = new Map<string, string>();
 
-    if (input.system) {
-      output.push({ role: "system", content: input.system });
+    const systemText = systemToString(input.system);
+    if (systemText) {
+      output.push({ role: "system", content: systemText });
     }
 
     for (const message of input.messages) {
@@ -346,7 +564,7 @@ export class AnthropicProvider extends ProtocolProvider<
   /** Count tokens for Anthropic rendered input. */
   countTokens(r: AnthropicRenderResult): number {
     return (
-      (r.system ? countText(r.system) : 0) +
+      countSystemTokens(r.system) +
       r.messages.reduce((n, m) => n + countAnthropicMessageTokens(m), 0)
     );
   }
@@ -364,10 +582,14 @@ export class AnthropicProvider extends ProtocolProvider<
 
   /** Generate a structured object using Anthropic messages API. */
   async object<T>(r: AnthropicRenderResult, schema: z.ZodType<T>): Promise<T> {
+    const systemBlocks = systemToBlocks(r.system);
+    const jsonInstruction = "You must respond with valid JSON only.";
+    systemBlocks.push({ type: "text", text: jsonInstruction });
+
     const res = await this.client.messages.create({
       model: this.model,
       max_tokens: this.maxTokens,
-      system: `${r.system ?? ""}\n\nYou must respond with valid JSON only.`,
+      ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
       messages: r.messages,
     });
     return schema.parse(JSON.parse(extractText(res.content)));

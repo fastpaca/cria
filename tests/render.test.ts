@@ -1,17 +1,74 @@
 import { cria, render } from "@fastpaca/cria";
+import {
+  MessageCodec,
+  ModelProvider,
+  type ProviderRenderContext,
+} from "@fastpaca/cria/provider";
 import type { FitErrorEvent } from "@fastpaca/cria/render";
 import type {
+  PromptLayout,
   PromptMessageNode,
   PromptScope,
+  ProviderToolIO,
   Strategy,
 } from "@fastpaca/cria/types";
 import { expect, test } from "vitest";
+import type { ZodType } from "zod";
 import { createTestProvider } from "./utils/plaintext";
 
 const provider = createTestProvider();
 const tokensFor = (text: string): number => provider.countTokens(text);
 
 const FIT_ERROR_PATTERN = /Cannot fit prompt/;
+
+class LayoutCodec extends MessageCodec<
+  { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext },
+  ProviderToolIO
+> {
+  override render(
+    layout: PromptLayout<ProviderToolIO>,
+    context?: ProviderRenderContext
+  ): { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext } {
+    return { layout: [...layout], ...(context ? { context } : {}) };
+  }
+
+  override parse(rendered: {
+    layout: PromptLayout<ProviderToolIO>;
+  }): PromptLayout<ProviderToolIO> {
+    return rendered.layout;
+  }
+}
+
+class LayoutProvider extends ModelProvider<
+  { layout: PromptLayout<ProviderToolIO>; context?: ProviderRenderContext },
+  ProviderToolIO
+> {
+  readonly codec = new LayoutCodec();
+
+  countTokens(rendered: {
+    layout: PromptLayout<ProviderToolIO>;
+    context?: ProviderRenderContext;
+  }): number {
+    return JSON.stringify(rendered).length;
+  }
+
+  completion(
+    _rendered: { layout: PromptLayout<ProviderToolIO> },
+    _context?: ProviderRenderContext
+  ): string {
+    return "";
+  }
+
+  object<T>(
+    _rendered: { layout: PromptLayout<ProviderToolIO> },
+    _schema: ZodType<T>,
+    _context?: ProviderRenderContext
+  ): never {
+    throw new Error("Not implemented");
+  }
+}
+
+const cacheProvider = new LayoutProvider();
 
 /**
  * Creates an omit scope with a custom strategy for testing render behavior.
@@ -40,12 +97,12 @@ function truncateScope(
   opts: { budget: number; priority: number }
 ): PromptScope {
   const strategy: Strategy = (input) => {
-    const { children: currentChildren } = input.target;
-    if (currentChildren.length === 0) {
+    const { children } = input.target;
+    if (children.length === 0) {
       return null;
     }
     const dropCount = Math.max(1, Math.floor(input.totalTokens / opts.budget));
-    const nextChildren = currentChildren.slice(dropCount);
+    const nextChildren = children.slice(dropCount);
     if (nextChildren.length === 0) {
       return null;
     }
@@ -261,6 +318,27 @@ test("render: hook errors bubble (async error)", async () => {
   ).rejects.toThrow("Async hook error");
 });
 
+test("render: cache descriptor uses contiguous pinned prefix", async () => {
+  const pinnedSystem = cria.prompt().system("Static rules").pin({
+    id: "rules",
+    version: "v1",
+    scopeKey: "tenant:acme",
+    ttlSeconds: 3600,
+  });
+
+  const prompt = cria.prompt().prefix(pinnedSystem).user("Question");
+  const result = await render(await prompt.build(), {
+    provider: cacheProvider,
+  });
+  const context = result.context;
+
+  expect(context?.cache.pinnedPrefixMessageCount).toBe(1);
+  expect(context?.cache.pinIdInPrefix).toBe("rules");
+  expect(context?.cache.pinVersionInPrefix).toBe("v1");
+  expect(context?.cache.scopeKey).toBe("tenant:acme");
+  expect(context?.cache.ttlSeconds).toBe(3600);
+});
+
 test("render: assistant message fields map to output", async () => {
   const element = cria.scope([
     cria.assistant("Hello "),
@@ -279,4 +357,14 @@ test("render: assistant message fields map to output", async () => {
     budget: tokensFor("Hello Thinking[tool-call:calc]1"),
   });
   expect(result).toContain("Hello");
+});
+test("render: pinned scopes after unpinned content throw", () => {
+  const pinnedLater = cria.prompt().system("Pinned later").pin({
+    id: "later",
+    version: "v1",
+  });
+
+  expect(() => cria.prompt().user("Start").merge(pinnedLater)).toThrow(
+    "Cannot merge a pinned prompt after unpinned content."
+  );
 });

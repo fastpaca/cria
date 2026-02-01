@@ -1,7 +1,13 @@
 import { getEncoding } from "js-tiktoken";
 import type OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import type { ResponseInputItem } from "openai/resources/responses/responses";
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
+import type {
+  ResponseCreateParamsNonStreaming,
+  ResponseInputItem,
+} from "openai/resources/responses/responses";
 import type { z } from "zod";
 import type { ChatCompletionsInput } from "../protocols/chat-completions";
 import { ChatCompletionsProtocol } from "../protocols/chat-completions";
@@ -11,10 +17,54 @@ import type {
   ResponsesToolIO,
 } from "../protocols/responses";
 import { ResponsesProtocol } from "../protocols/responses";
-import { ProtocolProvider, type ProviderAdapter } from "../provider";
+import {
+  ProtocolProvider,
+  type ProviderAdapter,
+  type ProviderRenderContext,
+} from "../provider";
 
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
+
+/** Required model type for OpenAI Responses API (excludes undefined). */
+export type ResponsesModel = Exclude<
+  ResponseCreateParamsNonStreaming["model"],
+  undefined
+>;
+
+export type OpenAIModel =
+  | ChatCompletionCreateParamsNonStreaming["model"]
+  | ResponsesModel;
+
+function derivePromptCacheKey(
+  context: ProviderRenderContext | undefined,
+  model: OpenAIModel
+): string | undefined {
+  const descriptor = context?.cache;
+  const pinId = descriptor?.pinIdInPrefix;
+  const pinVersion = descriptor?.pinVersionInPrefix;
+  if (!(pinId && pinVersion)) {
+    return undefined;
+  }
+
+  const scopeKey = descriptor.scopeKey ?? "global";
+  const ttlSegment =
+    descriptor.ttlSeconds !== undefined
+      ? `ttl:${descriptor.ttlSeconds}`
+      : "ttl:default";
+
+  return `cria:${model}:${scopeKey}:${ttlSegment}:${pinId}:${pinVersion}`;
+}
+
+export interface OpenAIChatRenderOutput {
+  messages: ChatCompletionMessageParam[];
+  cache_id?: string | undefined;
+}
+
+export interface OpenAIResponsesRenderOutput {
+  input: OpenAIResponses;
+  cache_id?: string | undefined;
+}
 
 /** OpenAI tool IO matches the responses protocol tool IO. */
 export type OpenAiToolIO = ResponsesToolIO;
@@ -29,20 +79,26 @@ export type OpenAIResponses = OpenAIResponsePart[];
  */
 export class OpenAIChatAdapter
   implements
-    ProviderAdapter<
-      ChatCompletionsInput<OpenAiToolIO>,
-      ChatCompletionMessageParam[]
-    >
+    ProviderAdapter<ChatCompletionsInput<OpenAiToolIO>, OpenAIChatRenderOutput>
 {
+  private readonly model: OpenAIModel;
+
+  constructor(model: OpenAIModel) {
+    this.model = model;
+  }
+
   /** Convert protocol messages into OpenAI chat messages. */
-  to(input: ChatCompletionsInput<OpenAiToolIO>): ChatCompletionMessageParam[] {
-    return input.flatMap((message) => {
+  to(
+    input: ChatCompletionsInput<OpenAiToolIO>,
+    context?: ProviderRenderContext
+  ): OpenAIChatRenderOutput {
+    const messages: ChatCompletionMessageParam[] = input.flatMap((message) => {
       switch (message.role) {
         case "assistant":
           return [renderOpenAiAssistantMessage(message.content)];
         case "tool":
           return message.content.map((result) => ({
-            role: "tool",
+            role: "tool" as const,
             tool_call_id: result.toolCallId,
             content: result.output,
           }));
@@ -50,15 +106,17 @@ export class OpenAIChatAdapter
           return [{ role: message.role, content: message.content }];
       }
     });
+
+    const cache_id = derivePromptCacheKey(context, this.model);
+    return cache_id ? { messages, cache_id } : { messages };
   }
 
   /** Convert OpenAI chat messages into protocol messages. */
-  from(
-    input: ChatCompletionMessageParam[]
-  ): ChatCompletionsInput<OpenAiToolIO> {
+  from(input: OpenAIChatRenderOutput): ChatCompletionsInput<OpenAiToolIO> {
     const toolNameById = new Map<string, string>();
+    const messages = input.messages;
 
-    return input.map((message) => {
+    return messages.map((message) => {
       switch (message.role) {
         case "assistant": {
           const text = chatText(message.content);
@@ -135,18 +193,30 @@ export class OpenAIChatAdapter
  * Adapter between responses protocol items and OpenAI responses items.
  */
 export class OpenAIResponsesAdapter
-  implements ProviderAdapter<ResponsesInput, OpenAIResponses>
+  implements ProviderAdapter<ResponsesInput, OpenAIResponsesRenderOutput>
 {
+  private readonly model: OpenAIModel;
+
+  constructor(model: OpenAIModel) {
+    this.model = model;
+  }
+
   /** Convert protocol items into OpenAI responses input. */
-  to(input: ResponsesInput): OpenAIResponses {
-    return input.flatMap((item, index) =>
+  to(
+    input: ResponsesInput,
+    context?: ProviderRenderContext
+  ): OpenAIResponsesRenderOutput {
+    const items = input.flatMap((item, index) =>
       mapResponsesItemToOpenAi(item, index)
     );
+
+    const cache_id = derivePromptCacheKey(context, this.model);
+    return cache_id ? { input: items, cache_id } : { input: items };
   }
 
   /** Convert OpenAI responses input into protocol items. */
-  from(input: OpenAIResponses): ResponsesInput {
-    return input.flatMap((item) => mapOpenAiItemToResponses(item));
+  from(input: OpenAIResponsesRenderOutput): ResponsesInput {
+    return input.input.flatMap((item) => mapOpenAiItemToResponses(item));
   }
 }
 
@@ -424,43 +494,53 @@ function responsesText(content: string | ResponsesContentPart[]): string {
  * OpenAI provider using the chat completions protocol.
  */
 export class OpenAIChatProvider extends ProtocolProvider<
-  ChatCompletionMessageParam[],
+  OpenAIChatRenderOutput,
   ChatCompletionsInput<OpenAiToolIO>,
   OpenAiToolIO
 > {
   private readonly client: OpenAI;
-  private readonly model: string;
+  private readonly model: ChatCompletionCreateParamsNonStreaming["model"];
 
-  constructor(client: OpenAI, model: string) {
-    super(new ChatCompletionsProtocol<OpenAiToolIO>(), new OpenAIChatAdapter());
+  constructor(
+    client: OpenAI,
+    model: ChatCompletionCreateParamsNonStreaming["model"]
+  ) {
+    super(
+      new ChatCompletionsProtocol<OpenAiToolIO>(),
+      new OpenAIChatAdapter(model)
+    );
     this.client = client;
     this.model = model;
   }
 
   /** Count tokens for OpenAI chat messages. */
-  countTokens(messages: ChatCompletionMessageParam[]): number {
-    return messages.reduce((n, m) => n + countChatMessageTokens(m), 0);
+  countTokens(output: OpenAIChatRenderOutput): number {
+    return output.messages.reduce((n, m) => n + countChatMessageTokens(m), 0);
   }
 
   /** Generate a text completion using chat completions. */
-  async completion(messages: ChatCompletionMessageParam[]): Promise<string> {
-    const res = await this.client.chat.completions.create({
+  async completion(output: OpenAIChatRenderOutput): Promise<string> {
+    const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
-      messages,
-    });
+      messages: output.messages,
+    };
+
+    const res = await this.client.chat.completions.create(request);
     return res.choices[0]?.message?.content ?? "";
   }
 
   /** Generate a structured object using chat completions. */
   async object<T>(
-    messages: ChatCompletionMessageParam[],
+    output: OpenAIChatRenderOutput,
     schema: z.ZodType<T>
   ): Promise<T> {
-    const res = await this.client.chat.completions.create({
+    const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
-      messages,
-      response_format: { type: "json_object" },
-    });
+      messages: output.messages,
+      response_format: { type: "json_object" as const },
+    };
+
+    const res = await this.client.chat.completions.create(request);
     return schema.parse(JSON.parse(res.choices[0]?.message?.content ?? ""));
   }
 }
@@ -469,43 +549,48 @@ export class OpenAIChatProvider extends ProtocolProvider<
  * OpenAI provider using the responses protocol.
  */
 export class OpenAIResponsesProvider extends ProtocolProvider<
-  OpenAIResponses,
+  OpenAIResponsesRenderOutput,
   ResponsesInput,
   OpenAiToolIO
 > {
   private readonly client: OpenAI;
-  private readonly model: string;
+  private readonly model: ResponsesModel;
 
-  constructor(client: OpenAI, model: string) {
-    super(new ResponsesProtocol(), new OpenAIResponsesAdapter());
+  constructor(client: OpenAI, model: ResponsesModel) {
+    super(new ResponsesProtocol(), new OpenAIResponsesAdapter(model));
     this.client = client;
     this.model = model;
   }
 
   /** Count tokens for OpenAI responses items. */
-  countTokens(items: OpenAIResponses): number {
-    return items.reduce((n, i) => n + countResponseItemTokens(i), 0);
+  countTokens(output: OpenAIResponsesRenderOutput): number {
+    return output.input.reduce((n, i) => n + countResponseItemTokens(i), 0);
   }
 
   /** Generate a text completion using the responses API. */
-  async completion(items: OpenAIResponses): Promise<string> {
-    const res = await this.client.responses.create({
+  async completion(output: OpenAIResponsesRenderOutput): Promise<string> {
+    const request: ResponseCreateParamsNonStreaming = {
       model: this.model,
-      input: items,
-    });
+      input: output.input,
+    };
+
+    const res = await this.client.responses.create(request);
     return res.output_text ?? "";
   }
 
   /** Generate a structured object using the responses API. */
-  async object<T>(items: OpenAIResponses, schema: z.ZodType<T>): Promise<T> {
-    return schema.parse(JSON.parse(await this.completion(items)));
+  async object<T>(
+    output: OpenAIResponsesRenderOutput,
+    schema: z.ZodType<T>
+  ): Promise<T> {
+    return schema.parse(JSON.parse(await this.completion(output)));
   }
 }
 
 /** Convenience creator for the OpenAI chat provider. */
 export function createProvider(
   client: OpenAI,
-  model: string
+  model: ChatCompletionCreateParamsNonStreaming["model"]
 ): OpenAIChatProvider {
   return new OpenAIChatProvider(client, model);
 }
@@ -513,7 +598,7 @@ export function createProvider(
 /** Convenience creator for the OpenAI responses provider. */
 export function createResponsesProvider(
   client: OpenAI,
-  model: string
+  model: ResponsesModel
 ): OpenAIResponsesProvider {
   return new OpenAIResponsesProvider(client, model);
 }

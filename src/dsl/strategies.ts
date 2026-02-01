@@ -3,6 +3,7 @@
  */
 
 import type {
+  CacheHint,
   MessageChildren,
   PromptMessageNode,
   PromptPart,
@@ -18,7 +19,12 @@ import type {
  */
 export function createScope<TToolIO extends ProviderToolIO>(
   children: ScopeChildren<TToolIO>,
-  opts?: { priority?: number; strategy?: Strategy; id?: string }
+  opts?: {
+    priority?: number;
+    strategy?: Strategy;
+    id?: string;
+    cache?: CacheHint;
+  }
 ): PromptScope<TToolIO> {
   // Thin helper that preserves tool IO types without coercion.
   return {
@@ -27,6 +33,7 @@ export function createScope<TToolIO extends ProviderToolIO>(
     children,
     ...(opts?.strategy && { strategy: opts.strategy }),
     ...(opts?.id && { id: opts.id }),
+    ...(opts?.cache && { cache: opts.cache }),
   };
 }
 
@@ -55,19 +62,16 @@ export function createTruncateStrategy(
   from: "start" | "end"
 ): Strategy {
   return (input) => {
-    const { children: currentChildren } = input.target;
-    if (currentChildren.length === 0) {
+    const { children } = input.target;
+    if (children.length === 0) {
       return null;
     }
 
     const dropCount = Math.max(1, Math.floor(input.totalTokens / budget));
     const nextChildren =
       from === "start"
-        ? currentChildren.slice(dropCount)
-        : currentChildren.slice(
-            0,
-            Math.max(0, currentChildren.length - dropCount)
-          );
+        ? children.slice(dropCount)
+        : children.slice(0, Math.max(0, children.length - dropCount));
 
     if (nextChildren.length === 0) {
       return null;

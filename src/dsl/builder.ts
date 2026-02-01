@@ -12,6 +12,7 @@ import type {
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
+  CacheHint,
   CriaContext,
   PromptLayout,
   PromptMessage,
@@ -42,10 +43,18 @@ import {
 } from "./templating";
 import { VectorSearch } from "./vector-search";
 
+type PinState = "unpinned" | "pinned";
+
+interface PinnedPrefix<P> {
+  hint: CacheHint;
+  priority?: number;
+  children: BuilderChild<P>[];
+}
+
 /**
  * Content that can be passed to scope-level operations like truncate/omit.
  */
-type AnyPromptBuilder = PromptBuilder<unknown>;
+type AnyPromptBuilder = PromptBuilder<unknown, PinState>;
 
 /**
  * Type flow in the DSL:
@@ -70,9 +79,29 @@ type InputFor<P> =
     : never;
 type InputLayoutFor<P> = InputLayout<ToolIOFor<P>>;
 
+const DEFAULT_PIN_ID = "__cria:auto-pin__";
+
+interface CachePinOptions {
+  id?: string;
+  version: string;
+  scopeKey?: string;
+  ttlSeconds?: number;
+  priority?: number;
+}
+
+function createPinHint(opts: CachePinOptions): CacheHint {
+  return {
+    mode: "pin",
+    id: opts.id ?? DEFAULT_PIN_ID,
+    version: opts.version,
+    ...(opts.scopeKey ? { scopeKey: opts.scopeKey } : {}),
+    ...(opts.ttlSeconds !== undefined ? { ttlSeconds: opts.ttlSeconds } : {}),
+  };
+}
+
 export type ScopeContent<P = unknown> =
   | PromptNodeFor<P>
-  | PromptBuilder<P>
+  | PromptBuilder<P, PinState>
   | AnyPromptBuilder
   | InputFor<P>
   | InputLayoutFor<P>
@@ -86,7 +115,7 @@ export type ScopeContent<P = unknown> =
 export type BuilderChild<P = unknown> =
   | PromptNodeFor<P>
   | PromptPartFor<P>
-  | PromptBuilder<P>
+  | PromptBuilder<P, PinState>
   | AnyPromptBuilder
   | string
   | number
@@ -243,17 +272,25 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
  * Every method returns a new immutable builder instance; large chains will copy
  * child arrays, so keep prompts reasonably sized.
  * Call `.build()` to get the final `PromptTree`.
+ *
+ * Cache pinning behavior:
+ * - `.pin()` may only be called once and always pins the current prompt prefix.
+ * - After `.pin()`, continue chaining to add the unpinned tail.
+ * - `prefix(pinnedBuilder)` adopts the pinned prefix when it is the first content.
+ * - Merging a pinned builder after unpinned content throws.
  */
-export class PromptBuilder<P = unknown> extends BuilderBase<
-  PromptBuilder<P>,
-  P
-> {
+export class PromptBuilder<
+  P = unknown,
+  TPinned extends PinState = "unpinned",
+> extends BuilderBase<PromptBuilder<P, TPinned>, P> {
   private readonly boundProvider: BoundProvider | undefined;
+  private readonly pinState: PinnedPrefix<P> | null;
 
   private constructor(
     children: BuilderChild<P>[] = [],
     context: CriaContext | undefined = undefined,
-    provider: BoundProvider | undefined = undefined
+    provider: BoundProvider | undefined = undefined,
+    pinState: PinnedPrefix<P> | null = null
   ) {
     const existingProvider = context?.provider;
     if (provider && existingProvider && provider !== existingProvider) {
@@ -267,27 +304,48 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
         : context;
     super(children, nextContext);
     this.boundProvider = provider;
+    this.pinState = pinState;
   }
 
   /**
    * Create a new empty prompt builder.
    */
-  static create(): PromptBuilder<unknown>;
+  static create(): PromptBuilder<unknown, "unpinned">;
   static create<TProvider extends BoundProvider>(
     provider: TProvider
-  ): PromptBuilder<TProvider>;
+  ): PromptBuilder<TProvider, "unpinned">;
   static create<TProvider extends BoundProvider>(provider?: TProvider) {
     if (!provider) {
       return new PromptBuilder();
     }
-    return new PromptBuilder<TProvider>([], undefined, provider);
+    return new PromptBuilder<TProvider, "unpinned">([], undefined, provider);
   }
 
   protected create(
     children: BuilderChild<P>[],
     context: CriaContext | undefined
-  ): PromptBuilder<P> {
-    return new PromptBuilder<P>(children, context, this.boundProvider);
+  ): PromptBuilder<P, TPinned> {
+    return new PromptBuilder<P, TPinned>(
+      children,
+      context,
+      this.boundProvider,
+      this.pinState
+    );
+  }
+
+  private createUnpinned(
+    children: BuilderChild<P>[],
+    context: CriaContext | undefined
+  ): PromptBuilder<P, "unpinned"> {
+    return new PromptBuilder<P, "unpinned">(
+      children,
+      context,
+      this.boundProvider
+    );
+  }
+
+  private clonePinState(pinState: PinnedPrefix<P>): PinnedPrefix<P> {
+    return { ...pinState, children: [...pinState.children] };
   }
 
   /**
@@ -295,10 +353,10 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    * Enables provider-specific rendering without passing a provider at render time.
    * This also locks tool-call input/output types for the rest of the builder chain.
    */
-  provider<TProvider extends BoundProvider>(
-    this: PromptBuilder<unknown> | PromptBuilder<TProvider>,
+  provider<TProvider extends BoundProvider, TPin extends PinState>(
+    this: PromptBuilder<unknown, TPin> | PromptBuilder<TProvider, TPin>,
     modelProvider: TProvider
-  ): PromptBuilder<TProvider> {
+  ): PromptBuilder<TProvider, TPin> {
     if (this.context?.provider && this.context.provider !== modelProvider) {
       throw new Error("Cannot bind a prompt builder to a different provider.");
     }
@@ -307,16 +365,16 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   scope(
-    fn: (builder: PromptBuilder<P>) => PromptBuilder<P>,
+    fn: (builder: PromptBuilder<P, "unpinned">) => PromptBuilder<P, "unpinned">,
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     if (typeof fn !== "function") {
       throw new Error(
         `scope() requires a callback function. Received: ${typeof fn}`
       );
     }
 
-    const inner = fn(this.create([], this.context));
+    const inner = fn(this.createUnpinned([], this.context));
     const element = inner
       .buildChildren()
       .then((children) =>
@@ -330,6 +388,76 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   /**
+   * Place content at the start of the prompt.
+   *
+   * This is useful for provider cache pinning, which only applies to a shared
+   * prompt prefix.
+   */
+  prefix(
+    this: PromptBuilder<P, "unpinned">,
+    content: PromptBuilder<P, "pinned"> | PromptBuilder<unknown, "pinned">,
+    opts?: { id?: string }
+  ): PromptBuilder<P, "pinned">;
+  prefix(
+    content: ScopeContent<P>,
+    opts?: { id?: string }
+  ): PromptBuilder<P, TPinned>;
+  prefix(
+    content: ScopeContent<P>,
+    opts?: { id?: string }
+  ): PromptBuilder<P, PinState> {
+    if (content instanceof PromptBuilder) {
+      if (content.context && this.context && content.context !== this.context) {
+        throw new Error(
+          "Cannot merge builders with different contexts/providers"
+        );
+      }
+
+      if (content.pinState) {
+        if (this.pinState) {
+          throw new Error("Prompt is already pinned.");
+        }
+
+        // When prefixing a pinned builder, adopt its pinned prefix.
+        const adoptedPinState = this.clonePinState(content.pinState);
+        const combinedChildren = [...content.children, ...this.children];
+        return new PromptBuilder<P, "pinned">(
+          combinedChildren,
+          this.context,
+          this.boundProvider,
+          adoptedPinState
+        );
+      }
+    }
+
+    const element = resolveScopeContent(
+      content,
+      this.boundProvider?.codec
+    ).then((children) =>
+      createScope<ToolIOFor<P>>(
+        children,
+        opts?.id ? { id: opts.id } : undefined
+      )
+    );
+
+    if (this.pinState) {
+      // Once pinned, prefix additions expand the pinned prefix itself.
+      const nextPinState: PinnedPrefix<P> = {
+        ...this.pinState,
+        children: [element, ...this.pinState.children],
+      };
+      return new PromptBuilder<P, "pinned">(
+        this.children,
+        this.context,
+        this.boundProvider,
+        nextPinState
+      );
+    }
+
+    return this.create([element, ...this.children], this.context);
+  }
+
+  /**
    * Add content that will be truncated when over budget.
    */
   truncate(
@@ -340,7 +468,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       priority?: number;
       id?: string;
     }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     const node = resolveScopeContent(content, this.boundProvider?.codec).then(
       (children) =>
         createScope<ToolIOFor<P>>(children, {
@@ -359,7 +487,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   omit(
     content: ScopeContent<P>,
     opts?: { priority?: number; id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     const node = resolveScopeContent(content, this.boundProvider?.codec).then(
       (children) =>
         createScope<ToolIOFor<P>>(children, {
@@ -387,11 +515,13 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    *   )
    * ```
    */
-  providerScope<TProvider extends BoundProvider>(
-    this: PromptBuilder<unknown> | PromptBuilder<TProvider>,
+  providerScope<TProvider extends BoundProvider, TPin extends PinState>(
+    this: PromptBuilder<unknown, TPin> | PromptBuilder<TProvider, TPin>,
     modelProvider: TProvider,
-    fn: (builder: PromptBuilder<TProvider>) => PromptBuilder<TProvider>
-  ): PromptBuilder<TProvider> {
+    fn: (
+      builder: PromptBuilder<TProvider, "unpinned">
+    ) => PromptBuilder<TProvider, "unpinned">
+  ): PromptBuilder<TProvider, TPin> {
     const context: CriaContext = { provider: modelProvider };
     if (this.context?.provider && this.context.provider !== modelProvider) {
       throw new Error("Cannot bind a prompt builder to a different provider.");
@@ -415,9 +545,9 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    * Add provider-native input (requires a bound provider).
    */
   input<TRendered, TToolIO extends ProviderToolIO>(
-    this: PromptBuilder<ModelProvider<TRendered, TToolIO>>,
+    this: PromptBuilder<ModelProvider<TRendered, TToolIO>, TPinned>,
     content: TRendered
-  ): PromptBuilder<ModelProvider<TRendered, TToolIO>> {
+  ): PromptBuilder<ModelProvider<TRendered, TToolIO>, TPinned> {
     const provider = this.boundProvider;
     if (!hasProvider<TRendered, TToolIO>(provider)) {
       throw new Error("Inputs require a bound provider.");
@@ -429,7 +559,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   /**
    * Add a PromptLayout input.
    */
-  inputLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P> {
+  inputLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P, TPinned> {
     return this.addChildren(promptLayoutToNodes(content));
   }
 
@@ -440,7 +570,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
     store: VectorMemory<T>;
     query: string;
     limit: number;
-  }): PromptBuilder<P> {
+  }): PromptBuilder<P, TPinned> {
     const asyncElement = VectorSearch<T, ToolIOFor<P>>({
       store: opts.store,
       query: opts.query,
@@ -460,7 +590,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       summarize?: Summarizer;
       priority?: number;
     }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     const element = resolveScopeContent(
       content,
       this.boundProvider?.codec
@@ -478,6 +608,40 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   }
 
   /**
+   * Mark the current builder contents as cache-pinned.
+   *
+   * Provide a stable id + version to control cache reuse across runs.
+   * Only one pin is allowed per prompt.
+   */
+  pin(
+    this: PromptBuilder<P, "unpinned">,
+    opts: CachePinOptions
+  ): PromptBuilder<P, "pinned"> {
+    if (this.pinState) {
+      throw new Error("Prompt is already pinned.");
+    }
+    if (!opts?.version) {
+      throw new Error("pin() requires a version.");
+    }
+
+    const cache = createPinHint(opts);
+    const pinState: PinnedPrefix<P> = {
+      hint: cache,
+      ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+      children: [...this.children],
+    };
+
+    // After pinning, the current children become the pinned prefix.
+    // Further builder chaining appends the unpinned tail.
+    return new PromptBuilder<P, "pinned">(
+      [],
+      this.context,
+      this.boundProvider,
+      pinState
+    );
+  }
+
+  /**
    * Keep only the last N messages from the content.
    *
    * @example
@@ -491,7 +655,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   last(
     content: ScopeContent<P>,
     opts: { n: number; id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     const element = resolveScopeContent(
       content,
       this.boundProvider?.codec
@@ -514,7 +678,9 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
   /**
    * Add a raw PromptNode (escape hatch for advanced usage).
    */
-  raw(element: PromptNodeFor<P> | Promise<PromptNodeFor<P>>): PromptBuilder<P> {
+  raw(
+    element: PromptNodeFor<P> | Promise<PromptNodeFor<P>>
+  ): PromptBuilder<P, TPinned> {
     return this.addChild(element);
   }
 
@@ -532,54 +698,75 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    * ```
    */
   override merge(
+    this: PromptBuilder<P, "unpinned">,
     ...items: (
-      | PromptBuilder<P>
-      | PromptBuilder<unknown>
+      | PromptBuilder<P, "unpinned">
+      | PromptBuilder<unknown, "unpinned">
       | PromptNodeFor<P>
       | readonly PromptNodeFor<P>[]
     )[]
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, "unpinned">;
+  override merge(
+    ...items: (
+      | PromptBuilder<P, PinState>
+      | PromptBuilder<unknown, PinState>
+      | PromptNodeFor<P>
+      | readonly PromptNodeFor<P>[]
+    )[]
+  ): PromptBuilder<P, PinState> {
     const newChildren: BuilderChild<P>[] = [...this.children];
     let nextContext = this.context;
+    let nextPinState = this.pinState ? this.clonePinState(this.pinState) : null;
 
-    for (const item of items) {
-      nextContext = this.mergeItem(item, newChildren, nextContext);
-    }
-
-    return this.create(newChildren, nextContext);
-  }
-
-  private mergeItem(
-    item:
-      | PromptBuilder<P>
-      | PromptBuilder<unknown>
-      | PromptNodeFor<P>
-      | readonly PromptNodeFor<P>[],
-    target: BuilderChild<P>[],
-    currentContext: CriaContext | undefined
-  ): CriaContext | undefined {
-    if (item instanceof PromptBuilder) {
-      if (item.context && currentContext && item.context !== currentContext) {
+    const mergeBuilder = (item: PromptBuilder<unknown, PinState>): void => {
+      if (item.context && nextContext && item.context !== nextContext) {
         throw new Error(
           "Cannot merge builders with different contexts/providers"
         );
       }
-      target.push(...item.children);
-      return item.context ?? currentContext;
-    }
-
-    if (Array.isArray(item)) {
-      for (const node of item) {
-        target.push(node);
+      if (!nextContext) {
+        nextContext = item.context;
       }
-      return currentContext;
+
+      if (item.pinState) {
+        if (nextPinState) {
+          throw new Error("Prompt is already pinned.");
+        }
+        if (newChildren.length > 0) {
+          throw new Error(
+            "Cannot merge a pinned prompt after unpinned content."
+          );
+        }
+        nextPinState = this.clonePinState(item.pinState);
+      }
+
+      newChildren.push(...item.children);
+    };
+
+    for (const item of items) {
+      if (item instanceof PromptBuilder) {
+        mergeBuilder(item);
+        continue;
+      }
+
+      if (Array.isArray(item)) {
+        for (const node of item) {
+          newChildren.push(node);
+        }
+        continue;
+      }
+
+      if (isPromptNode<ToolIOFor<P>>(item)) {
+        newChildren.push(item);
+      }
     }
 
-    if (isPromptNode<ToolIOFor<P>>(item)) {
-      target.push(item);
-    }
-
-    return currentContext;
+    return new PromptBuilder<P, PinState>(
+      newChildren,
+      nextContext,
+      this.boundProvider,
+      nextPinState
+    );
   }
 
   /**
@@ -595,8 +782,8 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    */
   when(
     condition: boolean,
-    fn: (builder: PromptBuilder<P>) => PromptBuilder<P>
-  ): PromptBuilder<P> {
+    fn: (builder: PromptBuilder<P, TPinned>) => PromptBuilder<P, TPinned>
+  ): PromptBuilder<P, TPinned> {
     return condition ? fn(this) : this;
   }
 
@@ -608,7 +795,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | TextInputFor<P>
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     return this.addMessage("system", content, opts);
   }
 
@@ -620,7 +807,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | TextInputFor<P>
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     return this.addMessage("developer", content, opts);
   }
 
@@ -632,7 +819,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | TextInputFor<P>
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     return this.addMessage("user", content, opts);
   }
 
@@ -644,7 +831,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | TextInputFor<P>
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     return this.addMessage("assistant", content, opts);
   }
 
@@ -652,12 +839,12 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    * Add a tool result message.
    */
   tool<TProvider extends BoundProvider>(
-    this: PromptBuilder<TProvider>,
+    this: PromptBuilder<TProvider, TPinned>,
     result:
       | ToolResultPartFor<TProvider>
       | readonly ToolResultPartFor<TProvider>[],
     opts?: { id?: string }
-  ): PromptBuilder<TProvider> {
+  ): PromptBuilder<TProvider, TPinned> {
     if (!this.boundProvider) {
       throw new Error(
         "Tool results require a bound provider. Bind one with cria.prompt(provider) or cria.prompt().provider(provider)."
@@ -681,12 +868,27 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | TextInputFor<P>
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     return this.addMessage(role, content, opts);
   }
 
   async buildChildren(): Promise<PromptNodeFor<P>[]> {
-    return await resolveScopeChildren(this.children);
+    const resolvedChildren = await resolveScopeChildren(this.children);
+    if (!this.pinState) {
+      return resolvedChildren;
+    }
+
+    // The pinned prefix is emitted as the first scope in the tree,
+    // followed by any unpinned tail content.
+    const pinnedChildren = await resolveScopeChildren(this.pinState.children);
+    const pinnedScope = createScope<ToolIOFor<P>>(pinnedChildren, {
+      cache: this.pinState.hint,
+      ...(this.pinState.priority !== undefined
+        ? { priority: this.pinState.priority }
+        : {}),
+    });
+
+    return [pinnedScope, ...resolvedChildren];
   }
 
   /**
@@ -713,14 +915,14 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
    * - Unbound builder: provider must be supplied to establish tool IO types.
    */
   async render<TProvider extends BoundProvider>(
-    this: PromptBuilder<TProvider>,
+    this: PromptBuilder<TProvider, PinState>,
     options?: RenderOptionsWithoutProvider<
       RenderedForProvider<TProvider>,
       ToolIOForProvider<TProvider>
     >
   ): Promise<RenderedForProvider<TProvider>>;
   async render<TProvider extends BoundProvider>(
-    this: PromptBuilder<unknown>,
+    this: PromptBuilder<unknown, PinState>,
     options: RenderOptions<
       RenderedForProvider<TProvider>,
       ToolIOForProvider<TProvider>
@@ -756,7 +958,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
       | TextInputFor<P>
       | ((builder: MessageBuilder<P>) => MessageBuilder<P>),
     opts?: { id?: string }
-  ): PromptBuilder<P> {
+  ): PromptBuilder<P, TPinned> {
     // Normalize text-like inputs into typed parts so tool IO stays provider-bound.
     const childrenPromise =
       typeof content === "function"
@@ -774,7 +976,7 @@ export class PromptBuilder<P = unknown> extends BuilderBase<
 /**
  * Prompt type alias for external use.
  */
-export type Prompt<P = unknown> = PromptBuilder<P>;
+export type Prompt<P = unknown> = PromptBuilder<P, PinState>;
 
 // Resolution functions (colocated with builders).
 // They resolve async children and enforce message/scope boundaries early.
