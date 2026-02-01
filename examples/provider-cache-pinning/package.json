@@ -8,7 +8,6 @@
   },
   "dependencies": {
     "@fastpaca/cria": "link:../..",
-    "@pydantic/genai-prices": "^0.0.52",
     "openai": "^6.16.0"
   },
   "devDependencies": {
