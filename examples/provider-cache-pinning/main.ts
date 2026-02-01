@@ -10,102 +10,106 @@ const TTL_SECONDS = 3600;
 const MIN_PROMPT_TOKENS_FOR_CACHE = 1200;
 const RUNS = 5;
 
+interface OpenAIChatCompletionResponse {
+  choices: Array<{
+    message?: { content?: string | null } | null;
+  }>;
+  usage?: Record<string, unknown>;
+}
+
+interface OpenAIChatClientLike {
+  chat: {
+    completions: {
+      create(params: unknown): Promise<OpenAIChatCompletionResponse>;
+    };
+  };
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const ensure = (condition: unknown, message: string): void => {
+const invariant: (condition: unknown, message: string) => asserts condition = (
+  condition,
+  message
+) => {
   if (!condition) {
     throw new Error(message);
   }
 };
 
-const ensureEqual = <T>(left: T, right: T, message: string): void => {
-  if (!Object.is(left, right)) {
-    throw new Error(
-      `${message} (left=${String(left)}, right=${String(right)})`
-    );
-  }
-};
-
-const ensureNotEqual = <T>(left: T, right: T, message: string): void => {
-  if (Object.is(left, right)) {
-    throw new Error(
-      `${message} (left=${String(left)}, right=${String(right)})`
-    );
-  }
-};
-
-const requireEnv = (name: string): string => {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+const requireString = (value: unknown, message: string): string => {
+  if (typeof value !== "string") {
+    throw new Error(message);
   }
   return value;
 };
 
-const getPromptCacheKey = (request: unknown): string | undefined => {
-  if (!isRecord(request)) {
+const requireEnv = (name: string): string =>
+  requireString(
+    process.env[name],
+    `Missing required environment variable: ${name}`
+  );
+
+const readStringField = (value: unknown, key: string): string | undefined => {
+  if (!isRecord(value)) {
     return undefined;
   }
-  const value = request.prompt_cache_key;
-  return typeof value === "string" ? value : undefined;
+  const field = value[key];
+  return typeof field === "string" ? field : undefined;
 };
 
-const getCacheControl = (block: unknown): unknown => {
-  if (!isRecord(block)) {
+const readNumberField = (value: unknown, key: string): number | undefined => {
+  if (!isRecord(value)) {
     return undefined;
   }
-  return Reflect.get(block, "cache_control");
+  const field = value[key];
+  return typeof field === "number" ? field : undefined;
 };
 
-const getUsage = (response: unknown): Record<string, unknown> | undefined => {
-  if (!isRecord(response)) {
-    return undefined;
-  }
-  const usage = Reflect.get(response, "usage");
-  return isRecord(usage) ? usage : undefined;
-};
-
-const getUsageNumber = (
-  usage: Record<string, unknown> | undefined,
+const readRecordField = (
+  value: unknown,
   key: string
-): number | undefined => {
-  if (!usage) {
+): Record<string, unknown> | undefined => {
+  if (!isRecord(value)) {
     return undefined;
   }
-  const value = Reflect.get(usage, key);
-  return typeof value === "number" ? value : undefined;
+  const field = value[key];
+  return isRecord(field) ? field : undefined;
 };
+
+const getPromptCacheKey = (request: unknown): string | undefined =>
+  readStringField(request, "prompt_cache_key");
+
+const getCacheControl = (block: unknown): unknown =>
+  isRecord(block) ? block.cache_control : undefined;
+
+const getUsage = (response: unknown): Record<string, unknown> | undefined =>
+  readRecordField(response, "usage");
 
 const getPromptDetails = (
   usage: Record<string, unknown> | undefined
-): Record<string, unknown> | undefined => {
-  if (!usage) {
-    return undefined;
-  }
-  const promptDetails = Reflect.get(usage, "prompt_tokens_details");
-  return isRecord(promptDetails) ? promptDetails : undefined;
-};
+): Record<string, unknown> | undefined =>
+  usage ? readRecordField(usage, "prompt_tokens_details") : undefined;
 
 const getCachedTokens = (response: unknown): number => {
   const usage = getUsage(response);
   const promptDetails = getPromptDetails(usage);
-  return getUsageNumber(promptDetails, "cached_tokens") ?? 0;
+  return readNumberField(promptDetails, "cached_tokens") ?? 0;
 };
 
 const getPromptTokens = (response: unknown): number => {
   const usage = getUsage(response);
-  return getUsageNumber(usage, "prompt_tokens") ?? 0;
+  return readNumberField(usage, "prompt_tokens") ?? 0;
 };
 
 const getCompletionTokens = (response: unknown): number => {
   const usage = getUsage(response);
-  return getUsageNumber(usage, "completion_tokens") ?? 0;
+  return readNumberField(usage, "completion_tokens") ?? 0;
 };
 
 const getTotalTokens = (response: unknown): number => {
   const usage = getUsage(response);
-  const totalTokens = getUsageNumber(usage, "total_tokens");
+  const totalTokens = readNumberField(usage, "total_tokens");
   if (typeof totalTokens === "number") {
     return totalTokens;
   }
@@ -121,12 +125,13 @@ interface UsageCosts {
 const getUsageCosts = (response: unknown): UsageCosts => {
   const usage = getUsage(response);
   const totalCost =
-    getUsageNumber(usage, "total_cost") ?? getUsageNumber(usage, "cost");
+    readNumberField(usage, "total_cost") ?? readNumberField(usage, "cost");
   const inputCost =
-    getUsageNumber(usage, "input_cost") ?? getUsageNumber(usage, "prompt_cost");
+    readNumberField(usage, "input_cost") ??
+    readNumberField(usage, "prompt_cost");
   const outputCost =
-    getUsageNumber(usage, "output_cost") ??
-    getUsageNumber(usage, "completion_cost");
+    readNumberField(usage, "output_cost") ??
+    readNumberField(usage, "completion_cost");
 
   return {
     ...(typeof totalCost === "number" ? { totalCost } : {}),
@@ -146,16 +151,15 @@ interface UsageStats {
   costs: UsageCosts;
 }
 
+const percent = (part: number, total: number): number =>
+  total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+
 const buildUsageStats = (response: unknown): UsageStats => {
   const promptTokens = getPromptTokens(response);
   const cachedTokens = getCachedTokens(response);
   const completionTokens = getCompletionTokens(response);
   const totalTokens = getTotalTokens(response);
   const uncachedPromptTokens = Math.max(0, promptTokens - cachedTokens);
-  const cachedPercent =
-    promptTokens > 0
-      ? Math.round((cachedTokens / promptTokens) * 1000) / 10
-      : 0;
 
   return {
     promptTokens,
@@ -163,7 +167,7 @@ const buildUsageStats = (response: unknown): UsageStats => {
     uncachedPromptTokens,
     completionTokens,
     totalTokens,
-    cachedPercent,
+    cachedPercent: percent(cachedTokens, promptTokens),
     cacheHit: cachedTokens > 0,
     costs: getUsageCosts(response),
   };
@@ -251,14 +255,9 @@ const sumUsageStats = (statsList: UsageStats[]): UsageStats => {
     }
   );
 
-  const cachedPercent =
-    totals.promptTokens > 0
-      ? Math.round((totals.cachedTokens / totals.promptTokens) * 1000) / 10
-      : 0;
-
   return {
     ...totals,
-    cachedPercent,
+    cachedPercent: percent(totals.cachedTokens, totals.promptTokens),
     cacheHit: totals.cachedTokens > 0,
     costs: {},
   };
@@ -299,10 +298,7 @@ const logPriceSavings = (options: {
   }
 
   const totalSavings = unpinned.total - pinned.total;
-  const totalSavingsPercent =
-    unpinned.total > 0
-      ? Math.round((totalSavings / unpinned.total) * 1000) / 10
-      : 0;
+  const totalSavingsPercent = percent(totalSavings, unpinned.total);
 
   console.log(
     `  price_estimate savings (total): ${formatCost(totalSavings)} (${totalSavingsPercent}%)`
@@ -310,10 +306,7 @@ const logPriceSavings = (options: {
 
   if (typeof pinned.input === "number" && typeof unpinned.input === "number") {
     const inputSavings = unpinned.input - pinned.input;
-    const inputSavingsPercent =
-      unpinned.input > 0
-        ? Math.round((inputSavings / unpinned.input) * 1000) / 10
-        : 0;
+    const inputSavingsPercent = percent(inputSavings, unpinned.input);
 
     console.log(
       `  price_estimate savings (input): ${formatCost(inputSavings)} (${inputSavingsPercent}%)`
@@ -380,32 +373,28 @@ const createUnpinnedSystem = (
 ): ReturnType<typeof cria.prompt> =>
   cria.prompt().system(`Unpinned nonce: ${label}\n\n${systemText}`);
 
+type OpenAIRequest = Record<string, unknown>;
+
 const createOpenAiClient = (
   baseClient: OpenAI
 ): {
-  client: {
-    chat: {
-      completions: {
-        create: (params: unknown) => Promise<unknown>;
-      };
-    };
-  };
-  requests: unknown[];
-  responses: unknown[];
+  client: OpenAIChatClientLike;
+  requests: OpenAIRequest[];
+  responses: OpenAIChatCompletionResponse[];
 } => {
-  const requests: unknown[] = [];
-  const responses: unknown[] = [];
+  const requests: OpenAIRequest[] = [];
+  const responses: OpenAIChatCompletionResponse[] = [];
 
-  const client = {
+  const client: OpenAIChatClientLike = {
     chat: {
       completions: {
         create: async (params: unknown) => {
-          requests.push(params);
+          requests.push(params as OpenAIRequest);
           const response = await baseClient.chat.completions.create(
             params as never
           );
-          responses.push(response);
-          return response;
+          responses.push(response as OpenAIChatCompletionResponse);
+          return response as OpenAIChatCompletionResponse;
         },
       },
     },
@@ -471,9 +460,8 @@ const runPinnedUnpinnedSeries = async (options: {
       createUnpinnedSystem(options.systemText, runLabel),
       `Unpinned hello ${index + 1}`
     );
-    ensureEqual(
-      unpinnedRun.key,
-      undefined,
+    invariant(
+      unpinnedRun.key === undefined,
       "Expected no prompt_cache_key without pinning."
     );
 
@@ -485,19 +473,18 @@ const runPinnedUnpinnedSeries = async (options: {
       pinnedSystem,
       `Pinned hello ${index + 1}`
     );
-    ensure(
+    const runKey = requireString(
       pinnedRun.key,
       "Expected prompt_cache_key to be set for pinned prefix."
     );
 
     if (pinnedKey) {
-      ensureEqual(
-        pinnedRun.key,
-        pinnedKey,
+      invariant(
+        runKey === pinnedKey,
         "Expected prompt_cache_key to stay stable when only the tail changes."
       );
     } else {
-      pinnedKey = pinnedRun.key;
+      pinnedKey = runKey;
     }
 
     const pinnedStats = buildUsageStats(pinnedRun.response);
@@ -505,14 +492,17 @@ const runPinnedUnpinnedSeries = async (options: {
     pinnedPrices.push(estimatePrice(pinnedStats));
   }
 
-  ensure(pinnedKey, "Expected a stable prompt_cache_key for pinned runs.");
+  const stablePinnedKey = requireString(
+    pinnedKey,
+    "Expected a stable prompt_cache_key for pinned runs."
+  );
 
   return {
     unpinnedStatsList,
     pinnedStatsList,
     unpinnedPrices,
     pinnedPrices,
-    pinnedKey,
+    pinnedKey: stablePinnedKey,
   };
 };
 
@@ -532,17 +522,16 @@ const validatePinnedPrefixChange = async (options: {
     pinnedSystemV2,
     "Pinned hello 3"
   );
-  ensure(
+  const changedKey = requireString(
     pinnedRun.key,
     "Expected prompt_cache_key to be set for pinned prefix."
   );
-  ensureNotEqual(
-    options.pinnedKey,
-    pinnedRun.key,
+  invariant(
+    options.pinnedKey !== changedKey,
     "Expected prompt_cache_key to change when the pinned prefix changes."
   );
 
-  return pinnedRun.key;
+  return changedKey;
 };
 
 async function runOpenAiAbTest(): Promise<void> {
@@ -577,8 +566,8 @@ async function runOpenAiAbTest(): Promise<void> {
   const sampleIndex = Math.min(1, RUNS - 1);
   const unpinnedStats = series.unpinnedStatsList[sampleIndex];
   const pinnedStats = series.pinnedStatsList[sampleIndex];
-  const unpinnedPrice = series.unpinnedPrices[sampleIndex] ?? null;
-  const pinnedPrice = series.pinnedPrices[sampleIndex] ?? null;
+  const unpinnedPrice = series.unpinnedPrices[sampleIndex];
+  const pinnedPrice = series.pinnedPrices[sampleIndex];
 
   const unpinnedTotals = sumUsageStats(series.unpinnedStatsList);
   const pinnedTotals = sumUsageStats(series.pinnedStatsList);
@@ -651,7 +640,7 @@ async function verifyAnthropicCacheControl(): Promise<void> {
     .render();
 
   const systemPinned = renderedPinned.system;
-  ensure(
+  invariant(
     Array.isArray(systemPinned),
     "Expected pinned Anthropic system content to render as blocks."
   );
@@ -661,7 +650,7 @@ async function verifyAnthropicCacheControl(): Promise<void> {
 
   const firstBlock = systemPinned[0];
   const cacheControl = getCacheControl(firstBlock);
-  ensure(
+  invariant(
     isEphemeralOneHourCacheControl(cacheControl),
     'Expected Anthropic cache_control to be { type: "ephemeral", ttl: "1h" }.'
   );
