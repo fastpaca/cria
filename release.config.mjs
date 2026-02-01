@@ -8,7 +8,9 @@ export default {
       "@semantic-release/commit-analyzer",
       {
         releaseRules: [
-          // Patch-only releases regardless of commit type or breaking markers.
+          // Patch-only releases regardless of commit type or breaking markers,
+          // except scope "major" which maps to a minor bump.
+          { scope: "major", release: "minor" },
           { breaking: true, release: "patch" },
           { revert: true, release: "patch" },
           { type: "feat", release: "patch" },
