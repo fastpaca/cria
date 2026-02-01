@@ -3,6 +3,11 @@ import { AnthropicProvider } from "@fastpaca/cria/anthropic";
 import { OpenAIChatProvider } from "@fastpaca/cria/openai";
 import { calcPrice, type PriceCalculationResult } from "@pydantic/genai-prices";
 import OpenAI from "openai";
+import type {
+  ChatCompletion,
+  ChatCompletionCreateParamsNonStreaming,
+} from "openai/resources/chat/completions";
+import type { CompletionUsage } from "openai/resources/completions";
 
 const MODEL = "gpt-5-nano";
 const SCOPE_KEY = "tenant:acme";
@@ -10,135 +15,41 @@ const TTL_SECONDS = 3600;
 const MIN_PROMPT_TOKENS_FOR_CACHE = 1200;
 const RUNS = 5;
 
-interface OpenAIChatCompletionResponse {
-  choices: Array<{
-    message?: { content?: string | null } | null;
-  }>;
-  usage?: Record<string, unknown>;
-}
-
-interface OpenAIChatClientLike {
-  chat: {
-    completions: {
-      create(params: unknown): Promise<OpenAIChatCompletionResponse>;
-    };
-  };
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const invariant: (condition: unknown, message: string) => asserts condition = (
-  condition,
-  message
-) => {
-  if (!condition) {
-    throw new Error(message);
-  }
+type ChatCompletionRequest = ChatCompletionCreateParamsNonStreaming & {
+  prompt_cache_key?: string;
 };
 
-const requireString = (value: unknown, message: string): string => {
-  if (typeof value !== "string") {
-    throw new Error(message);
+type UsageWithCost = CompletionUsage & {
+  total_cost?: number;
+  input_cost?: number;
+  output_cost?: number;
+  prompt_cost?: number;
+  completion_cost?: number;
+  cost?: number;
+};
+
+const requireEnv = (name: string): string => {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
 };
 
-const requireEnv = (name: string): string =>
-  requireString(
-    process.env[name],
-    `Missing required environment variable: ${name}`
-  );
+const percent = (part: number, total: number): number =>
+  total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
 
-const readStringField = (value: unknown, key: string): string | undefined => {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const field = value[key];
-  return typeof field === "string" ? field : undefined;
-};
+const formatDelta = (value: number): string =>
+  value >= 0 ? `+${value}` : `${value}`;
 
-const readNumberField = (value: unknown, key: string): number | undefined => {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const field = value[key];
-  return typeof field === "number" ? field : undefined;
-};
+const formatCost = (value: number): string => `$${value.toFixed(6)}`;
 
-const readRecordField = (
-  value: unknown,
-  key: string
-): Record<string, unknown> | undefined => {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  const field = value[key];
-  return isRecord(field) ? field : undefined;
-};
+const getPromptCacheKey = (
+  request: ChatCompletionRequest | undefined
+): string | undefined => request?.prompt_cache_key;
 
-const getPromptCacheKey = (request: unknown): string | undefined =>
-  readStringField(request, "prompt_cache_key");
-
-const getCacheControl = (block: unknown): unknown =>
-  isRecord(block) ? block.cache_control : undefined;
-
-const getUsage = (response: unknown): Record<string, unknown> | undefined =>
-  readRecordField(response, "usage");
-
-const getPromptDetails = (
-  usage: Record<string, unknown> | undefined
-): Record<string, unknown> | undefined =>
-  usage ? readRecordField(usage, "prompt_tokens_details") : undefined;
-
-const getCachedTokens = (response: unknown): number => {
-  const usage = getUsage(response);
-  const promptDetails = getPromptDetails(usage);
-  return readNumberField(promptDetails, "cached_tokens") ?? 0;
-};
-
-const getPromptTokens = (response: unknown): number => {
-  const usage = getUsage(response);
-  return readNumberField(usage, "prompt_tokens") ?? 0;
-};
-
-const getCompletionTokens = (response: unknown): number => {
-  const usage = getUsage(response);
-  return readNumberField(usage, "completion_tokens") ?? 0;
-};
-
-const getTotalTokens = (response: unknown): number => {
-  const usage = getUsage(response);
-  const totalTokens = readNumberField(usage, "total_tokens");
-  if (typeof totalTokens === "number") {
-    return totalTokens;
-  }
-  return getPromptTokens(response) + getCompletionTokens(response);
-};
-
-interface UsageCosts {
-  totalCost?: number;
-  inputCost?: number;
-  outputCost?: number;
-}
-
-const getUsageCosts = (response: unknown): UsageCosts => {
-  const usage = getUsage(response);
-  const totalCost =
-    readNumberField(usage, "total_cost") ?? readNumberField(usage, "cost");
-  const inputCost =
-    readNumberField(usage, "input_cost") ??
-    readNumberField(usage, "prompt_cost");
-  const outputCost =
-    readNumberField(usage, "output_cost") ??
-    readNumberField(usage, "completion_cost");
-
-  return {
-    ...(typeof totalCost === "number" ? { totalCost } : {}),
-    ...(typeof inputCost === "number" ? { inputCost } : {}),
-    ...(typeof outputCost === "number" ? { outputCost } : {}),
-  };
-};
+const getUsage = (response: ChatCompletion): UsageWithCost | undefined =>
+  response.usage as UsageWithCost | undefined;
 
 interface UsageStats {
   promptTokens: number;
@@ -148,18 +59,23 @@ interface UsageStats {
   totalTokens: number;
   cachedPercent: number;
   cacheHit: boolean;
-  costs: UsageCosts;
+  costs: {
+    total?: number;
+    input?: number;
+    output?: number;
+  };
 }
 
-const percent = (part: number, total: number): number =>
-  total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
-
-const buildUsageStats = (response: unknown): UsageStats => {
-  const promptTokens = getPromptTokens(response);
-  const cachedTokens = getCachedTokens(response);
-  const completionTokens = getCompletionTokens(response);
-  const totalTokens = getTotalTokens(response);
+const buildUsageStats = (response: ChatCompletion): UsageStats => {
+  const usage = getUsage(response);
+  const promptTokens = usage?.prompt_tokens ?? 0;
+  const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+  const completionTokens = usage?.completion_tokens ?? 0;
+  const totalTokens = usage?.total_tokens ?? promptTokens + completionTokens;
   const uncachedPromptTokens = Math.max(0, promptTokens - cachedTokens);
+  const totalCost = usage?.total_cost ?? usage?.cost;
+  const inputCost = usage?.input_cost ?? usage?.prompt_cost;
+  const outputCost = usage?.output_cost ?? usage?.completion_cost;
 
   return {
     promptTokens,
@@ -169,14 +85,27 @@ const buildUsageStats = (response: unknown): UsageStats => {
     totalTokens,
     cachedPercent: percent(cachedTokens, promptTokens),
     cacheHit: cachedTokens > 0,
-    costs: getUsageCosts(response),
+    costs: {
+      ...(typeof totalCost === "number" ? { total: totalCost } : {}),
+      ...(typeof inputCost === "number" ? { input: inputCost } : {}),
+      ...(typeof outputCost === "number" ? { output: outputCost } : {}),
+    },
   };
 };
 
-const formatDelta = (value: number): string =>
-  value >= 0 ? `+${value}` : `${value}`;
-
-const formatCost = (value: number): string => `$${value.toFixed(6)}`;
+const estimatePrice = (stats: UsageStats): PriceCalculationResult => {
+  return calcPrice(
+    {
+      input_tokens: stats.promptTokens,
+      output_tokens: stats.completionTokens,
+      ...(stats.cachedTokens > 0
+        ? { cache_read_tokens: stats.cachedTokens }
+        : {}),
+    },
+    MODEL,
+    { providerId: "openai" }
+  );
+};
 
 const logUsageStats = (label: string, stats: UsageStats): void => {
   console.log(`  ${label} prompt_tokens: ${stats.promptTokens}`);
@@ -190,36 +119,16 @@ const logUsageStats = (label: string, stats: UsageStats): void => {
   console.log(`  ${label} total_tokens: ${stats.totalTokens}`);
   console.log(`  ${label} cache_hit: ${stats.cacheHit ? "yes" : "no"}`);
 
-  const { totalCost, inputCost, outputCost } = stats.costs;
-  if (
-    typeof totalCost === "number" ||
-    typeof inputCost === "number" ||
-    typeof outputCost === "number"
-  ) {
-    if (typeof totalCost === "number") {
-      console.log(`  ${label} cost_total: ${formatCost(totalCost)}`);
-    }
-    if (typeof inputCost === "number") {
-      console.log(`  ${label} cost_input: ${formatCost(inputCost)}`);
-    }
-    if (typeof outputCost === "number") {
-      console.log(`  ${label} cost_output: ${formatCost(outputCost)}`);
-    }
-  } else {
-    console.log(`  ${label} cost: <unavailable>`);
+  const { total, input, output } = stats.costs;
+  if (typeof total === "number") {
+    console.log(`  ${label} cost_total: ${formatCost(total)}`);
   }
-};
-
-const estimatePrice = (stats: UsageStats): PriceCalculationResult => {
-  const usage = {
-    input_tokens: stats.promptTokens,
-    output_tokens: stats.completionTokens,
-    ...(stats.cachedTokens > 0
-      ? { cache_read_tokens: stats.cachedTokens }
-      : {}),
-  };
-
-  return calcPrice(usage, MODEL, { providerId: "openai" });
+  if (typeof input === "number") {
+    console.log(`  ${label} cost_input: ${formatCost(input)}`);
+  }
+  if (typeof output === "number") {
+    console.log(`  ${label} cost_output: ${formatCost(output)}`);
+  }
 };
 
 const logEstimatedPrice = (
@@ -230,7 +139,6 @@ const logEstimatedPrice = (
     console.log(`  ${label} price_estimate: <unavailable>`);
     return;
   }
-
   console.log(
     `  ${label} price_estimate: ${formatCost(price.total_price)} (input: ${formatCost(price.input_price)}, output: ${formatCost(price.output_price)})`
   );
@@ -269,20 +177,14 @@ const sumPrices = (
   let total = 0;
   let input = 0;
   let output = 0;
-  let available = true;
 
   for (const price of prices) {
     if (!price) {
-      available = false;
-      continue;
+      return {};
     }
     total += price.total_price;
     input += price.input_price;
     output += price.output_price;
-  }
-
-  if (!available) {
-    return {};
   }
 
   return { total, input, output };
@@ -322,8 +224,13 @@ const logPriceSavings = (options: {
   }
 };
 
-const isEphemeralOneHourCacheControl = (value: unknown): boolean =>
-  isRecord(value) && value.type === "ephemeral" && value.ttl === "1h";
+const isEphemeralOneHourCacheControl = (value: unknown): boolean => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as { type?: unknown; ttl?: unknown };
+  return record.type === "ephemeral" && record.ttl === "1h";
+};
 
 const makeLargeSystemInstructions = (
   repeatCount: number,
@@ -373,42 +280,47 @@ const createUnpinnedSystem = (
 ): ReturnType<typeof cria.prompt> =>
   cria.prompt().system(`Unpinned nonce: ${label}\n\n${systemText}`);
 
-type OpenAIRequest = Record<string, unknown>;
-
-const createOpenAiClient = (
+const createOpenAiProvider = (
   baseClient: OpenAI
 ): {
-  client: OpenAIChatClientLike;
-  requests: OpenAIRequest[];
-  responses: OpenAIChatCompletionResponse[];
+  provider: OpenAIChatProvider;
+  requests: ChatCompletionRequest[];
+  responses: ChatCompletion[];
 } => {
-  const requests: OpenAIRequest[] = [];
-  const responses: OpenAIChatCompletionResponse[] = [];
+  const requests: ChatCompletionRequest[] = [];
+  const responses: ChatCompletion[] = [];
 
-  const client: OpenAIChatClientLike = {
+  const client = {
     chat: {
       completions: {
         create: async (params: unknown) => {
-          requests.push(params as OpenAIRequest);
-          const response = await baseClient.chat.completions.create(
-            params as never
-          );
-          responses.push(response as OpenAIChatCompletionResponse);
-          return response as OpenAIChatCompletionResponse;
+          const request = params as ChatCompletionRequest;
+          requests.push(request);
+          const response = await baseClient.chat.completions.create(request);
+          responses.push(response);
+          return response;
         },
       },
     },
   };
 
-  return { client, requests, responses };
+  return {
+    provider: new OpenAIChatProvider(client, MODEL),
+    requests,
+    responses,
+  };
 };
 
 const createRenderWithSystem =
-  (provider: OpenAIChatProvider, requests: unknown[], responses: unknown[]) =>
+  (
+    provider: OpenAIChatProvider,
+    requests: ChatCompletionRequest[],
+    responses: ChatCompletion[]
+  ) =>
   async (
     systemPrompt: ReturnType<typeof cria.prompt>,
     userText: string
-  ): Promise<{ key?: string; response?: unknown }> => {
+  ): Promise<{ key?: string; response: ChatCompletion }> => {
     const rendered = await cria
       .prompt(provider)
       .prefix(systemPrompt)
@@ -419,6 +331,9 @@ const createRenderWithSystem =
 
     const lastRequest = requests.at(-1);
     const lastResponse = responses.at(-1);
+    if (!lastResponse) {
+      throw new Error("Expected OpenAI response to be captured.");
+    }
     return {
       key: getPromptCacheKey(lastRequest),
       response: lastResponse,
@@ -432,7 +347,7 @@ const runPinnedUnpinnedSeries = async (options: {
   renderWithSystem: (
     systemPrompt: ReturnType<typeof cria.prompt>,
     userText: string
-  ) => Promise<{ key?: string; response?: unknown }>;
+  ) => Promise<{ key?: string; response: ChatCompletion }>;
 }): Promise<{
   unpinnedStatsList: UsageStats[];
   pinnedStatsList: UsageStats[];
@@ -461,10 +376,9 @@ const runPinnedUnpinnedSeries = async (options: {
       createUnpinnedSystem(options.systemText, runLabel),
       `Unpinned hello ${index + 1}`
     );
-    invariant(
-      unpinnedRun.key === undefined,
-      "Expected no prompt_cache_key without pinning."
-    );
+    if (unpinnedRun.key !== undefined) {
+      throw new Error("Expected no prompt_cache_key without pinning.");
+    }
 
     const unpinnedStats = buildUsageStats(unpinnedRun.response);
     unpinnedStatsList.push(unpinnedStats);
@@ -474,36 +388,32 @@ const runPinnedUnpinnedSeries = async (options: {
       pinnedSystem,
       `Pinned hello ${index + 1}`
     );
-    const runKey = requireString(
-      pinnedRun.key,
-      "Expected prompt_cache_key to be set for pinned prefix."
-    );
+    if (!pinnedRun.key) {
+      throw new Error("Expected prompt_cache_key to be set for pinned prefix.");
+    }
 
-    if (pinnedKey) {
-      invariant(
-        runKey === pinnedKey,
+    if (pinnedKey && pinnedRun.key !== pinnedKey) {
+      throw new Error(
         "Expected prompt_cache_key to stay stable when only the tail changes."
       );
-    } else {
-      pinnedKey = runKey;
     }
+    pinnedKey = pinnedRun.key;
 
     const pinnedStats = buildUsageStats(pinnedRun.response);
     pinnedStatsList.push(pinnedStats);
     pinnedPrices.push(estimatePrice(pinnedStats));
   }
 
-  const stablePinnedKey = requireString(
-    pinnedKey,
-    "Expected a stable prompt_cache_key for pinned runs."
-  );
+  if (!pinnedKey) {
+    throw new Error("Expected a stable prompt_cache_key for pinned runs.");
+  }
 
   return {
     unpinnedStatsList,
     pinnedStatsList,
     unpinnedPrices,
     pinnedPrices,
-    pinnedKey: stablePinnedKey,
+    pinnedKey,
   };
 };
 
@@ -511,7 +421,7 @@ const validatePinnedPrefixChange = async (options: {
   renderWithSystem: (
     systemPrompt: ReturnType<typeof cria.prompt>,
     userText: string
-  ) => Promise<{ key?: string; response?: unknown }>;
+  ) => Promise<{ key?: string; response: ChatCompletion }>;
   pinnedKey: string;
 }): Promise<string> => {
   const pinnedSystemV2 = cria
@@ -523,23 +433,22 @@ const validatePinnedPrefixChange = async (options: {
     pinnedSystemV2,
     "Pinned hello 3"
   );
-  const changedKey = requireString(
-    pinnedRun.key,
-    "Expected prompt_cache_key to be set for pinned prefix."
-  );
-  invariant(
-    options.pinnedKey !== changedKey,
-    "Expected prompt_cache_key to change when the pinned prefix changes."
-  );
+  if (!pinnedRun.key) {
+    throw new Error("Expected prompt_cache_key to be set for pinned prefix.");
+  }
+  if (pinnedRun.key === options.pinnedKey) {
+    throw new Error(
+      "Expected prompt_cache_key to change when the pinned prefix changes."
+    );
+  }
 
-  return changedKey;
+  return pinnedRun.key;
 };
 
 async function runOpenAiAbTest(): Promise<void> {
   const apiKey = requireEnv("OPENAI_API_KEY");
   const baseClient = new OpenAI({ apiKey });
-  const { client, requests, responses } = createOpenAiClient(baseClient);
-  const provider = new OpenAIChatProvider(client, MODEL);
+  const { provider, requests, responses } = createOpenAiProvider(baseClient);
   const { systemText, approxTokens } = await buildLargeSystemText(
     provider,
     MIN_PROMPT_TOKENS_FOR_CACHE
@@ -618,8 +527,7 @@ async function runOpenAiAbTest(): Promise<void> {
 async function verifyAnthropicCacheControl(): Promise<void> {
   const client = {
     messages: {
-      create: (_params: unknown) =>
-        Promise.resolve({ content: [{ type: "text", text: "ok" }] }),
+      create: async () => ({ content: [{ type: "text", text: "ok" }] }),
     },
   };
 
@@ -641,20 +549,22 @@ async function verifyAnthropicCacheControl(): Promise<void> {
     .render();
 
   const systemPinned = renderedPinned.system;
-  invariant(
-    Array.isArray(systemPinned),
-    "Expected pinned Anthropic system content to render as blocks."
-  );
-  if (!Array.isArray(systemPinned)) {
-    throw new Error("Pinned system was not rendered as blocks.");
+  if (!Array.isArray(systemPinned) || systemPinned.length === 0) {
+    throw new Error("Expected pinned Anthropic system content as blocks.");
   }
 
-  const firstBlock = systemPinned[0];
-  const cacheControl = getCacheControl(firstBlock);
-  invariant(
-    isEphemeralOneHourCacheControl(cacheControl),
-    'Expected Anthropic cache_control to be { type: "ephemeral", ttl: "1h" }.'
-  );
+  const [firstBlock] = systemPinned;
+  if (firstBlock.type !== "text") {
+    throw new Error("Expected first Anthropic system block to be text.");
+  }
+
+  const cacheControl = (firstBlock as { cache_control?: unknown })
+    .cache_control;
+  if (!isEphemeralOneHourCacheControl(cacheControl)) {
+    throw new Error(
+      'Expected Anthropic cache_control to be { type: "ephemeral", ttl: "1h" }.'
+    );
+  }
 
   console.log("\nAnthropic cache_control verified.");
   console.log("Pinned system cache_control:", cacheControl);
