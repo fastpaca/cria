@@ -1,7 +1,7 @@
 /**
  * SQLite stores - KV + sqlite-vec in one example
  *
- * Requires: OPENAI_API_KEY + SQLITE_VEC_PATH
+ * Requires: OPENAI_API_KEY + SQLITE_VEC_PATH (absolute path to vec0 without extension)
  */
 
 import { cria, type StoredSummary } from "@fastpaca/cria";
