@@ -174,32 +174,6 @@ function layoutPrompt<TToolIO extends ProviderToolIO>(
   return messages;
 }
 
-function normalizeMessageForHash<TToolIO extends ProviderToolIO>(
-  message: PromptMessage<TToolIO>
-): PromptMessage<TToolIO> {
-  switch (message.role) {
-    case "assistant":
-      return {
-        role: message.role,
-        text: message.text,
-        ...(message.reasoning ? { reasoning: message.reasoning } : {}),
-        ...(message.toolCalls ? { toolCalls: message.toolCalls } : {}),
-      };
-    case "tool":
-      return {
-        role: message.role,
-        toolCallId: message.toolCallId,
-        toolName: message.toolName,
-        output: message.output,
-      };
-    default:
-      return {
-        role: message.role,
-        text: message.text,
-      };
-  }
-}
-
 function hashPinnedPrefix<TToolIO extends ProviderToolIO>(
   messages: readonly PromptMessage<TToolIO>[]
 ): string | null {
@@ -207,64 +181,30 @@ function hashPinnedPrefix<TToolIO extends ProviderToolIO>(
     return null;
   }
 
-  const canonical = JSON.stringify(
-    messages.map((message) => normalizeMessageForHash(message))
-  );
+  const canonical = JSON.stringify(messages);
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-function resolvePinnedPrefixScope<TToolIO extends ProviderToolIO>(
-  root: PromptTree<TToolIO>
-): PromptScope<TToolIO> | null {
-  const pinnedScopes: PromptScope<TToolIO>[] = [];
-
-  const walk = (node: PromptNode<TToolIO>): void => {
-    if (node.kind === "message") {
-      return;
-    }
-
-    if (node.cache?.mode === "pin") {
-      pinnedScopes.push(node);
-    }
-
-    for (const child of node.children) {
-      walk(child);
-    }
-  };
-
-  walk(root);
-
-  if (pinnedScopes.length === 0) {
-    return null;
+function countMessagesInScope<TToolIO extends ProviderToolIO>(
+  node: PromptNode<TToolIO>
+): number {
+  if (node.kind === "message") {
+    return 1;
   }
 
-  const firstChild = root.children[0];
-  if (
-    !firstChild ||
-    firstChild.kind !== "scope" ||
-    firstChild.cache?.mode !== "pin"
-  ) {
-    throw new Error(
-      "Cache pinning requires a single pinned prefix at the start of the prompt."
-    );
+  let total = 0;
+  for (const child of node.children) {
+    total += countMessagesInScope(child);
   }
-
-  if (pinnedScopes.length > 1 || pinnedScopes[0] !== firstChild) {
-    throw new Error(
-      "Cache pinning supports a single pinned prefix. Use .pin() once on the prompt prefix."
-    );
-  }
-
-  return firstChild;
+  return total;
 }
 
 function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
   root: PromptTree<TToolIO>
 ): { layout: PromptLayout<TToolIO>; cacheDescriptor: CacheDescriptor } {
   const layout = layoutPrompt(root);
-  const pinnedScope = resolvePinnedPrefixScope(root);
-
-  if (!pinnedScope?.cache) {
+  const firstChild = root.children[0];
+  if (!firstChild || firstChild.kind !== "scope" || !firstChild.cache) {
     return {
       layout,
       cacheDescriptor: {
@@ -276,8 +216,8 @@ function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
     };
   }
 
-  const pinnedLayout = layoutPrompt(pinnedScope);
-  const pinnedPrefixMessageCount = pinnedLayout.length;
+  const pinnedPrefixMessageCount = countMessagesInScope(firstChild);
+  const pinnedPrefixMessages = layout.slice(0, pinnedPrefixMessageCount);
   const pinnedMessageIndexes =
     pinnedPrefixMessageCount === 0
       ? []
@@ -287,15 +227,15 @@ function layoutPromptWithCache<TToolIO extends ProviderToolIO>(
         );
 
   const cacheDescriptor: CacheDescriptor = {
-    pinIdsInPrefix: [pinnedScope.cache.id],
+    pinIdsInPrefix: [firstChild.cache.id],
     pinnedMessageIndexes,
     pinnedPrefixMessageCount,
-    pinnedPrefixHash: hashPinnedPrefix(pinnedLayout),
-    ...(pinnedScope.cache.scopeKey
-      ? { scopeKey: pinnedScope.cache.scopeKey }
+    pinnedPrefixHash: hashPinnedPrefix(pinnedPrefixMessages),
+    ...(firstChild.cache.scopeKey
+      ? { scopeKey: firstChild.cache.scopeKey }
       : {}),
-    ...(pinnedScope.cache.ttlSeconds !== undefined
-      ? { ttlSeconds: pinnedScope.cache.ttlSeconds }
+    ...(firstChild.cache.ttlSeconds !== undefined
+      ? { ttlSeconds: firstChild.cache.ttlSeconds }
       : {}),
   };
 
