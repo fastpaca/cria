@@ -56,6 +56,7 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 - Use optional chaining (`?.`) and nullish coalescing (`??`) for safer property access
 - Prefer template literals over string concatenation
 - Use destructuring for object and array assignments
+- Avoid renaming destructured properties when the original name is already clear (e.g., `const { input } = await prompt.render(...)`)
 - Use `const` by default, `let` only when reassignment is needed, never `var`
 
 ### Async & Promises
