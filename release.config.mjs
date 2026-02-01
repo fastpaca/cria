@@ -8,11 +8,19 @@ export default {
       "@semantic-release/commit-analyzer",
       {
         releaseRules: [
-          // Pre-1.0: breaking changes → minor (not major)
-          { breaking: true, release: "minor" },
-          // Explicit major: use "feat(major):" or "fix(major):" when ready for 1.0
-          { type: "feat", scope: "major", release: "major" },
-          { type: "fix", scope: "major", release: "major" },
+          // Patch-only releases regardless of commit type or breaking markers.
+          { breaking: true, release: "patch" },
+          { revert: true, release: "patch" },
+          { type: "feat", release: "patch" },
+          { type: "fix", release: "patch" },
+          { type: "perf", release: "patch" },
+          { type: "refactor", release: "patch" },
+          { type: "docs", release: "patch" },
+          { type: "test", release: "patch" },
+          { type: "build", release: "patch" },
+          { type: "ci", release: "patch" },
+          { type: "chore", release: "patch" },
+          { type: "style", release: "patch" },
         ],
       },
     ],
