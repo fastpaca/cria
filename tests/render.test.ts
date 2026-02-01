@@ -97,12 +97,12 @@ function truncateScope(
   opts: { budget: number; priority: number }
 ): PromptScope {
   const strategy: Strategy = (input) => {
-    const { children: currentChildren } = input.target;
-    if (currentChildren.length === 0) {
+    const { children } = input.target;
+    if (children.length === 0) {
       return null;
     }
     const dropCount = Math.max(1, Math.floor(input.totalTokens / opts.budget));
-    const nextChildren = currentChildren.slice(dropCount);
+    const nextChildren = children.slice(dropCount);
     if (nextChildren.length === 0) {
       return null;
     }

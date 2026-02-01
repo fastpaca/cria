@@ -40,18 +40,17 @@ const prompt = cria
 
 async function main(): Promise<void> {
   const budget = 500;
-  const output = await prompt.render({ budget });
-  const { input: inputItems } = output;
+  const { input } = await prompt.render({ budget });
 
   console.log("=== Response Input Items ===");
-  console.log(JSON.stringify(inputItems, null, 2));
+  console.log(JSON.stringify(input, null, 2));
   console.log(
-    `\n=== Token count: ${provider.countTokens(output)} / ${budget} ===\n`
+    `\n=== Token count: ${provider.countTokens({ input })} / ${budget} ===\n`
   );
 
   const response = await client.responses.create({
     model: MODEL,
-    input: inputItems,
+    input,
   });
 
   console.log("=== OpenAI Response ===");
