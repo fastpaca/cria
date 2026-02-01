@@ -2,35 +2,15 @@
 
 `VectorSearch` injects retrieval results at render time. You bring your own vector store (or use one of the adapters).
 
-Runnable example: [rag](../../examples/rag)
+Runnable example: [rag-qdrant](../../examples/rag-qdrant)
 
 ```bash
-cd examples/rag
+cd examples/rag-qdrant
 pnpm install
 pnpm start
 ```
 
-This example requires a running vector DB (Chroma) and an embedding provider key. See `../../examples/rag/README.md`.
-
-## SQLite vec0 adapter (example)
-
-```ts
-import { SqliteVecStore } from "@fastpaca/cria/memory/sqlite-vec";
-import { cria } from "@fastpaca/cria";
-
-const store = new SqliteVecStore<string>({
-  filename: "cria.sqlite",
-  loadExtension: "/path/to/vec0", // load the sqlite-vec extension
-  dimensions: 1536,
-  embed: async (text) => embed(text),
-});
-
-const prompt = cria
-  .prompt()
-  .system("Answer using the retrieved context. If missing, say you don't know.")
-  .vectorSearch({ store, query: userQuestion, limit: 5 })
-  .user(userQuestion);
-```
+This example requires a running vector DB (Qdrant) and an embedding provider key. See `../../examples/rag-qdrant/README.md`.
 
 ## Chroma adapter (example)
 

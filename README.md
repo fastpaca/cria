@@ -325,29 +325,6 @@ const messages = await cria
 </details>
 
 <details>
-<summary><strong>SQLite (vector search via sqlite-vec)</strong></summary>
-
-```ts
-import { SqliteVecStore } from "@fastpaca/cria/memory/sqlite-vec";
-
-const store = new SqliteVecStore({
-  filename: "cria.sqlite",
-  loadExtension: "/path/to/vec0", // load the sqlite-vec extension
-  dimensions: 1536,
-  embed: async (text) => await getEmbedding(text),
-});
-
-const messages = await cria
-  .prompt(provider)
-  .system("You are a research assistant.")
-  .vectorSearch({ store, query, limit: 10 })
-  .user(query)
-  .render({ budget: 128_000 });
-```
-
-</details>
-
-<details>
 <summary><strong>Chroma (vector search)</strong></summary>
 
 ```ts
@@ -412,7 +389,7 @@ const messages = await cria
 Prompt structures/messages (via a provider adapter). You pass the rendered output into your existing LLM SDK call.
 
 **What works out of the box?**
-Provider adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK; store adapters for Redis, SQLite, SQLite (sqlite-vec), Postgres, Chroma, and Qdrant.
+Provider adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK; store adapters for Redis, SQLite, Postgres, Chroma, and Qdrant.
 
 **How do I validate component swaps?**
 Swap via adapters, diff the rendered prompt output, and run prompt eval/tests to catch drift.
