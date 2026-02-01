@@ -1,0 +1,15 @@
+{
+  "name": "summary-redis",
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx main.ts"
+  },
+  "dependencies": {
+    "@fastpaca/cria": "workspace:*",
+    "ioredis": "^5",
+    "openai": "^4"
+  },
+  "devDependencies": {
+    "tsx": "^4"
+  }
+}
