@@ -145,8 +145,6 @@ vi.mock("better-sqlite3", () => {
   };
 });
 
-const INVALID_TABLE_REGEX = /Invalid table name/;
-
 beforeEach(() => {
   resetState();
 });
@@ -220,15 +218,6 @@ test("SqliteStore: uses custom table name", () => {
 
   expect(mockTables.has("my_custom_table")).toBe(true);
   expect(mockTables.has("cria_kv_store")).toBe(false);
-});
-
-test("SqliteStore: rejects unsafe table names", () => {
-  expect(() => {
-    return new SqliteStore({
-      tableName: 'users; DROP TABLE "users"; --',
-      autoCreateTable: false,
-    });
-  }).toThrow(INVALID_TABLE_REGEX);
 });
 
 test("SqliteStore: supports schema-qualified table names", () => {

@@ -7,28 +7,6 @@ import type {
   VectorSearchResult,
 } from "./vector";
 
-const IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-const sanitizeIdentifier = (identifier: string): string => {
-  const parts = identifier.split(".");
-
-  if (parts.length === 0) {
-    throw new Error("Table name must not be empty");
-  }
-
-  const sanitized = parts.map((part) => {
-    if (!IDENTIFIER_PATTERN.test(part)) {
-      throw new Error(
-        "Invalid table name: use letters, numbers, and underscores (optionally schema.table)"
-      );
-    }
-
-    return `"${part}"`;
-  });
-
-  return sanitized.join(".");
-};
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -165,8 +143,8 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
 
     this.db = (database ??
       new Database(filename ?? ":memory:", dbOptions)) as SqliteVecDatabase;
-    this.tableName = sanitizeIdentifier(baseName);
-    this.vectorTableName = sanitizeIdentifier(vecName);
+    this.tableName = baseName;
+    this.vectorTableName = vecName;
     this.embedFn = embed;
     this.dimensions = dimensions;
     this.distanceMetric = distanceMetric ?? "l2";
