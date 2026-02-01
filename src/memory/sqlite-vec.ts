@@ -7,30 +7,6 @@ import type {
   VectorSearchResult,
 } from "./vector";
 
-const parseJson = <T>(raw: string, context: string): T => {
-  try {
-    return JSON.parse(raw) as T;
-  } catch (error) {
-    throw new Error(`SqliteVecStore: invalid JSON ${context}`, {
-      cause: error,
-    });
-  }
-};
-
-const serializeJson = (value: unknown, context: string): string => {
-  try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) {
-      throw new Error("value is not JSON-serializable");
-    }
-    return serialized;
-  } catch (error) {
-    throw new Error(`SqliteVecStore: failed to serialize ${context}`, {
-      cause: error,
-    });
-  }
-};
-
 /**
  * Function to generate embeddings for text.
  */
@@ -255,14 +231,11 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
       return null;
     }
 
-    const data = parseJson<T>(row.data, `for key "${key}"`);
+    const data = JSON.parse(row.data) as T;
     const metadata =
       row.metadata === null
         ? undefined
-        : parseJson<Record<string, unknown>>(
-            row.metadata,
-            `metadata for key "${key}"`
-          );
+        : (JSON.parse(row.metadata) as Record<string, unknown>);
 
     return {
       data,
@@ -281,11 +254,9 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
     this.ensureTables();
 
     const now = Date.now();
-    const serializedData = serializeJson(data, `data for key "${key}"`);
+    const serializedData = JSON.stringify(data);
     const serializedMetadata =
-      metadata !== undefined
-        ? serializeJson(metadata, `metadata for key "${key}"`)
-        : null;
+      metadata !== undefined ? JSON.stringify(metadata) : null;
 
     const existing = this.db
       .prepare<SqliteVecKeyRow>(
@@ -389,14 +360,11 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
         continue;
       }
 
-      const data = parseJson<T>(row.data, `for key "${row.key}"`);
+      const data = JSON.parse(row.data) as T;
       const metadata =
         row.metadata === null
           ? undefined
-          : parseJson<Record<string, unknown>>(
-              row.metadata,
-              `metadata for key "${row.key}"`
-            );
+          : (JSON.parse(row.metadata) as Record<string, unknown>);
 
       results.push({
         key: row.key,

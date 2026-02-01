@@ -32,15 +32,8 @@ interface StoredEntry<T> {
   metadata?: Record<string, unknown>;
 }
 
-const parseStoredEntry = <T>(raw: string, key: string): StoredEntry<T> => {
-  try {
-    return JSON.parse(raw) as StoredEntry<T>;
-  } catch (error) {
-    throw new Error(
-      `RedisStore: invalid JSON stored for key "${key}": ${String(error)}`
-    );
-  }
-};
+const parseStoredEntry = <T>(raw: string): StoredEntry<T> =>
+  JSON.parse(raw) as StoredEntry<T>;
 
 /**
  * Redis-backed implementation of KVMemory.
@@ -104,7 +97,7 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
       return null;
     }
 
-    const stored = parseStoredEntry<T>(raw, prefixedKey);
+    const stored = parseStoredEntry<T>(raw);
 
     return {
       data: stored.data,
@@ -127,7 +120,7 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
     let createdAt = now;
 
     if (existingRaw !== null) {
-      const existing = parseStoredEntry<T>(existingRaw, prefixedKey);
+      const existing = parseStoredEntry<T>(existingRaw);
       createdAt = existing.createdAt;
     }
 

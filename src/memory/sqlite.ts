@@ -1,28 +1,6 @@
 import Database from "better-sqlite3";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
-const parseJson = <T>(raw: string, context: string): T => {
-  try {
-    return JSON.parse(raw) as T;
-  } catch (error) {
-    throw new Error(`SqliteStore: invalid JSON ${context}`, { cause: error });
-  }
-};
-
-const serializeJson = (value: unknown, context: string): string => {
-  try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) {
-      throw new Error("value is not JSON-serializable");
-    }
-    return serialized;
-  } catch (error) {
-    throw new Error(`SqliteStore: failed to serialize ${context}`, {
-      cause: error,
-    });
-  }
-};
-
 /**
  * Connection options for a SQLite database.
  */
@@ -162,14 +140,11 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
       return null;
     }
 
-    const data = parseJson<T>(row.data, `for key "${key}"`);
+    const data = JSON.parse(row.data) as T;
     const metadata =
       row.metadata === null
         ? undefined
-        : parseJson<Record<string, unknown>>(
-            row.metadata,
-            `metadata for key "${key}"`
-          );
+        : (JSON.parse(row.metadata) as Record<string, unknown>);
 
     return {
       data,
@@ -183,11 +158,9 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
     this.ensureTable();
 
     const now = Date.now();
-    const serializedData = serializeJson(data, `data for key "${key}"`);
+    const serializedData = JSON.stringify(data);
     const serializedMetadata =
-      metadata !== undefined
-        ? serializeJson(metadata, `metadata for key "${key}"`)
-        : null;
+      metadata !== undefined ? JSON.stringify(metadata) : null;
 
     this.db
       .prepare(
