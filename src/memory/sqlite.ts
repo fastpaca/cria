@@ -1,9 +1,6 @@
 import Database from "better-sqlite3";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const parseJson = <T>(raw: string, context: string): T => {
   try {
     return JSON.parse(raw) as T;
@@ -24,16 +21,6 @@ const serializeJson = (value: unknown, context: string): string => {
       cause: error,
     });
   }
-};
-
-const ensureRecord = (value: unknown, key: string): Record<string, unknown> => {
-  if (!isRecord(value)) {
-    throw new Error(
-      `SqliteStore: stored metadata for key "${key}" must be an object if present`
-    );
-  }
-
-  return value;
 };
 
 /**
@@ -176,14 +163,13 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
     }
 
     const data = parseJson<T>(row.data, `for key "${key}"`);
-    const parsedMetadata =
+    const metadata =
       row.metadata === null
         ? undefined
-        : parseJson<unknown>(row.metadata, `metadata for key "${key}"`);
-    const metadata =
-      parsedMetadata === undefined
-        ? undefined
-        : ensureRecord(parsedMetadata, key);
+        : parseJson<Record<string, unknown>>(
+            row.metadata,
+            `metadata for key "${key}"`
+          );
 
     return {
       data,
