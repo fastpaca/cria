@@ -627,24 +627,6 @@ export class PromptBuilder<
   }
 
   /**
-   * Append content and pin the prompt prefix (equivalent to merge + pin).
-   */
-  cachePin(
-    this: PromptBuilder<P, "unpinned">,
-    content: ScopeContent<P>,
-    opts?: CachePinOptions
-  ): PromptBuilder<P, "pinned"> {
-    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
-      (children) =>
-        createScope<ToolIOFor<P>>(children, {
-          ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
-        })
-    );
-
-    return this.addChild(node).pin(opts);
-  }
-
-  /**
    * Keep only the last N messages from the content.
    *
    * @example
