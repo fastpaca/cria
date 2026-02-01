@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/fastpaca/cria/compare/v1.6.0...v1.7.0) (2026-02-01)
+
+
+### Features
+
+* provider cache pinning ([#30](https://github.com/fastpaca/cria/issues/30)) ([297a939](https://github.com/fastpaca/cria/commit/297a939c5da7a657666dae36cdfe9a3494544ad7))
+
 # [1.6.0](https://github.com/fastpaca/cria/compare/v1.5.0...v1.6.0) (2026-01-23)
 
 
