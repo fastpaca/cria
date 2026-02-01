@@ -1,0 +1,14 @@
+{
+  "name": "hello-world",
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx main.ts"
+  },
+  "dependencies": {
+    "@fastpaca/cria": "workspace:*",
+    "openai": "^4"
+  },
+  "devDependencies": {
+    "tsx": "^4"
+  }
+}
