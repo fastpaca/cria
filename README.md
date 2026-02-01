@@ -303,6 +303,28 @@ const messages = await cria
 </details>
 
 <details>
+<summary><strong>SQLite (conversation summaries)</strong></summary>
+
+```ts
+import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
+import type { StoredSummary } from "@fastpaca/cria";
+
+const store = new SqliteStore<StoredSummary>({
+  filename: "cria.sqlite",
+});
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a helpful assistant.")
+  .summary(conversation, { id: "conv-123", store, priority: 2 })
+  .last(conversation, { n: 20 })
+  .user(query)
+  .render({ budget: 128_000 });
+```
+
+</details>
+
+<details>
 <summary><strong>Chroma (vector search)</strong></summary>
 
 ```ts
@@ -367,7 +389,7 @@ const messages = await cria
 Prompt structures/messages (via a provider adapter). You pass the rendered output into your existing LLM SDK call.
 
 **What works out of the box?**
-Provider adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK; store adapters for Redis, Postgres, Chroma, and Qdrant.
+Provider adapters for OpenAI (Chat Completions + Responses), Anthropic, and Vercel AI SDK; store adapters for Redis, SQLite, Postgres, Chroma, and Qdrant.
 
 **How do I validate component swaps?**
 Swap via adapters, diff the rendered prompt output, and run prompt eval/tests to catch drift.
