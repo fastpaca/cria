@@ -79,7 +79,7 @@ export class SqliteVecStore<T = unknown> implements VectorMemory<T> {
   private readonly dimensions: number;
   private readonly distanceMetric: SqliteVecDistanceMetric;
   private readonly autoCreateTables: boolean;
-  private readonly loadExtensionPath?: string;
+  private readonly loadExtensionPath: string | undefined;
   private tablesReady = false;
   private extensionChecked = false;
 
