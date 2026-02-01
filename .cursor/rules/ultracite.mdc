@@ -1,140 +1,112 @@
 ---
-description: Ultracite Rules - AI-Ready Formatter and Linter
-globs: "**/*.{ts,tsx,js,jsx,json,jsonc,html,vue,svelte,astro,css,yaml,yml,graphql,gql,md,mdx,grit}"
+description: Cria Code Standards
+globs: "**/*.{ts,tsx,js,jsx}"
 alwaysApply: false
 ---
 
-# Ultracite Code Standards
-
-This project uses **Ultracite**, a zero-config Biome preset that enforces strict code quality standards through automated formatting and linting.
+# Cria Code Standards
 
 ## Quick Reference
 
-- **Format code**: `npm exec -- ultracite fix`
-- **Check for issues**: `npm exec -- ultracite check`
-- **Diagnose setup**: `npm exec -- ultracite doctor`
+```bash
+npm exec -- ultracite fix     # format and fix
+npm exec -- ultracite check   # check issues
+npm exec -- ultracite doctor  # diagnose setup
+```
 
-Biome (the underlying engine) provides extremely fast Rust-based linting and formatting. Most issues are automatically fixable.
-
----
-
-## Core Principles
-
-Write code that is **accessible, performant, type-safe, and maintainable**. Focus on clarity and explicit intent over brevity.
-
-### Type Safety & Explicitness
-
-- Use explicit types for function parameters and return values when they enhance clarity
-- Prefer `unknown` over `any` when the type is genuinely unknown
-- Use const assertions (`as const`) for immutable values and literal types
-- Leverage TypeScript's type narrowing instead of type assertions
-- Use meaningful variable names instead of magic numbers - extract constants with descriptive names
-
-### Strictness & Explicitness (Cria)
-
-- Treat Cria as a closed system: prefer strict contracts over defensive runtime checks
-- If a constraint matters, enforce it with types + tests; avoid runtime guards for trusted internal data
-- No silent failures: avoid try-catch that swallows errors; if it fails, it must throw
-- No implicit context propagation; require explicit parameters
-- Use SDK types directly in providers; do not invent "client-like" interfaces
-- Avoid Reflect or mutation hacks to inject fields; use explicit typed request shapes
-- Cache pinning must be explicit: use `pin({ id, version })` directly; no hashing or JSON serialization
-- Avoid redundant traversals when the DSL already defines boundaries
-
-### Modern JavaScript/TypeScript
-
-- Use arrow functions for callbacks and short functions
-- Prefer `for...of` loops over `.forEach()` and indexed `for` loops
-- Use optional chaining (`?.`) and nullish coalescing (`??`) for safer property access
-- Prefer template literals over string concatenation
-- Use destructuring for object and array assignments
-- Use `const` by default, `let` only when reassignment is needed, never `var`
-
-### Async & Promises
-
-- Always `await` promises in async functions - don't forget to use the return value
-- Use `async/await` syntax instead of promise chains for better readability
-- Handle errors appropriately in async code with try-catch blocks
-- Don't use async functions as Promise executors
-
-### React & JSX
-
-- Use function components over class components
-- Call hooks at the top level only, never conditionally
-- Specify all dependencies in hook dependency arrays correctly
-- Use the `key` prop for elements in iterables (prefer unique IDs over array indices)
-- Nest children between opening and closing tags instead of passing as props
-- Don't define components inside other components
-- Use semantic HTML and ARIA attributes for accessibility:
-  - Provide meaningful alt text for images
-  - Use proper heading hierarchy
-  - Add labels for form inputs
-  - Include keyboard event handlers alongside mouse events
-  - Use semantic elements (`<button>`, `<nav>`, etc.) instead of divs with roles
-
-### Error Handling & Debugging
-
-- Remove `console.log`, `debugger`, and `alert` statements from production code
-- Throw `Error` objects with descriptive messages, not strings or other values
-- Use `try-catch` blocks meaningfully - don't catch errors just to rethrow them
-- Prefer early returns over nested conditionals for error cases
-
-### Code Organization
-
-- Keep functions focused and under reasonable cognitive complexity limits
-- Extract complex conditions into well-named boolean variables
-- Use early returns to reduce nesting
-- Prefer simple conditionals over nested ternary operators
-- Group related code together and separate concerns
-
-### Security
-
-- Add `rel="noopener"` when using `target="_blank"` on links
-- Avoid `dangerouslySetInnerHTML` unless absolutely necessary
-- Don't use `eval()` or assign directly to `document.cookie`
-- Validate and sanitize user input
-
-### Performance
-
-- Avoid spread syntax in accumulators within loops
-- Use top-level regex literals instead of creating them in loops
-- Prefer specific imports over namespace imports
-- Avoid barrel files (index files that re-export everything)
-- Use proper image components (e.g., Next.js `<Image>`) over `<img>` tags
-
-### Framework-Specific Guidance
-
-**Next.js:**
-- Use Next.js `<Image>` component for images
-- Use `next/head` or App Router metadata API for head elements
-- Use Server Components for async data fetching instead of async Client Components
-
-**React 19+:**
-- Use ref as a prop instead of `React.forwardRef`
-
-**Solid/Svelte/Vue/Qwik:**
-- Use `class` and `for` attributes (not `className` or `htmlFor`)
+**Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/) — `type(scope): subject`
 
 ---
+
+## TypeScript
+
+**Type safety at boundaries, trust internally:**
+- Use `unknown` at trust boundaries (I/O, JSON, env); never `any`. Narrow immediately.
+- Validate external inputs once, then trust refined types downstream—no defensive re-checking inside trusted layers.
+- Don't accept `Record<string, unknown>` or `object` when you can define a concrete shape.
+
+**Prefer the type system over runtime checks:**
+- Use explicit types for parameters and return values when they enhance clarity.
+- Leverage TypeScript's type narrowing instead of type assertions.
+- Model state with discriminated unions; handle exhaustively via `switch` + `assertNever`.
+- Avoid type assertions and `!`—restructure so types prove safety.
+- Use `as const` for literals, `satisfies` for object shapes without widening.
+- Use meaningful variable names instead of magic numbers—extract constants with descriptive names.
+
+**Immutability by default:**
+- `const` bindings, `readonly` arrays/tuples, `Readonly<T>`.
+- Avoid mutating inputs; create copies instead (but avoid repeated spreads in hot loops).
+
+## Cria-Specific
+
+- Treat Cria as a closed system: strict contracts over defensive runtime checks.
+- Enforce constraints with types + tests; no runtime guards for trusted internal data.
+- No silent failures—if it fails, it must throw.
+- No implicit context propagation; require explicit parameters.
+- Use SDK types directly; don't invent wrapper interfaces.
+- Cache pinning must be explicit: `pin({ id, version })` directly.
+
+## Patterns
+
+**Functions:**
+- Pure helpers with effects at the edges (I/O, logging).
+- Use array transforms (`map`, `filter`, `reduce`, `flatMap`) when clearer than imperative loops.
+- Arrow functions for callbacks and short functions.
+- Early returns over nested conditionals.
+- Prefer simple conditionals over nested ternary operators.
+- Extract complex conditions into named booleans.
+- Keep functions focused; reasonable cognitive complexity.
+- Group related code together and separate concerns.
+
+**Modern JS/TS:**
+- `for...of` over `.forEach()` and indexed loops.
+- `?.` and `??` for safe property access.
+- Template literals over concatenation.
+- Destructuring without unnecessary renames.
+- `const` default, `let` when needed, never `var`.
+
+**Async:**
+- Always `await` promises—don't forget return values.
+- `async/await` over promise chains.
+- Handle errors appropriately in async code with try-catch.
+- No async functions as Promise executors.
+
+## Error Handling
+
+- Remove `console.log`, `debugger`, `alert` from production.
+- Throw `Error` objects with descriptive messages, not strings.
+- Use `try-catch` meaningfully—don't catch just to rethrow.
+- Prefer early returns over nested conditionals for error cases.
+
+## Security
+
+- `rel="noopener"` on `target="_blank"` links.
+- Avoid `dangerouslySetInnerHTML`, `eval()`, direct `document.cookie` assignment.
+- Validate and sanitize user input.
+
+## Performance
+
+- No spread in loop accumulators.
+- Top-level regex literals, not created in loops.
+- Specific imports over namespace imports.
+- No barrel files.
 
 ## Testing
 
-- Write assertions inside `it()` or `test()` blocks
-- Avoid done callbacks in async tests - use async/await instead
-- Don't use `.only` or `.skip` in committed code
-- Keep test suites reasonably flat - avoid excessive `describe` nesting
-
-## When Biome Can't Help
-
-Biome's linter will catch most issues automatically. Focus your attention on:
-
-1. **Business logic correctness** - Biome can't validate your algorithms
-2. **Meaningful naming** - Use descriptive names for functions, variables, and types
-3. **Architecture decisions** - Component structure, data flow, and API design
-4. **Edge cases** - Handle boundary conditions and error states
-5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
+- Assertions inside `it()` / `test()` blocks.
+- `async/await` over done callbacks.
+- No `.only` or `.skip` in committed code.
+- Flat test suites—avoid excessive `describe` nesting.
 
 ---
 
-Most formatting and common issues are automatically fixed by Biome. Run `npm exec -- ultracite fix` before committing to ensure compliance.
+## Focus Areas
+
+Biome handles formatting. Focus on:
+
+1. **Business logic** — correctness of algorithms
+2. **Naming** — descriptive functions, variables, types
+3. **Architecture** — component structure, data flow, API design
+4. **Edge cases** — boundary conditions, error states
+5. **UX** — accessibility, performance, usability
+6. **Documentation** — comments for complex logic only
