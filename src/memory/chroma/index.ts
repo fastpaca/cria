@@ -97,16 +97,6 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     this.embedFn = options.embed;
   }
 
-  private async embed(text: string, context: string): Promise<number[]> {
-    try {
-      return await this.embedFn(text);
-    } catch (error) {
-      throw new Error(`ChromaStore: embedding failed during ${context}`, {
-        cause: error,
-      });
-    }
-  }
-
   async get(key: string): Promise<MemoryEntry<T> | null> {
     const response = await this.collection.get({
       ids: [key],
@@ -141,7 +131,7 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
 
     // Convert data to text for embedding and storage
     const document = typeof data === "string" ? data : JSON.stringify(data);
-    const vector = await this.embed(document, `set("${key}")`);
+    const vector = await this.embedFn(document);
 
     // Merge user metadata with timestamps
     const chromaMetadata: Metadata = {
@@ -174,7 +164,7 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold;
 
-    const queryVector = await this.embed(query, "search");
+    const queryVector = await this.embedFn(query);
 
     const response = await this.collection.query({
       queryEmbeddings: [queryVector],
@@ -191,22 +181,6 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     const metadatas = response.metadatas?.[0] ?? [];
     const distances = response.distances?.[0] ?? [];
 
-    return this.buildSearchResults(
-      ids,
-      documents,
-      metadatas,
-      distances,
-      threshold
-    );
-  }
-
-  private buildSearchResults(
-    ids: (string | undefined)[],
-    documents: (string | null | undefined)[],
-    metadatas: (Metadata | null | undefined)[],
-    distances: (number | null | undefined)[],
-    threshold: number | undefined
-  ): VectorSearchResult<T>[] {
     const results: VectorSearchResult<T>[] = [];
 
     for (let i = 0; i < ids.length; i++) {
