@@ -10,21 +10,12 @@ import { SqliteVecStore } from "@fastpaca/cria/memory/sqlite-vec";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
-<<<<<<< HEAD
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) {
   throw new Error("Missing OPENAI_API_KEY.");
 }
 
 const openai = new OpenAI({ apiKey });
-=======
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
-  throw new Error("Missing OPENAI_API_KEY.");
-}
-
-const openai = new OpenAI({ apiKey });
->>>>>>> 89727a7 (chore(examples): require openai env)
 const provider = createProvider(openai, "gpt-4o-mini");
 const embed = async (text: string) => {
   const response = await openai.embeddings.create({
@@ -38,7 +29,6 @@ const vecPath = process.env.SQLITE_VEC_PATH;
 if (!vecPath) {
   throw new Error("Missing SQLITE_VEC_PATH.");
 }
-
 const summaryStore = new SqliteStore<StoredSummary>({
   filename: "cria.sqlite",
 });
