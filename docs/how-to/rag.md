@@ -12,6 +12,26 @@ pnpm start
 
 This example requires a running vector DB (Chroma) and an embedding provider key. See `../../examples/rag/README.md`.
 
+## SQLite vec0 adapter (example)
+
+```ts
+import { SqliteVecStore } from "@fastpaca/cria/memory/sqlite-vec";
+import { cria } from "@fastpaca/cria";
+
+const store = new SqliteVecStore<string>({
+  filename: "cria.sqlite",
+  loadExtension: "/path/to/vec0", // load the sqlite-vec extension
+  dimensions: 1536,
+  embed: async (text) => embed(text),
+});
+
+const prompt = cria
+  .prompt()
+  .system("Answer using the retrieved context. If missing, say you don't know.")
+  .vectorSearch({ store, query: userQuestion, limit: 5 })
+  .user(userQuestion);
+```
+
 ## Chroma adapter (example)
 
 ```ts
