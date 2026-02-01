@@ -12,7 +12,7 @@ export interface SqliteConnectionOptions {
   /** Busy timeout in milliseconds */
   timeout?: number;
   /** Verbose logging callback */
-  verbose?: (message?: string) => void;
+  verbose?: (message?: unknown, ...additionalArgs: unknown[]) => void;
   /** Custom native binding path (advanced) */
   nativeBinding?: string;
 }
