@@ -161,8 +161,8 @@ importers:
   examples/provider-cache-pinning:
     dependencies:
       '@fastpaca/cria':
-        specifier: file:../..
-        version: file:(@anthropic-ai/sdk@0.71.2(zod@4.3.5))(@qdrant/js-client-rest@1.16.2(typescript@5.9.3))(ai@6.0.45(zod@4.3.5))(chromadb@3.2.2)(ioredis@5.9.2)(openai@6.16.0(zod@4.3.5))(pg@8.17.2)
+        specifier: link:../..
+        version: link:../..
       '@pydantic/genai-prices':
         specifier: ^0.0.52
         version: 0.0.52
@@ -507,32 +507,6 @@ packages:
   '@fastify/busboy@2.1.1':
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
-
-  '@fastpaca/cria@file:':
-    resolution: {directory: '', type: directory}
-    peerDependencies:
-      '@anthropic-ai/sdk': ^0.20.0
-      '@qdrant/js-client-rest': ^1.0.0
-      ai: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0
-      chromadb: ^1.0.0 || ^2.0.0 || ^3.0.0
-      ioredis: ^5.0.0
-      openai: ^4.0.0 || ^5.0.0 || ^6.0.0
-      pg: ^8.0.0
-    peerDependenciesMeta:
-      '@anthropic-ai/sdk':
-        optional: true
-      '@qdrant/js-client-rest':
-        optional: true
-      ai:
-        optional: true
-      chromadb:
-        optional: true
-      ioredis:
-        optional: true
-      openai:
-        optional: true
-      pg:
-        optional: true
 
   '@ioredis/commands@1.5.0':
     resolution: {integrity: sha512-eUgLqrMf8nJkZxT24JvVRrQya1vZkQh8BBeYNwGDqa5I0VUi8ACx7uFvAaLxintokpTenkK6DASvo/bvNbBGow==}
@@ -2580,19 +2554,6 @@ snapshots:
     optional: true
 
   '@fastify/busboy@2.1.1': {}
-
-  '@fastpaca/cria@file:(@anthropic-ai/sdk@0.71.2(zod@4.3.5))(@qdrant/js-client-rest@1.16.2(typescript@5.9.3))(ai@6.0.45(zod@4.3.5))(chromadb@3.2.2)(ioredis@5.9.2)(openai@6.16.0(zod@4.3.5))(pg@8.17.2)':
-    dependencies:
-      js-tiktoken: 1.0.21
-      zod: 4.3.5
-    optionalDependencies:
-      '@anthropic-ai/sdk': 0.71.2(zod@4.3.5)
-      '@qdrant/js-client-rest': 1.16.2(typescript@5.9.3)
-      ai: 6.0.45(zod@4.3.5)
-      chromadb: 3.2.2
-      ioredis: 5.9.2
-      openai: 6.16.0(zod@4.3.5)
-      pg: 8.17.2
 
   '@ioredis/commands@1.5.0': {}
 
