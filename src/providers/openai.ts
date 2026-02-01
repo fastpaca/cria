@@ -26,9 +26,15 @@ import {
 const encoder = getEncoding("cl100k_base");
 const countText = (text: string): number => encoder.encode(text).length;
 
+/** Required model type for OpenAI Responses API (excludes undefined). */
+export type ResponsesModel = Exclude<
+  ResponseCreateParamsNonStreaming["model"],
+  undefined
+>;
+
 export type OpenAIModel =
   | ChatCompletionCreateParamsNonStreaming["model"]
-  | ResponseCreateParamsNonStreaming["model"];
+  | ResponsesModel;
 
 function derivePromptCacheKey(
   context: ProviderRenderContext | undefined,
@@ -513,10 +519,7 @@ export class OpenAIChatProvider extends ProtocolProvider<
   }
 
   /** Generate a text completion using chat completions. */
-  async completion(
-    output: OpenAIChatRenderOutput,
-    _context?: ProviderRenderContext
-  ): Promise<string> {
+  async completion(output: OpenAIChatRenderOutput): Promise<string> {
     const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
       messages: output.messages,
@@ -529,8 +532,7 @@ export class OpenAIChatProvider extends ProtocolProvider<
   /** Generate a structured object using chat completions. */
   async object<T>(
     output: OpenAIChatRenderOutput,
-    schema: z.ZodType<T>,
-    _context?: ProviderRenderContext
+    schema: z.ZodType<T>
   ): Promise<T> {
     const request: ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
@@ -552,12 +554,9 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
   OpenAiToolIO
 > {
   private readonly client: OpenAI;
-  private readonly model: ResponseCreateParamsNonStreaming["model"];
+  private readonly model: ResponsesModel;
 
-  constructor(
-    client: OpenAI,
-    model: ResponseCreateParamsNonStreaming["model"]
-  ) {
+  constructor(client: OpenAI, model: ResponsesModel) {
     super(new ResponsesProtocol(), new OpenAIResponsesAdapter(model));
     this.client = client;
     this.model = model;
@@ -569,10 +568,7 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
   }
 
   /** Generate a text completion using the responses API. */
-  async completion(
-    output: OpenAIResponsesRenderOutput,
-    _context?: ProviderRenderContext
-  ): Promise<string> {
+  async completion(output: OpenAIResponsesRenderOutput): Promise<string> {
     const request: ResponseCreateParamsNonStreaming = {
       model: this.model,
       input: output.input,
@@ -585,8 +581,7 @@ export class OpenAIResponsesProvider extends ProtocolProvider<
   /** Generate a structured object using the responses API. */
   async object<T>(
     output: OpenAIResponsesRenderOutput,
-    schema: z.ZodType<T>,
-    _context?: ProviderRenderContext
+    schema: z.ZodType<T>
   ): Promise<T> {
     return schema.parse(JSON.parse(await this.completion(output)));
   }
@@ -603,7 +598,7 @@ export function createProvider(
 /** Convenience creator for the OpenAI responses provider. */
 export function createResponsesProvider(
   client: OpenAI,
-  model: ResponseCreateParamsNonStreaming["model"]
+  model: ResponsesModel
 ): OpenAIResponsesProvider {
   return new OpenAIResponsesProvider(client, model);
 }

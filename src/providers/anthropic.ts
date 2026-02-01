@@ -75,7 +75,7 @@ function applyCacheControlToBlock<T extends ContentBlockParam>(
   return {
     ...block,
     cache_control: cacheControl,
-  };
+  } as T & CacheableContentBlockParam;
 }
 
 function toContentBlocks(
@@ -570,10 +570,7 @@ export class AnthropicProvider extends ProtocolProvider<
   }
 
   /** Generate a text completion using Anthropic messages API. */
-  async completion(
-    r: AnthropicRenderResult,
-    _context?: ProviderRenderContext
-  ): Promise<string> {
+  async completion(r: AnthropicRenderResult): Promise<string> {
     const res = await this.client.messages.create({
       model: this.model,
       max_tokens: this.maxTokens,
@@ -584,11 +581,7 @@ export class AnthropicProvider extends ProtocolProvider<
   }
 
   /** Generate a structured object using Anthropic messages API. */
-  async object<T>(
-    r: AnthropicRenderResult,
-    schema: z.ZodType<T>,
-    _context?: ProviderRenderContext
-  ): Promise<T> {
+  async object<T>(r: AnthropicRenderResult, schema: z.ZodType<T>): Promise<T> {
     const systemBlocks = systemToBlocks(r.system);
     const jsonInstruction = "You must respond with valid JSON only.";
     systemBlocks.push({ type: "text", text: jsonInstruction });
