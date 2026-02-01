@@ -36,18 +36,6 @@ interface QdrantPayload<T> {
 }
 
 /**
- * Convert a Qdrant payload to a MemoryEntry.
- */
-function payloadToEntry<T>(payload: QdrantPayload<T>): MemoryEntry<T> {
-  return {
-    data: payload.data,
-    createdAt: payload.createdAt,
-    updatedAt: payload.updatedAt,
-    ...(payload.metadata && { metadata: payload.metadata }),
-  };
-}
-
-/**
  * VectorMemory implementation backed by Qdrant.
  *
  * This adapter wraps a Qdrant collection and implements the VectorMemory interface,
@@ -91,16 +79,6 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
     this.vectorName = options.vectorName;
   }
 
-  private async embed(text: string, context: string): Promise<number[]> {
-    try {
-      return await this.embedFn(text);
-    } catch (error) {
-      throw new Error(`QdrantStore: embedding failed during ${context}`, {
-        cause: error,
-      });
-    }
-  }
-
   async get(key: string): Promise<MemoryEntry<T> | null> {
     const response = await this.client.retrieve(this.collectionName, {
       ids: [key],
@@ -114,7 +92,14 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
 
     const payload = point.payload as QdrantPayload<T> | undefined;
 
-    return payload ? payloadToEntry(payload) : null;
+    return payload
+      ? {
+          data: payload.data,
+          createdAt: payload.createdAt,
+          updatedAt: payload.updatedAt,
+          ...(payload.metadata && { metadata: payload.metadata }),
+        }
+      : null;
   }
 
   async set(
@@ -126,7 +111,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
 
     // Convert data to text for embedding
     const textToEmbed = typeof data === "string" ? data : JSON.stringify(data);
-    const vector = await this.embed(textToEmbed, `set("${key}")`);
+    const vector = await this.embedFn(textToEmbed);
 
     const payload: QdrantPayload<T> = {
       data,
@@ -166,7 +151,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold;
 
-    const queryVector = await this.embed(query, "search");
+    const queryVector = await this.embedFn(query);
 
     const response = await this.client.search(this.collectionName, {
       vector: this.vectorName
@@ -189,7 +174,12 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
       results.push({
         key: String(point.id),
         score: point.score,
-        entry: payloadToEntry(payload),
+        entry: {
+          data: payload.data,
+          createdAt: payload.createdAt,
+          updatedAt: payload.updatedAt,
+          ...(payload.metadata && { metadata: payload.metadata }),
+        },
       });
     }
 
