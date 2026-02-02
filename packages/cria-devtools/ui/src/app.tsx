@@ -17,6 +17,8 @@ import {
   useRef,
   useState,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const fetchSessions = async (): Promise<DevtoolsSessionPayload[]> => {
   const response = await fetch("/cria/devtools/sessions");
@@ -123,6 +125,11 @@ const formatTokens = (before?: number, after?: number): string => {
 const formatTime = (iso: string): string => {
   const date = new Date(iso);
   return date.toLocaleTimeString();
+};
+
+const formatDateTime = (iso: string): string => {
+  const date = new Date(iso);
+  return date.toLocaleString();
 };
 
 const resolveInitiator = (session: DevtoolsSessionPayload): string => {
@@ -324,6 +331,201 @@ const deepParseJson = (obj: unknown): unknown => {
   return obj;
 };
 
+const MAX_TEXT_PREVIEW = 600;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const formatPrimitive = (value: unknown): string => {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "string") {
+    return `"${value}"`;
+  }
+  return String(value);
+};
+
+const primitiveClass = (value: unknown): string => {
+  if (value === null) {
+    return "json-null";
+  }
+  if (value === undefined) {
+    return "json-undefined";
+  }
+  return `json-${typeof value}`;
+};
+
+const stableKeyForValue = (value: unknown): string => {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "string") {
+    return `s:${value}`;
+  }
+  if (typeof value === "number") {
+    return `n:${value}`;
+  }
+  if (typeof value === "boolean") {
+    return `b:${value}`;
+  }
+  try {
+    return `j:${JSON.stringify(value)}`;
+  } catch {
+    return "j:unserializable";
+  }
+};
+
+const JsonTree = ({
+  value,
+  depth = 0,
+}: {
+  value: unknown;
+  depth?: number;
+}): ReactNode => {
+  if (Array.isArray(value)) {
+    const keyCounts = new Map<string, number>();
+    return (
+      <div className="json-tree">
+        {value.map((item, index) => {
+          const baseKey = stableKeyForValue(item);
+          const seen = keyCounts.get(baseKey) ?? 0;
+          keyCounts.set(baseKey, seen + 1);
+          const label = `[${index}]`;
+          return (
+            <JsonNode
+              depth={depth}
+              key={`${baseKey}-${seen}`}
+              label={label}
+              value={item}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (isPlainObject(value)) {
+    return (
+      <div className="json-tree">
+        {Object.entries(value).map(([key, item]) => (
+          <JsonNode
+            depth={depth}
+            key={`${depth}-${key}`}
+            label={key}
+            value={item}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <span className={`json-primitive ${primitiveClass(value)}`}>
+      {formatPrimitive(value)}
+    </span>
+  );
+};
+
+const JsonNode = ({
+  label,
+  value,
+  depth,
+}: {
+  label: string;
+  value: unknown;
+  depth: number;
+}) => {
+  const isComplex = Array.isArray(value) || isPlainObject(value);
+
+  if (!isComplex) {
+    return (
+      <div className="json-row">
+        <span className="json-key">{label}</span>
+        <span className="json-separator">:</span>
+        <span className={`json-primitive ${primitiveClass(value)}`}>
+          {formatPrimitive(value)}
+        </span>
+      </div>
+    );
+  }
+
+  const childCount = Array.isArray(value)
+    ? value.length
+    : Object.keys(value).length;
+  const preview = Array.isArray(value)
+    ? `Array(${childCount})`
+    : `Object(${childCount})`;
+
+  return (
+    <details className="json-node" open={depth < 1}>
+      <summary>
+        <span className="json-key">{label}</span>
+        <span className="json-separator">:</span>
+        <span className="json-preview">{preview}</span>
+      </summary>
+      <div className="json-children">
+        <JsonTree depth={depth + 1} value={value} />
+      </div>
+    </details>
+  );
+};
+
+const renderJsonValue = (value: unknown): ReactNode => {
+  if (typeof value === "string") {
+    const isMultiline = value.includes("\n") || value.length > 120;
+    if (isMultiline) {
+      return <pre className="json-pre">{value}</pre>;
+    }
+  }
+
+  return <JsonTree value={value} />;
+};
+
+const JsonViewer = ({ value }: { value: unknown }) => {
+  return <div className="json-viewer">{renderJsonValue(value)}</div>;
+};
+
+const MessageContent = ({
+  text,
+  renderMarkdown,
+}: {
+  text: string;
+  renderMarkdown: boolean;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > MAX_TEXT_PREVIEW;
+
+  return (
+    <div
+      className={`message-text ${renderMarkdown ? "markdown" : "plain"} ${
+        isLong && !expanded ? "collapsed" : ""
+      }`}
+    >
+      {renderMarkdown ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      ) : (
+        <pre>{text}</pre>
+      )}
+      {isLong && (
+        <button
+          className="text-toggle"
+          onClick={() => setExpanded(!expanded)}
+          type="button"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+};
+
 const CollapsibleSection = ({
   title,
   badge,
@@ -363,6 +565,7 @@ const ToolInvocation = ({
   const [isOpen, setIsOpen] = useState(true);
   const parsedInput = deepParseJson(call.input);
   const parsedOutput = result ? deepParseJson(result.output) : null;
+  const hasOutput = result !== undefined;
   const hasInput =
     parsedInput &&
     typeof parsedInput === "object" &&
@@ -385,13 +588,13 @@ const ToolInvocation = ({
           {hasInput && (
             <div className="tool-invocation-section">
               <div className="tool-invocation-label">Input</div>
-              <pre>{JSON.stringify(parsedInput, null, 2)}</pre>
+              <JsonViewer value={parsedInput} />
             </div>
           )}
-          {parsedOutput && (
+          {hasOutput && (
             <div className="tool-invocation-section">
               <div className="tool-invocation-label">Output</div>
-              <pre>{JSON.stringify(parsedOutput, null, 2)}</pre>
+              <JsonViewer value={parsedOutput} />
             </div>
           )}
         </div>
@@ -403,9 +606,11 @@ const ToolInvocation = ({
 const MessageCard = ({
   message,
   showConnector = false,
+  renderMarkdown,
 }: {
   message: DevtoolsMessageSnapshot;
   showConnector?: boolean;
+  renderMarkdown: boolean;
 }) => {
   const roleConfig = ROLE_CONFIG[message.role] ?? {
     icon: "?",
@@ -440,9 +645,10 @@ const MessageCard = ({
         {(hasText || hasReasoning || hasToolResults) && (
           <div className="message-body">
             {hasText && (
-              <div className="message-text">
-                <pre>{message.text}</pre>
-              </div>
+              <MessageContent
+                renderMarkdown={renderMarkdown}
+                text={message.text ?? ""}
+              />
             )}
 
             {hasReasoning && (
@@ -462,7 +668,7 @@ const MessageCard = ({
                     <div className="tool-result-label">
                       {result.toolName} result
                     </div>
-                    <pre>{JSON.stringify(parsedOutput, null, 2)}</pre>
+                    <JsonViewer value={parsedOutput} />
                   </div>
                 );
               })}
@@ -509,7 +715,13 @@ const collectInvocations = (turn: MessageTurn): ToolInvocationData[] => {
   );
 };
 
-const TurnCard = ({ turn }: { turn: MessageTurn }) => {
+const TurnCard = ({
+  turn,
+  renderMarkdown,
+}: {
+  turn: MessageTurn;
+  renderMarkdown: boolean;
+}) => {
   const { assistant } = turn;
   const invocations = collectInvocations(turn);
   const hasInvocations = invocations.length > 0;
@@ -540,9 +752,10 @@ const TurnCard = ({ turn }: { turn: MessageTurn }) => {
 
           {assistant.text && (
             <div className="message-body">
-              <div className="message-text">
-                <pre>{assistant.text}</pre>
-              </div>
+              <MessageContent
+                renderMarkdown={renderMarkdown}
+                text={assistant.text}
+              />
             </div>
           )}
         </article>
@@ -565,8 +778,10 @@ const TurnCard = ({ turn }: { turn: MessageTurn }) => {
 
 const MessageSnapshot = ({
   snapshots,
+  renderMarkdown,
 }: {
   snapshots: DevtoolsMessageSnapshot[];
+  renderMarkdown: boolean;
 }) => {
   if (snapshots.length === 0) {
     return <div className="empty">No messages captured.</div>;
@@ -581,6 +796,7 @@ const MessageSnapshot = ({
           return (
             <TurnCard
               key={`turn-${item.assistant.phase}-${item.assistant.index}`}
+              renderMarkdown={renderMarkdown}
               turn={item}
             />
           );
@@ -589,6 +805,7 @@ const MessageSnapshot = ({
           <MessageCard
             key={`${item.phase}-${item.index}`}
             message={item}
+            renderMarkdown={renderMarkdown}
             showConnector={false}
           />
         );
@@ -604,18 +821,307 @@ const DETAIL_TABS = [
   { key: "raw", label: "Raw" },
 ] as const;
 
+type PayloadViewMode = "after" | "before" | "compare";
+type RawViewMode = "tree" | "raw";
+
+const tokenDeltaClass = (delta: number | undefined): string => {
+  if (delta === undefined) {
+    return "muted";
+  }
+  if (delta > 0) {
+    return "delta-up";
+  }
+  if (delta < 0) {
+    return "delta-down";
+  }
+  return "";
+};
+
+const formatTokenDelta = (delta: number | undefined): string => {
+  if (delta === undefined) {
+    return "-";
+  }
+  return `${delta > 0 ? "+" : ""}${delta}`;
+};
+
+const SessionHeader = ({ session }: { session: DevtoolsSessionPayload }) => {
+  const tokenDelta =
+    session.totalTokensBefore !== undefined &&
+    session.totalTokensAfter !== undefined
+      ? session.totalTokensAfter - session.totalTokensBefore
+      : undefined;
+  const traceId = session.trace?.traceId;
+  const traceLabel = traceId ? traceId.slice(0, 12) : "-";
+  const sourceLabel = [
+    session.source?.serviceName,
+    session.source?.serviceInstanceId,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const initiatorLabel = resolveInitiator(session);
+
+  return (
+    <div className="details-header">
+      <h2>{session.label ?? session.id}</h2>
+      {session.error && <p className="error-banner">{session.error.message}</p>}
+      <div className="details-meta">
+        <div className="meta-item">
+          <div className="meta-label">Status</div>
+          <div className={`meta-value status-${session.status}`}>
+            {session.status}
+          </div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Started</div>
+          <div className="meta-value">{formatDateTime(session.startedAt)}</div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Duration</div>
+          <div className="meta-value">{formatDuration(session.durationMs)}</div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Budget</div>
+          <div className="meta-value">{session.budget ?? "-"}</div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Tokens</div>
+          <div className="meta-value">
+            {formatTokens(session.totalTokensBefore, session.totalTokensAfter)}
+          </div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Delta</div>
+          <div className={`meta-value ${tokenDeltaClass(tokenDelta)}`}>
+            {formatTokenDelta(tokenDelta)}
+          </div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Iterations</div>
+          <div className="meta-value">{session.iterations ?? 0}</div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Trace</div>
+          <div className="meta-value" title={traceId ?? undefined}>
+            {traceLabel}
+          </div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Source</div>
+          <div className="meta-value" title={sourceLabel || undefined}>
+            {sourceLabel || "-"}
+          </div>
+        </div>
+        <div className="meta-item">
+          <div className="meta-label">Initiator</div>
+          <div className="meta-value" title={initiatorLabel}>
+            {initiatorLabel}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PayloadPanel = ({
+  session,
+  active,
+}: {
+  session: DevtoolsSessionPayload;
+  active: boolean;
+}) => {
+  const [viewMode, setViewMode] = useState<PayloadViewMode>("after");
+  const [renderMarkdown, setRenderMarkdown] = useState(false);
+
+  return (
+    <div className={`panel ${active ? "active" : ""}`}>
+      <div className="panel-toolbar">
+        <div className="toggle-group">
+          <button
+            className={viewMode === "after" ? "active" : ""}
+            onClick={() => setViewMode("after")}
+            type="button"
+          >
+            Sent
+          </button>
+          <button
+            className={viewMode === "before" ? "active" : ""}
+            onClick={() => setViewMode("before")}
+            type="button"
+          >
+            Before Fit
+          </button>
+          <button
+            className={viewMode === "compare" ? "active" : ""}
+            onClick={() => setViewMode("compare")}
+            type="button"
+          >
+            Compare
+          </button>
+        </div>
+        <div className="toggle-group">
+          <button
+            className={renderMarkdown ? "" : "active"}
+            onClick={() => setRenderMarkdown(false)}
+            type="button"
+          >
+            Text
+          </button>
+          <button
+            className={renderMarkdown ? "active" : ""}
+            onClick={() => setRenderMarkdown(true)}
+            type="button"
+          >
+            Markdown
+          </button>
+        </div>
+      </div>
+      {viewMode === "compare" ? (
+        <div className="compare-grid">
+          <div className="compare-column">
+            <div className="compare-title">Before Fit</div>
+            <MessageSnapshot
+              renderMarkdown={renderMarkdown}
+              snapshots={session.snapshots.before}
+            />
+          </div>
+          <div className="compare-column">
+            <div className="compare-title">Sent</div>
+            <MessageSnapshot
+              renderMarkdown={renderMarkdown}
+              snapshots={session.snapshots.after}
+            />
+          </div>
+        </div>
+      ) : (
+        <MessageSnapshot
+          renderMarkdown={renderMarkdown}
+          snapshots={
+            viewMode === "before"
+              ? session.snapshots.before
+              : session.snapshots.after
+          }
+        />
+      )}
+    </div>
+  );
+};
+
+const FitPanel = ({
+  session,
+  active,
+}: {
+  session: DevtoolsSessionPayload;
+  active: boolean;
+}) => {
+  const hasIterations = Boolean(session.iterations && session.iterations > 0);
+  const events = [...session.strategyEvents].sort((a, b) =>
+    a.iteration === b.iteration
+      ? a.priority - b.priority
+      : a.iteration - b.iteration
+  );
+
+  return (
+    <div className={`panel ${active ? "active" : ""}`}>
+      {events.length === 0 ? (
+        <div className="empty">
+          {hasIterations
+            ? "No strategy events recorded."
+            : "Fit loop did not run (under budget or disabled)."}
+        </div>
+      ) : (
+        <div className="message-list">
+          {events.map((event, index) => (
+            <article
+              className="message-card"
+              key={`${event.iteration}-${index}`}
+            >
+              <header className="message-header">
+                <strong>
+                  Iteration {event.iteration} · priority {event.priority}
+                </strong>
+                <span>{event.result}</span>
+              </header>
+              <JsonViewer value={event.targetScope} />
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TimingPanel = ({
+  session,
+  active,
+}: {
+  session: DevtoolsSessionPayload;
+  active: boolean;
+}) => {
+  return (
+    <div className={`panel ${active ? "active" : ""}`}>
+      {session.timing.length === 0 ? (
+        <div className="empty">No timing data.</div>
+      ) : (
+        <div className="timing-list">
+          {session.timing.map((event, index) => (
+            <div className="timing-row" key={`${event.name}-${index}`}>
+              <span>{event.name}</span>
+              <span>
+                {formatDuration(event.endOffsetMs - event.startOffsetMs)} (+
+                {event.startOffsetMs.toFixed(0)}ms)
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RawPanel = ({
+  session,
+  active,
+}: {
+  session: DevtoolsSessionPayload;
+  active: boolean;
+}) => {
+  const [rawMode, setRawMode] = useState<RawViewMode>("tree");
+
+  return (
+    <div className={`panel ${active ? "active" : ""}`}>
+      <div className="panel-toolbar">
+        <div className="toggle-group">
+          <button
+            className={rawMode === "tree" ? "active" : ""}
+            onClick={() => setRawMode("tree")}
+            type="button"
+          >
+            Tree
+          </button>
+          <button
+            className={rawMode === "raw" ? "active" : ""}
+            onClick={() => setRawMode("raw")}
+            type="button"
+          >
+            Raw
+          </button>
+        </div>
+      </div>
+      {rawMode === "tree" ? (
+        <JsonViewer value={session} />
+      ) : (
+        <pre className="raw-pre">{JSON.stringify(session, null, 2)}</pre>
+      )}
+    </div>
+  );
+};
+
 const SessionDetails = ({ session }: { session: DevtoolsSessionPayload }) => {
   const [activeTab, setActiveTab] = useState<string>("payload");
-  const [payloadPhase, setPayloadPhase] = useState<"before" | "after">("after");
 
   return (
     <section className="details">
-      <div className="details-header">
-        <h2>{session.label ?? session.id}</h2>
-        {session.error && (
-          <p className="error-banner">{session.error.message}</p>
-        )}
-      </div>
+      <SessionHeader session={session} />
 
       <div className="tabs">
         {DETAIL_TABS.map((tab) => (
@@ -630,82 +1136,10 @@ const SessionDetails = ({ session }: { session: DevtoolsSessionPayload }) => {
         ))}
       </div>
 
-      <div className={`panel ${activeTab === "payload" ? "active" : ""}`}>
-        <div className="payload-toggle">
-          <button
-            className={payloadPhase === "after" ? "active" : ""}
-            onClick={() => setPayloadPhase("after")}
-            type="button"
-          >
-            Sent
-          </button>
-          <button
-            className={payloadPhase === "before" ? "active" : ""}
-            onClick={() => setPayloadPhase("before")}
-            type="button"
-          >
-            Before Fit
-          </button>
-        </div>
-        <MessageSnapshot
-          snapshots={
-            payloadPhase === "before"
-              ? session.snapshots.before
-              : session.snapshots.after
-          }
-        />
-      </div>
-
-      <div className={`panel ${activeTab === "fit" ? "active" : ""}`}>
-        {session.strategyEvents.length === 0 ? (
-          <div className="empty">No strategy events recorded.</div>
-        ) : (
-          <div className="message-list">
-            {[...session.strategyEvents]
-              .sort((a, b) =>
-                a.iteration === b.iteration
-                  ? a.priority - b.priority
-                  : a.iteration - b.iteration
-              )
-              .map((event, index) => (
-                <article
-                  className="message-card"
-                  key={`${event.iteration}-${index}`}
-                >
-                  <header className="message-header">
-                    <strong>
-                      Iteration {event.iteration} · priority {event.priority}
-                    </strong>
-                    <span>{event.result}</span>
-                  </header>
-                  <pre>{JSON.stringify(event.targetScope, null, 2)}</pre>
-                </article>
-              ))}
-          </div>
-        )}
-      </div>
-
-      <div className={`panel ${activeTab === "timing" ? "active" : ""}`}>
-        {session.timing.length === 0 ? (
-          <div className="empty">No timing data.</div>
-        ) : (
-          <div className="timing-list">
-            {session.timing.map((event, index) => (
-              <div className="timing-row" key={`${event.name}-${index}`}>
-                <span>{event.name}</span>
-                <span>
-                  {formatDuration(event.endOffsetMs - event.startOffsetMs)} (+
-                  {event.startOffsetMs.toFixed(0)}ms)
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={`panel ${activeTab === "raw" ? "active" : ""}`}>
-        <pre>{JSON.stringify(session, null, 2)}</pre>
-      </div>
+      <PayloadPanel active={activeTab === "payload"} session={session} />
+      <FitPanel active={activeTab === "fit"} session={session} />
+      <TimingPanel active={activeTab === "timing"} session={session} />
+      <RawPanel active={activeTab === "raw"} session={session} />
     </section>
   );
 };
@@ -715,6 +1149,8 @@ export const App = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const traceEndpoint = origin ? `${origin}/v1/traces` : "/v1/traces";
 
   const {
     width: tableWidth,
@@ -745,7 +1181,7 @@ export const App = () => {
     [queryClient]
   );
 
-  useSessionStream(handleSession);
+  const streamConnected = useSessionStream(handleSession);
 
   const sessions = sessionsQuery.data ?? [];
   const filtered = filterSessions(sessions, query, statusFilter).sort((a, b) =>
@@ -765,29 +1201,46 @@ export const App = () => {
   return (
     <div className="app">
       <section className="toolbar">
-        <input
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search sessions, ids, traces"
-          type="search"
-          value={query}
-        />
-        <div className="chips">
-          {[
-            { key: "all", label: "All" },
-            { key: "success", label: "Ok" },
-            { key: "error", label: "Error" },
-          ].map((chip) => (
-            <button
-              className={`chip ${statusFilter === chip.key ? "active" : ""}`}
-              key={chip.key}
-              onClick={() => setStatusFilter(chip.key)}
-              type="button"
-            >
-              {chip.label}
-            </button>
-          ))}
+        <div className="brand">
+          <div className="brand-title">Cria DevTools</div>
+          <div
+            className={`connection ${streamConnected ? "live" : "offline"}`}
+            title={streamConnected ? "Connected to stream" : "Stream offline"}
+          >
+            <span className="status-dot" />
+            {streamConnected ? "Live" : "Offline"}
+          </div>
         </div>
-        <div className="meta">{filtered.length} sessions</div>
+        <div className="toolbar-controls">
+          <input
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search sessions, ids, traces"
+            type="search"
+            value={query}
+          />
+          <div className="chips">
+            {[
+              { key: "all", label: "All" },
+              { key: "success", label: "Ok" },
+              { key: "error", label: "Error" },
+            ].map((chip) => (
+              <button
+                className={`chip ${statusFilter === chip.key ? "active" : ""}`}
+                key={chip.key}
+                onClick={() => setStatusFilter(chip.key)}
+                type="button"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="toolbar-meta">
+          <div className="endpoint" title={traceEndpoint}>
+            OTLP {traceEndpoint}
+          </div>
+          <div className="meta">{filtered.length} sessions</div>
+        </div>
       </section>
 
       <main
@@ -828,7 +1281,14 @@ export const App = () => {
               </button>
             ))}
             {table.getRowModel().rows.length === 0 && (
-              <div className="empty">No sessions yet.</div>
+              <div className="empty">
+                <div className="empty-stack">
+                  <div>No sessions yet.</div>
+                  <div className="empty-hint">
+                    Send OTLP traces to {traceEndpoint}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
