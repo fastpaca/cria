@@ -127,6 +127,31 @@ importers:
         specifier: ^4
         version: 4.21.0
 
+  examples/04-rich-example:
+    dependencies:
+      '@fastpaca/cria':
+        specifier: workspace:*
+        version: link:../..
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
+      '@opentelemetry/exporter-trace-otlp-http':
+        specifier: ^0.211.0
+        version: 0.211.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources':
+        specifier: ^2.5.0
+        version: 2.5.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-base':
+        specifier: ^2.5.0
+        version: 2.5.0(@opentelemetry/api@1.9.0)
+      openai:
+        specifier: ^4
+        version: 4.104.0(zod@4.3.5)
+    devDependencies:
+      tsx:
+        specifier: ^4
+        version: 4.21.0
+
   examples/provider-cache-pinning:
     dependencies:
       '@fastpaca/cria':

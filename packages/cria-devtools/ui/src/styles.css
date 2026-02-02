@@ -1,5 +1,5 @@
-/* Cria DevTools - Fastpaca Minimal */
-/* Black. White. Yellow. Nothing else. */
+/* Cria DevTools - Fastpaca Brutalist */
+/* Black. White. Yellow. Sharp edges. No decoration. */
 
 :root {
   --bg: #000;
@@ -364,16 +364,84 @@ body {
   border-color: var(--accent);
 }
 
-/* Message cards */
-.message-list {
+/* Timeline layout */
+.timeline {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  background: var(--border);
+  gap: 16px;
+  padding-left: 8px;
 }
 
+.timeline-item,
+.timeline-turn {
+  display: flex;
+  gap: 12px;
+}
+
+.timeline-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 24px;
+}
+
+.timeline-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--border);
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.timeline-dot.role-system {
+  background: rgba(139, 92, 246, 0.2);
+  color: #8b5cf6;
+}
+
+.timeline-dot.role-user {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.timeline-dot.role-assistant {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.timeline-dot.role-tool {
+  background: rgba(250, 204, 21, 0.2);
+  color: var(--accent);
+}
+
+.timeline-line {
+  flex: 1;
+  width: 2px;
+  min-height: 20px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.turn-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Message cards */
 .message-card {
+  flex: 1;
+  min-width: 0;
   background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
 }
 
 .message-header {
@@ -384,23 +452,335 @@ body {
   background: var(--bg-subtle);
 }
 
-.message-header strong {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text);
+.message-role {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.message-header span {
+.role-label {
   font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.message-index {
+  font-size: 10px;
   color: var(--text-muted);
+  font-weight: 400;
+}
+
+.tool-count {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: rgba(250, 204, 21, 0.15);
+  color: var(--accent);
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message-id {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(250, 204, 21, 0.15);
+  color: var(--accent);
+  font-family: var(--font);
+}
+
+.scope-path {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Role-specific styling */
+.role-system .role-label {
+  color: #8b5cf6;
+}
+
+.role-user .role-label {
+  color: #3b82f6;
+}
+
+.role-assistant .role-label {
+  color: #22c55e;
+}
+
+.role-tool .role-label {
+  color: var(--accent);
 }
 
 .message-body {
   padding: 12px;
 }
 
+.message-text pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 12px;
+}
+
 .message-body .muted {
   color: var(--text-muted);
+}
+
+/* Tool invocations (call + result together) */
+.tool-invocations {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.tool-invocation {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.tool-invocation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-subtle);
+  border: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tool-invocation-header:hover {
+  background: var(--bg-hover);
+}
+
+.tool-invocation-icon {
+  font-size: 8px;
+  color: var(--text-muted);
+  width: 10px;
+}
+
+.tool-invocation-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tool-invocation-id {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.tool-invocation-status {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.tool-invocation-body {
+  border-top: 1px solid var(--border);
+}
+
+.tool-invocation-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-invocation-section:last-child {
+  border-bottom: none;
+}
+
+.tool-invocation-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.tool-invocation-section pre {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow: auto;
+}
+
+/* Standalone tool result (for ungrouped tools) */
+.standalone-tool-result {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg-subtle);
+}
+
+.standalone-tool-result:first-child {
+  margin-top: 0;
+}
+
+.tool-result-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+/* Collapsible sections */
+.collapsible {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.collapsible:first-child {
+  margin-top: 0;
+}
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-subtle);
+  border: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.collapsible-header:hover {
+  background: var(--bg-hover);
+}
+
+.collapsible-icon {
+  font-size: 8px;
+  color: var(--text-muted);
+  width: 12px;
+}
+
+.collapsible-title {
+  flex: 1;
+}
+
+.collapsible-badge {
+  padding: 2px 6px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.collapsible-content {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Tool calls and results */
+.tool-calls-list,
+.tool-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tool-call-card,
+.tool-result-card {
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.tool-call-header,
+.tool-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.tool-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tool-id {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font);
+}
+
+.tool-call-body,
+.tool-result-body {
+  padding: 10px 12px;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.tool-call-body pre,
+.tool-result-body pre {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* JSON viewer */
+.json-viewer {
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.json-label {
+  padding: 6px 10px;
+  background: var(--bg-subtle);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.json-content {
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 300px;
+  overflow: auto;
+}
+
+/* Reasoning */
+.reasoning-content {
+  margin: 0;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .pill {
