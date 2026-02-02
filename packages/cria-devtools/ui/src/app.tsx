@@ -118,26 +118,6 @@ const formatTime = (iso: string): string => {
   return date.toLocaleTimeString();
 };
 
-const getPulseClass = (isError: boolean, isConnected: boolean): string => {
-  if (isError) {
-    return "pulse error";
-  }
-  if (isConnected) {
-    return "pulse live";
-  }
-  return "pulse";
-};
-
-const getStatusText = (isError: boolean, isEmpty: boolean): string => {
-  if (isError) {
-    return "Offline";
-  }
-  if (isEmpty) {
-    return "Waiting for sessions";
-  }
-  return "Live";
-};
-
 const resolveInitiator = (session: DevtoolsSessionPayload): string => {
   const initiator = session.initiator?.name;
   if (initiator) {
@@ -287,40 +267,10 @@ const SessionDetails = ({ session }: { session: DevtoolsSessionPayload }) => {
   return (
     <section className="details">
       <div className="details-header">
-        <div>
-          <span className="eyebrow">Session</span>
-          <h2>{session.label ?? session.id}</h2>
-          {session.error && (
-            <p className="error-banner">{session.error.message}</p>
-          )}
-        </div>
-        <div className="summary-grid">
-          <div>
-            <span>Budget</span>
-            <strong>{session.budget ?? "-"}</strong>
-          </div>
-          <div>
-            <span>Tokens</span>
-            <strong>
-              {formatTokens(
-                session.totalTokensBefore,
-                session.totalTokensAfter
-              )}
-            </strong>
-          </div>
-          <div>
-            <span>Iterations</span>
-            <strong>{session.iterations ?? "-"}</strong>
-          </div>
-          <div>
-            <span>Duration</span>
-            <strong>{formatDuration(session.durationMs)}</strong>
-          </div>
-          <div>
-            <span>Initiator</span>
-            <strong>{resolveInitiator(session)}</strong>
-          </div>
-        </div>
+        <h2>{session.label ?? session.id}</h2>
+        {session.error && (
+          <p className="error-banner">{session.error.message}</p>
+        )}
       </div>
 
       <div className="tabs">
@@ -451,7 +401,7 @@ export const App = () => {
     [queryClient]
   );
 
-  const streamConnected = useSessionStream(handleSession);
+  useSessionStream(handleSession);
 
   const sessions = sessionsQuery.data ?? [];
   const filtered = filterSessions(sessions, query, statusFilter).sort((a, b) =>
@@ -470,21 +420,6 @@ export const App = () => {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div>
-          <span className="eyebrow">Cria</span>
-          <h1>DevTools</h1>
-        </div>
-        <div className="status">
-          <span
-            className={getPulseClass(sessionsQuery.isError, streamConnected)}
-          />
-          <span>
-            {getStatusText(sessionsQuery.isError, sessions.length === 0)}
-          </span>
-        </div>
-      </header>
-
       <section className="toolbar">
         <input
           onChange={(event) => setQuery(event.target.value)}
