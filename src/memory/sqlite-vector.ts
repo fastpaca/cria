@@ -298,7 +298,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       args: [this.indexName, serializedQuery, limit],
     });
 
-    const rows = result.rows as SqliteVectorSearchRow[];
+    const rows = result.rows as unknown as SqliteVectorSearchRow[];
     const results: VectorSearchResult<T>[] = [];
 
     for (const row of rows) {
