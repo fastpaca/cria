@@ -213,7 +213,8 @@ body {
 .table {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   min-width: 300px;
 }
 
@@ -224,7 +225,7 @@ body {
 
 .row {
   display: grid;
-  grid-template-columns: 1fr 72px 56px 72px 64px 72px 100px;
+  grid-template-columns: var(--col-name, 1fr) 72px 56px 72px 64px 72px 100px;
   font-size: 13px;
   border: none;
   background: none;
@@ -251,6 +252,7 @@ body {
 .tbody {
   flex: 1;
   overflow-y: auto;
+  overflow-x: visible;
 }
 
 .tbody::-webkit-scrollbar {
@@ -287,6 +289,28 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.col-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.col-resizer {
+  margin-left: auto;
+  width: 8px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  cursor: col-resize;
+}
+
+.col-resizer:hover,
+.col-resizer.dragging {
+  background: var(--accent);
 }
 
 /* Status badges - full words */
@@ -1185,7 +1209,7 @@ body {
 /* Responsive */
 @media (max-width: 900px) {
   .row {
-    grid-template-columns: 1fr 72px 72px;
+    grid-template-columns: var(--col-name, 1fr) 72px 72px;
   }
   .col-budget,
   .col-duration,
@@ -1230,7 +1254,7 @@ body {
     display: none;
   }
   .row {
-    grid-template-columns: 1fr 72px;
+    grid-template-columns: var(--col-name, 1fr) 72px;
   }
   .col-tokens {
     display: none;

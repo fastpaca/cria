@@ -10,6 +10,8 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import {
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -102,6 +104,50 @@ const useResizablePanel = (
   return { width, isDragging, startDragging, containerRef };
 };
 
+const useResizableColumn = (minWidth: number, maxWidth: number) => {
+  const [width, setWidth] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const tableRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!tableRef.current) {
+        return;
+      }
+      const rect = tableRef.current.getBoundingClientRect();
+      const nextWidth = Math.min(
+        Math.max(event.clientX - rect.left, minWidth),
+        maxWidth
+      );
+      setWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      document.body.classList.remove("resizing");
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, maxWidth, minWidth]);
+
+  const startDragging = useCallback(() => {
+    setIsDragging(true);
+    document.body.classList.add("resizing");
+  }, []);
+
+  return { width, isDragging, startDragging, tableRef };
+};
+
 const formatDuration = (ms?: number): string => {
   if (!ms && ms !== 0) {
     return "-";
@@ -146,11 +192,24 @@ const resolveInitiator = (session: DevtoolsSessionPayload): string => {
 
 const columnHelper = createColumnHelper<DevtoolsSessionPayload>();
 
-const buildColumns = () =>
+const buildColumns = (
+  onNameResizeStart: (event: ReactMouseEvent<HTMLButtonElement>) => void,
+  isResizing: boolean
+) =>
   [
     columnHelper.accessor((row) => row.label ?? row.id, {
       id: "name",
-      header: "Name",
+      header: () => (
+        <div className="col-header">
+          <span>Name</span>
+          <button
+            aria-label="Resize Name column"
+            className={`col-resizer ${isResizing ? "dragging" : ""}`}
+            onMouseDown={onNameResizeStart}
+            type="button"
+          />
+        </div>
+      ),
       cell: (info) => info.getValue(),
     }),
     columnHelper.accessor((row) => row.status, {
@@ -333,6 +392,9 @@ const deepParseJson = (obj: unknown): unknown => {
 
 const MAX_TEXT_PREVIEW = 600;
 const DIFF_TOKEN_REGEX = /(\s+)/;
+const SESSION_PARAM = "session";
+const NAME_COLUMN_MIN_WIDTH = 160;
+const NAME_COLUMN_MAX_WIDTH = 900;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -491,6 +553,13 @@ const renderJsonValue = (value: unknown): ReactNode => {
 
 const JsonViewer = ({ value }: { value: unknown }) => {
   return <div className="json-viewer">{renderJsonValue(value)}</div>;
+};
+
+const getSessionFromUrl = (): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return new URLSearchParams(window.location.search).get(SESSION_PARAM);
 };
 
 const MessageContent = ({
@@ -1486,10 +1555,16 @@ export const App = () => {
 
   const {
     width: tableWidth,
-    isDragging,
-    startDragging,
+    isDragging: isPanelDragging,
+    startDragging: startPanelDragging,
     containerRef,
   } = useResizablePanel(450, 300, 0.7);
+  const {
+    width: nameColumnWidth,
+    isDragging: isNameResizing,
+    startDragging: startNameResize,
+    tableRef,
+  } = useResizableColumn(NAME_COLUMN_MIN_WIDTH, NAME_COLUMN_MAX_WIDTH);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
@@ -1514,13 +1589,23 @@ export const App = () => {
   );
 
   const streamConnected = useSessionStream(handleSession);
+  const handleNameResizeStart = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      startNameResize();
+    },
+    [startNameResize]
+  );
 
   const sessions = sessionsQuery.data ?? [];
   const filtered = filterSessions(sessions, query, statusFilter).sort((a, b) =>
     a.startedAt < b.startedAt ? 1 : -1
   );
 
-  const columns = useMemo(() => buildColumns(), []);
+  const columns = useMemo(
+    () => buildColumns(handleNameResizeStart, isNameResizing),
+    [handleNameResizeStart, isNameResizing]
+  );
   const table = useReactTable({
     data: filtered,
     columns,
@@ -1529,6 +1614,38 @@ export const App = () => {
 
   const selected =
     sessions.find((session) => session.id === selectedId) ?? null;
+  const tableStyle = useMemo(
+    () => ({
+      ...(selected ? { width: tableWidth } : {}),
+      ...(nameColumnWidth !== null
+        ? { "--col-name": `${nameColumnWidth}px` }
+        : {}),
+    }),
+    [nameColumnWidth, selected, tableWidth]
+  );
+
+  useEffect(() => {
+    if (selectedId) {
+      return;
+    }
+    const initialId = getSessionFromUrl();
+    if (initialId) {
+      setSelectedId(initialId);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (selectedId) {
+      url.searchParams.set(SESSION_PARAM, selectedId);
+    } else {
+      url.searchParams.delete(SESSION_PARAM);
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, [selectedId]);
 
   return (
     <div className="app">
@@ -1581,7 +1698,8 @@ export const App = () => {
       >
         <div
           className="table"
-          style={selected ? { width: tableWidth } : undefined}
+          ref={tableRef}
+          style={tableStyle as CSSProperties}
         >
           <div className="thead">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -1630,8 +1748,8 @@ export const App = () => {
             {/* biome-ignore lint/a11y/noStaticElementInteractions: resize handles are standard UI patterns */}
             {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: resize handles are standard UI patterns */}
             <div
-              className={`resize-handle ${isDragging ? "dragging" : ""}`}
-              onMouseDown={startDragging}
+              className={`resize-handle ${isPanelDragging ? "dragging" : ""}`}
+              onMouseDown={startPanelDragging}
             />
             <SessionDetails session={selected} />
           </>
