@@ -115,8 +115,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   async get(key: string): Promise<MemoryEntry<T> | null> {
     await this.ensureTable();
 
-    const db = this.db;
-    const result = await db.execute({
+    const result = await this.db.execute({
       sql: `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = ?`,
       args: [key],
     });
@@ -147,13 +146,12 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   ): Promise<void> {
     await this.ensureTable();
 
-    const db = this.db;
     const now = Date.now();
     const serializedData = JSON.stringify(data);
     const serializedMetadata =
       metadata !== undefined ? JSON.stringify(metadata) : null;
 
-    await db.execute({
+    await this.db.execute({
       sql: `
         INSERT INTO ${this.tableName} (key, data, created_at, updated_at, metadata)
         VALUES (?, ?, ?, ?, ?)
@@ -169,8 +167,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   async delete(key: string): Promise<boolean> {
     await this.ensureTable();
 
-    const db = this.db;
-    const result = await db.execute({
+    const result = await this.db.execute({
       sql: `DELETE FROM ${this.tableName} WHERE key = ?`,
       args: [key],
     });
