@@ -1,15 +1,15 @@
-import Database from "better-sqlite3";
+import type { Client, Config } from "@libsql/client";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
- * Connection options for a SQLite database.
+ * Connection options for a libSQL database.
  */
-export type SqliteConnectionOptions = Database.Options;
+export type SqliteConnectionOptions = Omit<Config, "url">;
 
 /**
- * better-sqlite3 Database instance used by the store.
+ * libSQL Client instance used by the store.
  */
-export type SqliteDatabase = Database.Database;
+export type SqliteDatabase = Client;
 
 interface SqliteRow {
   key: string;
@@ -29,11 +29,11 @@ export interface SqliteStoreOptions {
    */
   filename?: string;
   /**
-   * Options passed to the SQLite driver.
+   * Options passed to the libSQL client.
    */
   options?: SqliteConnectionOptions;
   /**
-   * Provide an existing database instance (overrides filename/options).
+   * Provide an existing database client (overrides filename/options).
    */
   database?: SqliteDatabase;
   /**
@@ -52,8 +52,8 @@ export interface SqliteStoreOptions {
 /**
  * SQLite-backed implementation of KVMemory.
  *
- * Plug-and-play adapter using better-sqlite3. Just pass a filename or
- * an existing database instance.
+ * Plug-and-play adapter using libSQL. Just pass a filename or
+ * an existing database client.
  *
  * @template T - The type of data to store
  *
@@ -70,9 +70,12 @@ export interface SqliteStoreOptions {
  * ```
  */
 export class SqliteStore<T = unknown> implements KVMemory<T> {
-  private readonly db: SqliteDatabase;
+  private db: SqliteDatabase | null = null;
   private readonly tableName: string;
   private readonly autoCreateTable: boolean;
+  private readonly filename: string;
+  private readonly dbOptions: SqliteConnectionOptions | undefined;
+  private readonly externalDb: SqliteDatabase | undefined;
   private tableCreated = false;
 
   constructor(options: SqliteStoreOptions = {}) {
@@ -84,17 +87,42 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
       autoCreateTable,
     } = options;
 
-    this.db = database ?? new Database(filename ?? ":memory:", dbOptions);
+    this.externalDb = database;
+    this.filename = filename ?? ":memory:";
+    this.dbOptions = dbOptions;
     this.tableName = tableName ?? "cria_kv_store";
     this.autoCreateTable = autoCreateTable ?? true;
   }
 
-  private ensureTable(): void {
+  private async getDb(): Promise<SqliteDatabase> {
+    if (this.db) {
+      return this.db;
+    }
+
+    if (this.externalDb) {
+      this.db = this.externalDb;
+      return this.db;
+    }
+
+    const { createClient } = await import("@libsql/client");
+    const url =
+      this.filename === ":memory:" ? ":memory:" : `file:${this.filename}`;
+
+    this.db = createClient({
+      url,
+      ...this.dbOptions,
+    });
+
+    return this.db;
+  }
+
+  private async ensureTable(): Promise<void> {
     if (this.tableCreated || !this.autoCreateTable) {
       return;
     }
 
-    this.db.exec(`
+    const db = await this.getDb();
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS ${this.tableName} (
         key TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -107,15 +135,16 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
     this.tableCreated = true;
   }
 
-  get(key: string): MemoryEntry<T> | null {
-    this.ensureTable();
+  async get(key: string): Promise<MemoryEntry<T> | null> {
+    await this.ensureTable();
 
-    const row = this.db
-      .prepare<unknown[], SqliteRow>(
-        `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = ?`
-      )
-      .get(key);
+    const db = await this.getDb();
+    const result = await db.execute({
+      sql: `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = ?`,
+      args: [key],
+    });
 
+    const row = result.rows[0] as SqliteRow | undefined;
     if (row === undefined) {
       return null;
     }
@@ -134,36 +163,42 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
     };
   }
 
-  set(key: string, data: T, metadata?: Record<string, unknown>): void {
-    this.ensureTable();
+  async set(
+    key: string,
+    data: T,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    await this.ensureTable();
 
+    const db = await this.getDb();
     const now = Date.now();
     const serializedData = JSON.stringify(data);
     const serializedMetadata =
       metadata !== undefined ? JSON.stringify(metadata) : null;
 
-    this.db
-      .prepare(
-        `
+    await db.execute({
+      sql: `
         INSERT INTO ${this.tableName} (key, data, created_at, updated_at, metadata)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET
           data = excluded.data,
           updated_at = excluded.updated_at,
           metadata = excluded.metadata
-        `
-      )
-      .run(key, serializedData, now, now, serializedMetadata);
+      `,
+      args: [key, serializedData, now, now, serializedMetadata],
+    });
   }
 
-  delete(key: string): boolean {
-    this.ensureTable();
+  async delete(key: string): Promise<boolean> {
+    await this.ensureTable();
 
-    const result = this.db
-      .prepare(`DELETE FROM ${this.tableName} WHERE key = ?`)
-      .run(key);
+    const db = await this.getDb();
+    const result = await db.execute({
+      sql: `DELETE FROM ${this.tableName} WHERE key = ?`,
+      args: [key],
+    });
 
-    return result.changes > 0;
+    return result.rowsAffected > 0;
   }
 
   /**
@@ -171,7 +206,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
    * Call this when you're done using the store to clean up resources.
    */
   close(): void {
-    this.db.close();
+    this.db?.close();
   }
 }
 
