@@ -34,7 +34,28 @@ const prompt = cria
   .user(userQuestion);
 ```
 
+## SQLite adapter (libSQL)
+
+```ts
+import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
+import { cria } from "@fastpaca/cria";
+
+const store = new SqliteVectorStore<string>({
+  filename: "cria.sqlite",
+  dimensions: 1536,
+  embed: async (text) => embed(text), // supply your embedding function
+});
+
+const prompt = cria
+  .prompt()
+  .system("Answer using the retrieved context. If missing, say you don't know.")
+  .vectorSearch({ store, query: userQuestion, limit: 5 })
+  .user(userQuestion);
+```
+
 ## Notes
 
 - `VectorSearch` performs retrieval at render time using the provided query.
 - If no results are found, the default formatter emits a placeholder message.
+- `SqliteVectorStore` uses libSQL vector columns + indexes for DB-side similarity search.
+- `SqliteVectorStore` requires the embedding dimensionality via `dimensions`.

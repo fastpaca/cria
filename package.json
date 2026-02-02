@@ -45,6 +45,10 @@
       "types": "./dist/memory/sqlite.d.ts",
       "import": "./dist/memory/sqlite.js"
     },
+    "./memory/sqlite-vector": {
+      "types": "./dist/memory/sqlite-vector.d.ts",
+      "import": "./dist/memory/sqlite-vector.js"
+    },
     "./memory/chroma": {
       "types": "./dist/memory/chroma/index.d.ts",
       "import": "./dist/memory/chroma/index.js"

@@ -325,6 +325,28 @@ const messages = await cria
 </details>
 
 <details>
+<summary><strong>SQLite (vector search)</strong></summary>
+
+```ts
+import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
+
+const store = new SqliteVectorStore({
+  filename: "cria.sqlite",
+  dimensions: 1536,
+  embed: async (text) => await getEmbedding(text),
+});
+
+const messages = await cria
+  .prompt(provider)
+  .system("You are a research assistant.")
+  .vectorSearch({ store, query, limit: 10 })
+  .user(query)
+  .render({ budget: 128_000 });
+```
+
+</details>
+
+<details>
 <summary><strong>Chroma (vector search)</strong></summary>
 
 ```ts
