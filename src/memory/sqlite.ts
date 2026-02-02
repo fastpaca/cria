@@ -70,49 +70,28 @@ export interface SqliteStoreOptions {
  * ```
  */
 export class SqliteStore<T = unknown> implements KVMemory<T> {
-  private db: SqliteDatabase | null = null;
+  private readonly db: SqliteDatabase;
   private readonly tableName: string;
   private readonly autoCreateTable: boolean;
-  private readonly filename: string;
-  private readonly dbOptions: SqliteConnectionOptions | undefined;
-  private readonly externalDb: SqliteDatabase | undefined;
   private tableCreated = false;
 
   constructor(options: SqliteStoreOptions = {}) {
     const {
-      filename,
+      filename = ":memory:",
       options: dbOptions,
       database,
-      tableName,
-      autoCreateTable,
+      tableName = "cria_kv_store",
+      autoCreateTable = true,
     } = options;
 
-    this.externalDb = database;
-    this.filename = filename ?? ":memory:";
-    this.dbOptions = dbOptions;
-    this.tableName = tableName ?? "cria_kv_store";
-    this.autoCreateTable = autoCreateTable ?? true;
-  }
-
-  private getDb(): SqliteDatabase {
-    if (this.db) {
-      return this.db;
-    }
-
-    if (this.externalDb) {
-      this.db = this.externalDb;
-      return this.db;
-    }
-
-    const url =
-      this.filename === ":memory:" ? ":memory:" : `file:${this.filename}`;
-
-    this.db = createClient({
-      url,
-      ...this.dbOptions,
-    });
-
-    return this.db;
+    this.db =
+      database ??
+      createClient({
+        url: filename === ":memory:" ? ":memory:" : `file:${filename}`,
+        ...dbOptions,
+      });
+    this.tableName = tableName;
+    this.autoCreateTable = autoCreateTable;
   }
 
   private async ensureTable(): Promise<void> {
@@ -120,8 +99,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
       return;
     }
 
-    const db = this.getDb();
-    await db.execute(`
+    await this.db.execute(`
       CREATE TABLE IF NOT EXISTS ${this.tableName} (
         key TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -137,7 +115,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   async get(key: string): Promise<MemoryEntry<T> | null> {
     await this.ensureTable();
 
-    const db = this.getDb();
+    const db = this.db;
     const result = await db.execute({
       sql: `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = ?`,
       args: [key],
@@ -169,7 +147,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   ): Promise<void> {
     await this.ensureTable();
 
-    const db = this.getDb();
+    const db = this.db;
     const now = Date.now();
     const serializedData = JSON.stringify(data);
     const serializedMetadata =
@@ -191,7 +169,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   async delete(key: string): Promise<boolean> {
     await this.ensureTable();
 
-    const db = this.getDb();
+    const db = this.db;
     const result = await db.execute({
       sql: `DELETE FROM ${this.tableName} WHERE key = ?`,
       args: [key],
@@ -205,7 +183,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
    * Call this when you're done using the store to clean up resources.
    */
   close(): void {
-    this.db?.close();
+    this.db.close();
   }
 }
 
