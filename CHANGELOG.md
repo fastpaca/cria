@@ -1,3 +1,19 @@
+## [1.7.1](https://github.com/fastpaca/cria/compare/v1.7.0...v1.7.1) (2026-02-02)
+
+
+### Bug Fixes
+
+* **build:** add better-sqlite3 types ([c1b6777](https://github.com/fastpaca/cria/commit/c1b677791c98315b43cd16d3603c81be76052eba))
+* **memory:** bind sqlite-vec rowids ([a586c2a](https://github.com/fastpaca/cria/commit/a586c2a43cde19c46dd99fefd55f1b0cbc86c00c))
+* **types:** align sqlite options ([3de8e1d](https://github.com/fastpaca/cria/commit/3de8e1df3e662d8ea98cec9639b24202dc419c28))
+
+
+### Features
+
+* **examples:** add sqlite stores example ([deef110](https://github.com/fastpaca/cria/commit/deef110bc558eac981745d31f2d92aa91ae205f1))
+* **memory:** add sqlite store ([0b356a4](https://github.com/fastpaca/cria/commit/0b356a4b31d8228855d29691761ae47ffa472120))
+* **memory:** add sqlite vec adapter ([3d2bfb5](https://github.com/fastpaca/cria/commit/3d2bfb512aca0a3e445fd9cb0bb3ebe2fa71b280))
+
 # [1.7.0](https://github.com/fastpaca/cria/compare/v1.6.0...v1.7.0) (2026-02-01)
 
 
