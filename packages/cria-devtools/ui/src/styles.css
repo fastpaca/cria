@@ -477,6 +477,36 @@ body {
   margin-bottom: 16px;
 }
 
+.fit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fit-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.fit-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.fit-section-subtitle {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
 .toggle-group {
   display: flex;
 }

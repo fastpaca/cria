@@ -695,19 +695,24 @@ const hashString = (value: string): string => {
 };
 
 const getMessageContent = (message: DevtoolsMessageSnapshot): string => {
+  const sections: string[] = [];
   if (message.text) {
-    return message.text;
+    sections.push(message.text);
   }
   if (message.reasoning) {
-    return message.reasoning;
-  }
-  if (message.toolResults && message.toolResults.length > 0) {
-    return JSON.stringify(message.toolResults, null, 2);
+    sections.push(`[reasoning]\n${message.reasoning}`);
   }
   if (message.toolCalls && message.toolCalls.length > 0) {
-    return JSON.stringify(message.toolCalls, null, 2);
+    sections.push(
+      `[tool_calls]\n${JSON.stringify(message.toolCalls, null, 2)}`
+    );
   }
-  return "";
+  if (message.toolResults && message.toolResults.length > 0) {
+    sections.push(
+      `[tool_results]\n${JSON.stringify(message.toolResults, null, 2)}`
+    );
+  }
+  return sections.join("\n\n");
 };
 
 const InlineDiffBlock = ({
@@ -1183,6 +1188,86 @@ const InlineCompareView = ({
   );
 };
 
+const PayloadDiffSection = ({
+  session,
+}: {
+  session: DevtoolsSessionPayload;
+}) => {
+  const [diffMode, setDiffMode] = useState<DiffViewMode>("inline");
+  const [renderMarkdown, setRenderMarkdown] = useState(false);
+
+  const diffView =
+    diffMode === "inline" ? (
+      <InlineCompareView
+        after={session.snapshots.after}
+        before={session.snapshots.before}
+      />
+    ) : (
+      <div className="compare-grid">
+        <div className="compare-column">
+          <div className="compare-title">Before Fit</div>
+          <MessageSnapshot
+            renderMarkdown={renderMarkdown}
+            snapshots={session.snapshots.before}
+          />
+        </div>
+        <div className="compare-column">
+          <div className="compare-title">Sent</div>
+          <MessageSnapshot
+            renderMarkdown={renderMarkdown}
+            snapshots={session.snapshots.after}
+          />
+        </div>
+      </div>
+    );
+
+  return (
+    <div className="fit-section">
+      <div className="fit-section-header">
+        <span>Payload Diff</span>
+        <span className="fit-section-subtitle">Before Fit → Sent</span>
+      </div>
+      <div className="panel-toolbar">
+        <div className="toggle-group">
+          <button
+            className={diffMode === "inline" ? "active" : ""}
+            onClick={() => setDiffMode("inline")}
+            type="button"
+          >
+            Inline diff
+          </button>
+          <button
+            className={diffMode === "split" ? "active" : ""}
+            onClick={() => setDiffMode("split")}
+            type="button"
+          >
+            Split
+          </button>
+        </div>
+        {diffMode === "split" && (
+          <div className="toggle-group">
+            <button
+              className={renderMarkdown ? "" : "active"}
+              onClick={() => setRenderMarkdown(false)}
+              type="button"
+            >
+              Text
+            </button>
+            <button
+              className={renderMarkdown ? "active" : ""}
+              onClick={() => setRenderMarkdown(true)}
+              type="button"
+            >
+              Markdown
+            </button>
+          </div>
+        )}
+      </div>
+      {diffView}
+    </div>
+  );
+};
+
 const DETAIL_TABS = [
   { key: "payload", label: "Payload" },
   { key: "fit", label: "Fit Loop" },
@@ -1190,8 +1275,9 @@ const DETAIL_TABS = [
   { key: "raw", label: "Raw" },
 ] as const;
 
-type PayloadViewMode = "after" | "before" | "compare";
+type PayloadViewMode = "after" | "before";
 type RawViewMode = "tree" | "raw";
+type DiffViewMode = "inline" | "split";
 
 const tokenDeltaClass = (delta: number | undefined): string => {
   if (delta === undefined) {
@@ -1299,34 +1385,7 @@ const PayloadPanel = ({
   active: boolean;
 }) => {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("after");
-  const [compareMode, setCompareMode] = useState<"split" | "inline">("inline");
   const [renderMarkdown, setRenderMarkdown] = useState(false);
-  const showMarkdownToggle = viewMode !== "compare" || compareMode === "split";
-  const markdownEnabled = showMarkdownToggle ? renderMarkdown : false;
-  const compareView =
-    compareMode === "inline" ? (
-      <InlineCompareView
-        after={session.snapshots.after}
-        before={session.snapshots.before}
-      />
-    ) : (
-      <div className="compare-grid">
-        <div className="compare-column">
-          <div className="compare-title">Before Fit</div>
-          <MessageSnapshot
-            renderMarkdown={markdownEnabled}
-            snapshots={session.snapshots.before}
-          />
-        </div>
-        <div className="compare-column">
-          <div className="compare-title">Sent</div>
-          <MessageSnapshot
-            renderMarkdown={markdownEnabled}
-            snapshots={session.snapshots.after}
-          />
-        </div>
-      </div>
-    );
 
   return (
     <div className={`panel ${active ? "active" : ""}`}>
@@ -1346,63 +1405,32 @@ const PayloadPanel = ({
           >
             Before Fit
           </button>
+        </div>
+        <div className="toggle-group">
           <button
-            className={viewMode === "compare" ? "active" : ""}
-            onClick={() => setViewMode("compare")}
+            className={renderMarkdown ? "" : "active"}
+            onClick={() => setRenderMarkdown(false)}
             type="button"
           >
-            Compare
+            Text
+          </button>
+          <button
+            className={renderMarkdown ? "active" : ""}
+            onClick={() => setRenderMarkdown(true)}
+            type="button"
+          >
+            Markdown
           </button>
         </div>
-        {viewMode === "compare" && (
-          <div className="toggle-group">
-            <button
-              className={compareMode === "inline" ? "active" : ""}
-              onClick={() => setCompareMode("inline")}
-              type="button"
-            >
-              Inline diff
-            </button>
-            <button
-              className={compareMode === "split" ? "active" : ""}
-              onClick={() => setCompareMode("split")}
-              type="button"
-            >
-              Split
-            </button>
-          </div>
-        )}
-        {showMarkdownToggle && (
-          <div className="toggle-group">
-            <button
-              className={renderMarkdown ? "" : "active"}
-              onClick={() => setRenderMarkdown(false)}
-              type="button"
-            >
-              Text
-            </button>
-            <button
-              className={renderMarkdown ? "active" : ""}
-              onClick={() => setRenderMarkdown(true)}
-              type="button"
-            >
-              Markdown
-            </button>
-          </div>
-        )}
       </div>
-      {viewMode === "compare" ? (
-        compareView
-      ) : (
-        <MessageSnapshot
-          renderMarkdown={markdownEnabled}
-          snapshots={
-            viewMode === "before"
-              ? session.snapshots.before
-              : session.snapshots.after
-          }
-        />
-      )}
+      <MessageSnapshot
+        renderMarkdown={renderMarkdown}
+        snapshots={
+          viewMode === "before"
+            ? session.snapshots.before
+            : session.snapshots.after
+        }
+      />
     </div>
   );
 };
@@ -1423,30 +1451,36 @@ const FitPanel = ({
 
   return (
     <div className={`panel ${active ? "active" : ""}`}>
-      {events.length === 0 ? (
-        <div className="empty">
-          {hasIterations
-            ? "No strategy events recorded."
-            : "Fit loop did not run (under budget or disabled)."}
+      <PayloadDiffSection session={session} />
+      <div className="fit-section">
+        <div className="fit-section-header">
+          <span>Fit Loop</span>
         </div>
-      ) : (
-        <div className="message-list">
-          {events.map((event, index) => (
-            <article
-              className="message-card"
-              key={`${event.iteration}-${index}`}
-            >
-              <header className="message-header">
-                <strong>
-                  Iteration {event.iteration} · priority {event.priority}
-                </strong>
-                <span>{event.result}</span>
-              </header>
-              <JsonViewer value={event.targetScope} />
-            </article>
-          ))}
-        </div>
-      )}
+        {events.length === 0 ? (
+          <div className="empty">
+            {hasIterations
+              ? "No strategy events recorded."
+              : "Fit loop did not run (under budget or disabled)."}
+          </div>
+        ) : (
+          <div className="message-list">
+            {events.map((event, index) => (
+              <article
+                className="message-card"
+                key={`${event.iteration}-${index}`}
+              >
+                <header className="message-header">
+                  <strong>
+                    Iteration {event.iteration} · priority {event.priority}
+                  </strong>
+                  <span>{event.result}</span>
+                </header>
+                <JsonViewer value={event.targetScope} />
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
