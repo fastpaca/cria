@@ -1,4 +1,4 @@
-import type { Client, Config } from "@libsql/client";
+import { type Client, type Config, createClient } from "@libsql/client";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
@@ -94,7 +94,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
     this.autoCreateTable = autoCreateTable ?? true;
   }
 
-  private async getDb(): Promise<SqliteDatabase> {
+  private getDb(): SqliteDatabase {
     if (this.db) {
       return this.db;
     }
@@ -104,7 +104,6 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
       return this.db;
     }
 
-    const { createClient } = await import("@libsql/client");
     const url =
       this.filename === ":memory:" ? ":memory:" : `file:${this.filename}`;
 
@@ -121,7 +120,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
       return;
     }
 
-    const db = await this.getDb();
+    const db = this.getDb();
     await db.execute(`
       CREATE TABLE IF NOT EXISTS ${this.tableName} (
         key TEXT PRIMARY KEY,
@@ -138,7 +137,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   async get(key: string): Promise<MemoryEntry<T> | null> {
     await this.ensureTable();
 
-    const db = await this.getDb();
+    const db = this.getDb();
     const result = await db.execute({
       sql: `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = ?`,
       args: [key],
@@ -170,7 +169,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   ): Promise<void> {
     await this.ensureTable();
 
-    const db = await this.getDb();
+    const db = this.getDb();
     const now = Date.now();
     const serializedData = JSON.stringify(data);
     const serializedMetadata =
@@ -192,7 +191,7 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
   async delete(key: string): Promise<boolean> {
     await this.ensureTable();
 
-    const db = await this.getDb();
+    const db = this.getDb();
     const result = await db.execute({
       sql: `DELETE FROM ${this.tableName} WHERE key = ?`,
       args: [key],
