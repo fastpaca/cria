@@ -9,7 +9,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const fetchSessions = async (): Promise<DevtoolsSessionPayload[]> => {
   const response = await fetch("/cria/devtools/sessions");
@@ -42,6 +42,55 @@ const useSessionStream = (
   }, [onSession]);
 
   return connected;
+};
+
+const useResizablePanel = (
+  initialWidth: number,
+  minWidth: number,
+  maxWidthPercent: number
+) => {
+  const [width, setWidth] = useState(initialWidth);
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) {
+        return;
+      }
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const maxWidth = containerRect.width * maxWidthPercent;
+      const newWidth = Math.min(
+        Math.max(e.clientX - containerRect.left, minWidth),
+        maxWidth
+      );
+      setWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      document.body.classList.remove("resizing");
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, minWidth, maxWidthPercent]);
+
+  const startDragging = useCallback(() => {
+    setIsDragging(true);
+    document.body.classList.add("resizing");
+  }, []);
+
+  return { width, isDragging, startDragging, containerRef };
 };
 
 const formatDuration = (ms?: number): string => {
@@ -179,7 +228,11 @@ const filterSessions = (
   return filtered;
 };
 
-const renderSnapshot = (snapshots: DevtoolsMessageSnapshot[]) => {
+const MessageSnapshot = ({
+  snapshots,
+}: {
+  snapshots: DevtoolsMessageSnapshot[];
+}) => {
   if (snapshots.length === 0) {
     return <div className="empty">No messages captured.</div>;
   }
@@ -220,15 +273,161 @@ const renderSnapshot = (snapshots: DevtoolsMessageSnapshot[]) => {
   );
 };
 
+const DETAIL_TABS = [
+  { key: "payload", label: "Payload" },
+  { key: "fit", label: "Fit Loop" },
+  { key: "timing", label: "Timing" },
+  { key: "raw", label: "Raw" },
+] as const;
+
+const SessionDetails = ({ session }: { session: DevtoolsSessionPayload }) => {
+  const [activeTab, setActiveTab] = useState<string>("payload");
+  const [payloadPhase, setPayloadPhase] = useState<"before" | "after">("after");
+
+  return (
+    <section className="details">
+      <div className="details-header">
+        <div>
+          <span className="eyebrow">Session</span>
+          <h2>{session.label ?? session.id}</h2>
+          {session.error && (
+            <p className="error-banner">{session.error.message}</p>
+          )}
+        </div>
+        <div className="summary-grid">
+          <div>
+            <span>Budget</span>
+            <strong>{session.budget ?? "-"}</strong>
+          </div>
+          <div>
+            <span>Tokens</span>
+            <strong>
+              {formatTokens(
+                session.totalTokensBefore,
+                session.totalTokensAfter
+              )}
+            </strong>
+          </div>
+          <div>
+            <span>Iterations</span>
+            <strong>{session.iterations ?? "-"}</strong>
+          </div>
+          <div>
+            <span>Duration</span>
+            <strong>{formatDuration(session.durationMs)}</strong>
+          </div>
+          <div>
+            <span>Initiator</span>
+            <strong>{resolveInitiator(session)}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {DETAIL_TABS.map((tab) => (
+          <button
+            className={`tab ${activeTab === tab.key ? "active" : ""}`}
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={`panel ${activeTab === "payload" ? "active" : ""}`}>
+        <div className="payload-toggle">
+          <button
+            className={payloadPhase === "after" ? "active" : ""}
+            onClick={() => setPayloadPhase("after")}
+            type="button"
+          >
+            Sent
+          </button>
+          <button
+            className={payloadPhase === "before" ? "active" : ""}
+            onClick={() => setPayloadPhase("before")}
+            type="button"
+          >
+            Before Fit
+          </button>
+        </div>
+        <MessageSnapshot
+          snapshots={
+            payloadPhase === "before"
+              ? session.snapshots.before
+              : session.snapshots.after
+          }
+        />
+      </div>
+
+      <div className={`panel ${activeTab === "fit" ? "active" : ""}`}>
+        {session.strategyEvents.length === 0 ? (
+          <div className="empty">No strategy events recorded.</div>
+        ) : (
+          <div className="message-list">
+            {[...session.strategyEvents]
+              .sort((a, b) =>
+                a.iteration === b.iteration
+                  ? a.priority - b.priority
+                  : a.iteration - b.iteration
+              )
+              .map((event, index) => (
+                <article
+                  className="message-card"
+                  key={`${event.iteration}-${index}`}
+                >
+                  <header className="message-header">
+                    <strong>
+                      Iteration {event.iteration} · priority {event.priority}
+                    </strong>
+                    <span>{event.result}</span>
+                  </header>
+                  <pre>{JSON.stringify(event.targetScope, null, 2)}</pre>
+                </article>
+              ))}
+          </div>
+        )}
+      </div>
+
+      <div className={`panel ${activeTab === "timing" ? "active" : ""}`}>
+        {session.timing.length === 0 ? (
+          <div className="empty">No timing data.</div>
+        ) : (
+          <div className="timing-list">
+            {session.timing.map((event, index) => (
+              <div className="timing-row" key={`${event.name}-${index}`}>
+                <span>{event.name}</span>
+                <span>
+                  {formatDuration(event.endOffsetMs - event.startOffsetMs)} (+
+                  {event.startOffsetMs.toFixed(0)}ms)
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={`panel ${activeTab === "raw" ? "active" : ""}`}>
+        <pre>{JSON.stringify(session, null, 2)}</pre>
+      </div>
+    </section>
+  );
+};
+
 export const App = () => {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState("headers");
-  const [payloadPhase, setPayloadPhase] = useState<"before" | "after">(
-    "before"
-  );
+
+  const {
+    width: tableWidth,
+    isDragging,
+    startDragging,
+    containerRef,
+  } = useResizablePanel(450, 300, 0.7);
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
@@ -312,8 +511,14 @@ export const App = () => {
         <div className="meta">{filtered.length} sessions</div>
       </section>
 
-      <main className="network">
-        <div className="table">
+      <main
+        className={`network ${selected ? "has-selection" : ""}`}
+        ref={containerRef as React.RefObject<HTMLElement>}
+      >
+        <div
+          className="table"
+          style={selected ? { width: tableWidth } : undefined}
+        >
           <div className="thead">
             {table.getHeaderGroups().map((headerGroup) => (
               <div className="row" key={headerGroup.id}>
@@ -350,144 +555,15 @@ export const App = () => {
         </div>
 
         {selected && (
-          <section className="details">
-            <div className="details-header">
-              <div>
-                <span className="eyebrow">Session</span>
-                <h2>{selected.label ?? selected.id}</h2>
-                {selected.error && (
-                  <p className="error-banner">{selected.error.message}</p>
-                )}
-              </div>
-              <div className="summary-grid">
-                <div>
-                  <span>Budget</span>
-                  <strong>{selected.budget ?? "-"}</strong>
-                </div>
-                <div>
-                  <span>Tokens</span>
-                  <strong>
-                    {formatTokens(
-                      selected.totalTokensBefore,
-                      selected.totalTokensAfter
-                    )}
-                  </strong>
-                </div>
-                <div>
-                  <span>Iterations</span>
-                  <strong>{selected.iterations ?? "-"}</strong>
-                </div>
-                <div>
-                  <span>Duration</span>
-                  <strong>{formatDuration(selected.durationMs)}</strong>
-                </div>
-                <div>
-                  <span>Initiator</span>
-                  <strong>{resolveInitiator(selected)}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="tabs">
-              {[
-                { key: "headers", label: "Headers" },
-                { key: "payload", label: "Payload" },
-                { key: "fit", label: "Fit Loop" },
-                { key: "timing", label: "Timing" },
-                { key: "raw", label: "Raw" },
-              ].map((tab) => (
-                <button
-                  className={`tab ${activeTab === tab.key ? "active" : ""}`}
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  type="button"
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className={`panel ${activeTab === "headers" ? "active" : ""}`}>
-              <pre>{JSON.stringify(selected, null, 2)}</pre>
-            </div>
-
-            <div className={`panel ${activeTab === "payload" ? "active" : ""}`}>
-              <div className="payload-toggle">
-                <button
-                  className={payloadPhase === "before" ? "active" : ""}
-                  onClick={() => setPayloadPhase("before")}
-                  type="button"
-                >
-                  Before
-                </button>
-                <button
-                  className={payloadPhase === "after" ? "active" : ""}
-                  onClick={() => setPayloadPhase("after")}
-                  type="button"
-                >
-                  After
-                </button>
-              </div>
-              {payloadPhase === "before"
-                ? renderSnapshot(selected.snapshots.before)
-                : renderSnapshot(selected.snapshots.after)}
-            </div>
-
-            <div className={`panel ${activeTab === "fit" ? "active" : ""}`}>
-              {selected.strategyEvents.length === 0 ? (
-                <div className="empty">No strategy events recorded.</div>
-              ) : (
-                <div className="message-list">
-                  {[...selected.strategyEvents]
-                    .sort((a, b) =>
-                      a.iteration === b.iteration
-                        ? a.priority - b.priority
-                        : a.iteration - b.iteration
-                    )
-                    .map((event, index) => (
-                      <article
-                        className="message-card"
-                        key={`${event.iteration}-${index}`}
-                      >
-                        <header className="message-header">
-                          <strong>
-                            Iteration {event.iteration} · priority{" "}
-                            {event.priority}
-                          </strong>
-                          <span>{event.result}</span>
-                        </header>
-                        <pre>{JSON.stringify(event.targetScope, null, 2)}</pre>
-                      </article>
-                    ))}
-                </div>
-              )}
-            </div>
-
-            <div className={`panel ${activeTab === "timing" ? "active" : ""}`}>
-              {selected.timing.length === 0 ? (
-                <div className="empty">No timing data.</div>
-              ) : (
-                <div className="timing-list">
-                  {selected.timing.map((event, index) => (
-                    <div className="timing-row" key={`${event.name}-${index}`}>
-                      <span>{event.name}</span>
-                      <span>
-                        {formatDuration(
-                          event.endOffsetMs - event.startOffsetMs
-                        )}{" "}
-                        (+
-                        {event.startOffsetMs.toFixed(0)}ms)
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className={`panel ${activeTab === "raw" ? "active" : ""}`}>
-              <pre>{JSON.stringify(selected, null, 2)}</pre>
-            </div>
-          </section>
+          <>
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: resize handles are standard UI patterns */}
+            {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: resize handles are standard UI patterns */}
+            <div
+              className={`resize-handle ${isDragging ? "dragging" : ""}`}
+              onMouseDown={startDragging}
+            />
+            <SessionDetails session={selected} />
+          </>
         )}
       </main>
     </div>
