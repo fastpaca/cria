@@ -332,6 +332,7 @@ const deepParseJson = (obj: unknown): unknown => {
 };
 
 const MAX_TEXT_PREVIEW = 600;
+const DIFF_TOKEN_REGEX = /(\s+)/;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -523,6 +524,161 @@ const MessageContent = ({
         </button>
       )}
     </div>
+  );
+};
+
+interface DiffOp {
+  type: "equal" | "add" | "del";
+  text: string;
+}
+
+const MAX_DIFF_MATRIX = 120_000;
+
+const tokenizeDiffText = (text: string): string[] =>
+  text.length === 0 ? [] : text.split(DIFF_TOKEN_REGEX);
+
+const mergeDiffOps = (ops: DiffOp[]): DiffOp[] => {
+  const merged: DiffOp[] = [];
+  for (const op of ops) {
+    const last = merged.at(-1);
+    if (last && last.type === op.type) {
+      last.text += op.text;
+      continue;
+    }
+    merged.push({ ...op });
+  }
+  return merged;
+};
+
+const diffTokenArrays = (before: string[], after: string[]): DiffOp[] => {
+  if (before.length === 0 && after.length === 0) {
+    return [];
+  }
+  if (before.length === 0) {
+    return after.map((token) => ({ type: "add", text: token }));
+  }
+  if (after.length === 0) {
+    return before.map((token) => ({ type: "del", text: token }));
+  }
+
+  const cellCount = before.length * after.length;
+  if (cellCount > MAX_DIFF_MATRIX) {
+    return [
+      { type: "del", text: before.join("") },
+      { type: "add", text: after.join("") },
+    ];
+  }
+
+  const dp = Array.from({ length: before.length + 1 }, () =>
+    new Array(after.length + 1).fill(0)
+  );
+
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = after.length - 1; j >= 0; j -= 1) {
+      if (before[i] === after[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+        continue;
+      }
+      dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const ops: DiffOp[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < after.length) {
+    if (before[i] === after[j]) {
+      ops.push({ type: "equal", text: before[i] });
+      i += 1;
+      j += 1;
+      continue;
+    }
+    if (dp[i + 1][j] >= dp[i][j + 1]) {
+      ops.push({ type: "del", text: before[i] });
+      i += 1;
+      continue;
+    }
+    ops.push({ type: "add", text: after[j] });
+    j += 1;
+  }
+  for (; i < before.length; i += 1) {
+    ops.push({ type: "del", text: before[i] });
+  }
+  for (; j < after.length; j += 1) {
+    ops.push({ type: "add", text: after[j] });
+  }
+
+  return mergeDiffOps(ops);
+};
+
+const diffText = (before: string, after: string): DiffOp[] => {
+  const beforeTokens = tokenizeDiffText(before);
+  const afterTokens = tokenizeDiffText(after);
+  return diffTokenArrays(beforeTokens, afterTokens);
+};
+
+const hashString = (value: string): string => {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 33 + value.charCodeAt(i)) % 4_294_967_291;
+  }
+  return hash.toString(36);
+};
+
+const getMessageContent = (message: DevtoolsMessageSnapshot): string => {
+  if (message.text) {
+    return message.text;
+  }
+  if (message.reasoning) {
+    return message.reasoning;
+  }
+  if (message.toolResults && message.toolResults.length > 0) {
+    return JSON.stringify(message.toolResults, null, 2);
+  }
+  if (message.toolCalls && message.toolCalls.length > 0) {
+    return JSON.stringify(message.toolCalls, null, 2);
+  }
+  return "";
+};
+
+const InlineDiffBlock = ({
+  beforeText,
+  afterText,
+  forceMode,
+}: {
+  beforeText: string;
+  afterText: string;
+  forceMode?: "add" | "del";
+}) => {
+  const ops = useMemo(() => {
+    if (forceMode === "add") {
+      return [{ type: "add", text: afterText }] as DiffOp[];
+    }
+    if (forceMode === "del") {
+      return [{ type: "del", text: beforeText }] as DiffOp[];
+    }
+    return diffText(beforeText, afterText);
+  }, [afterText, beforeText, forceMode]);
+
+  if (ops.length === 0) {
+    return <div className="muted">No content.</div>;
+  }
+
+  const keyCounts = new Map<string, number>();
+
+  return (
+    <pre className="diff-block">
+      {ops.map((op) => {
+        const baseKey = `${op.type}-${hashString(op.text)}`;
+        const seen = keyCounts.get(baseKey) ?? 0;
+        keyCounts.set(baseKey, seen + 1);
+        return (
+          <span className={`diff-${op.type}`} key={`${baseKey}-${seen}`}>
+            {op.text}
+          </span>
+        );
+      })}
+    </pre>
   );
 };
 
@@ -814,6 +970,150 @@ const MessageSnapshot = ({
   );
 };
 
+interface CompareRow {
+  before?: DevtoolsMessageSnapshot;
+  after?: DevtoolsMessageSnapshot;
+}
+
+const buildCompareRows = (
+  before: DevtoolsMessageSnapshot[],
+  after: DevtoolsMessageSnapshot[]
+): CompareRow[] => {
+  const beforeMap = new Map<number, DevtoolsMessageSnapshot>();
+  for (const message of before) {
+    beforeMap.set(message.index, message);
+  }
+  const afterMap = new Map<number, DevtoolsMessageSnapshot>();
+  for (const message of after) {
+    afterMap.set(message.index, message);
+  }
+
+  const indices = new Set<number>([...beforeMap.keys(), ...afterMap.keys()]);
+
+  return [...indices]
+    .sort((a, b) => a - b)
+    .map((index) => ({
+      before: beforeMap.get(index),
+      after: afterMap.get(index),
+    }));
+};
+
+const resolveDiffStatus = (
+  beforeText: string,
+  afterText: string,
+  hasBefore: boolean,
+  hasAfter: boolean
+): "added" | "removed" | "unchanged" | "changed" => {
+  if (!hasBefore && hasAfter) {
+    return "added";
+  }
+  if (hasBefore && !hasAfter) {
+    return "removed";
+  }
+  if (beforeText === afterText) {
+    return "unchanged";
+  }
+  if (beforeText.length === 0 && afterText.length === 0) {
+    return "unchanged";
+  }
+  return "changed";
+};
+
+const InlineDiffCard = ({ before, after }: CompareRow) => {
+  const message = after ?? before;
+  if (!message) {
+    return null;
+  }
+
+  const roleConfig = ROLE_CONFIG[message.role] ?? {
+    icon: "?",
+    label: message.role,
+    className: "role-unknown",
+  };
+
+  const beforeText = before ? getMessageContent(before) : "";
+  const afterText = after ? getMessageContent(after) : "";
+  const hasBefore = Boolean(before);
+  const hasAfter = Boolean(after);
+  const status = resolveDiffStatus(beforeText, afterText, hasBefore, hasAfter);
+  const content = status === "unchanged" ? afterText || beforeText : "";
+  let diffMode: "add" | "del" | undefined;
+  if (status === "added") {
+    diffMode = "add";
+  } else if (status === "removed") {
+    diffMode = "del";
+  }
+
+  let body: ReactNode;
+  if (status === "unchanged") {
+    body = content ? (
+      <pre>{content}</pre>
+    ) : (
+      <div className="muted">No content.</div>
+    );
+  } else {
+    body = (
+      <InlineDiffBlock
+        afterText={afterText}
+        beforeText={beforeText}
+        forceMode={diffMode}
+      />
+    );
+  }
+
+  return (
+    <div className="timeline-item">
+      <div className="timeline-marker">
+        <span className={`timeline-dot ${roleConfig.className}`}>
+          {roleConfig.icon}
+        </span>
+      </div>
+      <article className={`message-card ${roleConfig.className}`}>
+        <header className="message-header">
+          <div className="message-role">
+            <span className="role-label">{roleConfig.label}</span>
+            <span className="message-index">#{message.index}</span>
+            <span className={`diff-badge ${status}`}>{status}</span>
+          </div>
+          <div className="message-meta">
+            {message.id && <span className="message-id">{message.id}</span>}
+            <span className="scope-path">{message.scopePath}</span>
+          </div>
+        </header>
+        <div className="message-body">{body}</div>
+      </article>
+    </div>
+  );
+};
+
+const InlineCompareView = ({
+  before,
+  after,
+}: {
+  before: DevtoolsMessageSnapshot[];
+  after: DevtoolsMessageSnapshot[];
+}) => {
+  const rows = useMemo(() => buildCompareRows(before, after), [after, before]);
+
+  return (
+    <div className="timeline">
+      {rows.map((row) => {
+        const message = row.after ?? row.before;
+        if (!message) {
+          return null;
+        }
+        return (
+          <InlineDiffCard
+            after={row.after}
+            before={row.before}
+            key={`${message.role}-${message.index}`}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
 const DETAIL_TABS = [
   { key: "payload", label: "Payload" },
   { key: "fit", label: "Fit Loop" },
@@ -930,7 +1230,34 @@ const PayloadPanel = ({
   active: boolean;
 }) => {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("after");
+  const [compareMode, setCompareMode] = useState<"split" | "inline">("inline");
   const [renderMarkdown, setRenderMarkdown] = useState(false);
+  const showMarkdownToggle = viewMode !== "compare" || compareMode === "split";
+  const markdownEnabled = showMarkdownToggle ? renderMarkdown : false;
+  const compareView =
+    compareMode === "inline" ? (
+      <InlineCompareView
+        after={session.snapshots.after}
+        before={session.snapshots.before}
+      />
+    ) : (
+      <div className="compare-grid">
+        <div className="compare-column">
+          <div className="compare-title">Before Fit</div>
+          <MessageSnapshot
+            renderMarkdown={markdownEnabled}
+            snapshots={session.snapshots.before}
+          />
+        </div>
+        <div className="compare-column">
+          <div className="compare-title">Sent</div>
+          <MessageSnapshot
+            renderMarkdown={markdownEnabled}
+            snapshots={session.snapshots.after}
+          />
+        </div>
+      </div>
+    );
 
   return (
     <div className={`panel ${active ? "active" : ""}`}>
@@ -958,43 +1285,48 @@ const PayloadPanel = ({
             Compare
           </button>
         </div>
-        <div className="toggle-group">
-          <button
-            className={renderMarkdown ? "" : "active"}
-            onClick={() => setRenderMarkdown(false)}
-            type="button"
-          >
-            Text
-          </button>
-          <button
-            className={renderMarkdown ? "active" : ""}
-            onClick={() => setRenderMarkdown(true)}
-            type="button"
-          >
-            Markdown
-          </button>
-        </div>
+        {viewMode === "compare" && (
+          <div className="toggle-group">
+            <button
+              className={compareMode === "inline" ? "active" : ""}
+              onClick={() => setCompareMode("inline")}
+              type="button"
+            >
+              Inline diff
+            </button>
+            <button
+              className={compareMode === "split" ? "active" : ""}
+              onClick={() => setCompareMode("split")}
+              type="button"
+            >
+              Split
+            </button>
+          </div>
+        )}
+        {showMarkdownToggle && (
+          <div className="toggle-group">
+            <button
+              className={renderMarkdown ? "" : "active"}
+              onClick={() => setRenderMarkdown(false)}
+              type="button"
+            >
+              Text
+            </button>
+            <button
+              className={renderMarkdown ? "active" : ""}
+              onClick={() => setRenderMarkdown(true)}
+              type="button"
+            >
+              Markdown
+            </button>
+          </div>
+        )}
       </div>
       {viewMode === "compare" ? (
-        <div className="compare-grid">
-          <div className="compare-column">
-            <div className="compare-title">Before Fit</div>
-            <MessageSnapshot
-              renderMarkdown={renderMarkdown}
-              snapshots={session.snapshots.before}
-            />
-          </div>
-          <div className="compare-column">
-            <div className="compare-title">Sent</div>
-            <MessageSnapshot
-              renderMarkdown={renderMarkdown}
-              snapshots={session.snapshots.after}
-            />
-          </div>
-        </div>
+        compareView
       ) : (
         <MessageSnapshot
-          renderMarkdown={renderMarkdown}
+          renderMarkdown={markdownEnabled}
           snapshots={
             viewMode === "before"
               ? session.snapshots.before
