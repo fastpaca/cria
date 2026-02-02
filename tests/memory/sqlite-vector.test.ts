@@ -1,8 +1,6 @@
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { beforeEach, expect, test, vi } from "vitest";
 
-const DISTANCE_L2_REGEX = /vector_distance_l2/i;
-
 interface StoredRow {
   key: string;
   data: string;
@@ -24,7 +22,6 @@ interface SearchRow {
 const { mockTables, getLastClient, resetState, createClient } = vi.hoisted(
   () => {
     const tables = new Map<string, Map<string, StoredRow>>();
-    const indices = new Map<string, string>();
     let lastClient: MockClient | null = null;
 
     const IDENTIFIER_PATTERN = '"?[A-Za-z_][A-Za-z0-9_]*"?';
@@ -47,7 +44,7 @@ const { mockTables, getLastClient, resetState, createClient } = vi.hoisted(
       "i"
     );
     const SEARCH_REGEX = new RegExp(
-      `FROM\\s+vector_top_k\\(\\?,\\s*\\w+\\(\\?\\),\\s*(?:\\?|CAST\\(\\? AS INTEGER\\))\\)\\s+AS\\s+i\\s+JOIN\\s+(${TABLE_PATTERN})\\s+AS\\s+t`,
+      `FROM\\s+vector_top_k\\(\\s*\\?,\\s*\\w+\\(\\?\\),\\s*CAST\\(\\? AS INTEGER\\)\\s*\\)\\s+AS\\s+i\\s+JOIN\\s+(${TABLE_PATTERN})\\s+AS\\s+t`,
       "i"
     );
     const normalizeTableName = (identifier: string): string =>
@@ -79,19 +76,6 @@ const { mockTables, getLastClient, resetState, createClient } = vi.hoisted(
       return 1 - similarity;
     };
 
-    const l2Distance = (left: number[], right: number[]): number => {
-      if (left.length !== right.length) {
-        throw new Error("Embedding length mismatch in L2 distance");
-      }
-
-      let sum = 0;
-      for (let i = 0; i < left.length; i++) {
-        const diff = (left[i] ?? 0) - (right[i] ?? 0);
-        sum += diff * diff;
-      }
-      return Math.sqrt(sum);
-    };
-
     class MockClient {
       closed = false;
 
@@ -113,9 +97,10 @@ const { mockTables, getLastClient, resetState, createClient } = vi.hoisted(
 
         const createIndexMatch = sql.match(CREATE_INDEX_REGEX);
         if (createIndexMatch) {
-          const indexName = normalizeTableName(createIndexMatch[1]);
           const tableName = normalizeTableName(createIndexMatch[2]);
-          indices.set(indexName, tableName);
+          if (!tables.has(tableName)) {
+            tables.set(tableName, new Map());
+          }
           return Promise.resolve({ rows: [], rowsAffected: 0 });
         }
 
@@ -178,15 +163,13 @@ const { mockTables, getLastClient, resetState, createClient } = vi.hoisted(
         const searchMatch = sql.match(SEARCH_REGEX);
         if (searchMatch) {
           const tableName = normalizeTableName(searchMatch[1]);
-          const queryVector = JSON.parse(args[0] as string) as number[];
-          const limit = (args[3] as number) ?? 10;
+          const queryVector = JSON.parse(args[1] as string) as number[];
+          const limit = Number(args[2] ?? 10);
           const table = tables.get(tableName);
-          const metric = DISTANCE_L2_REGEX.test(sql) ? "l2" : "cosine";
-          const distanceFn = metric === "l2" ? l2Distance : cosineDistance;
 
           const scored = Array.from(table?.values() ?? []).map((row) => ({
             row,
-            distance: distanceFn(queryVector, row.embedding),
+            distance: cosineDistance(queryVector, row.embedding),
           }));
 
           scored.sort((a, b) => a.distance - b.distance);
@@ -221,7 +204,6 @@ const { mockTables, getLastClient, resetState, createClient } = vi.hoisted(
       getLastClient: (): MockClient | null => lastClient,
       resetState: (): void => {
         tables.clear();
-        indices.clear();
         lastClient = null;
       },
       createClient,
@@ -245,12 +227,12 @@ const embeddings: Record<string, number[]> = {
   "alpha beta": [0.8, 0.6],
 };
 
-const embed = (text: string): number[] => {
+const embed = (text: string): Promise<number[]> => {
   const vector = embeddings[text];
   if (!vector) {
     throw new Error(`Missing embedding for ${text}`);
   }
-  return vector;
+  return Promise.resolve(vector);
 };
 
 test("SqliteVectorStore: set and get", async () => {
