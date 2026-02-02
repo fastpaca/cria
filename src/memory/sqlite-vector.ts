@@ -1,4 +1,4 @@
-import { createClient, type Row, type Value } from "@libsql/client";
+import { createClient } from "@libsql/client";
 import type { MemoryEntry } from "./key-value";
 import type { SqliteConnectionOptions, SqliteDatabase } from "./sqlite";
 import type {
@@ -102,46 +102,6 @@ const scoreFromDistance = (distance: number): number => {
   return score;
 };
 
-const readString = (value: Value, label: string): string => {
-  if (typeof value !== "string") {
-    throw new Error(`SqliteVectorStore: ${label} must be a string`);
-  }
-  return value;
-};
-
-const readNullableString = (value: Value, label: string): string | null => {
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== "string") {
-    throw new Error(`SqliteVectorStore: ${label} must be a string or null`);
-  }
-  return value;
-};
-
-const readNumber = (value: Value, label: string): number => {
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  throw new Error(`SqliteVectorStore: ${label} must be a number`);
-};
-
-const parseVectorRow = (row: Row): SqliteVectorRow => ({
-  key: readString(row.key, "key"),
-  data: readString(row.data, "data"),
-  created_at: readNumber(row.created_at, "created_at"),
-  updated_at: readNumber(row.updated_at, "updated_at"),
-  metadata: readNullableString(row.metadata, "metadata"),
-});
-
-const parseVectorSearchRow = (row: Row): SqliteVectorSearchRow => ({
-  ...parseVectorRow(row),
-  distance: readNumber(row.distance, "distance"),
-});
-
 /**
  * SQLite-backed implementation of VectorMemory.
  *
@@ -237,21 +197,20 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       args: [key],
     });
 
-    const row = result.rows[0];
+    const row = result.rows[0] as SqliteVectorRow | undefined;
     if (!row) {
       return null;
     }
 
-    const parsed = parseVectorRow(row);
     const metadata =
-      parsed.metadata === null
+      row.metadata === null
         ? undefined
-        : (JSON.parse(parsed.metadata) as Record<string, unknown>);
+        : (JSON.parse(row.metadata) as Record<string, unknown>);
 
     return {
-      data: deserializeData<T>(parsed.data),
-      createdAt: parsed.created_at,
-      updatedAt: parsed.updated_at,
+      data: deserializeData<T>(row.data),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
       ...(metadata && { metadata }),
     };
   }
@@ -339,28 +298,28 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       args: [this.indexName, serializedQuery, limit],
     });
 
+    const rows = result.rows as SqliteVectorSearchRow[];
     const results: VectorSearchResult<T>[] = [];
 
-    for (const row of result.rows) {
-      const parsed = parseVectorSearchRow(row);
-      const score = scoreFromDistance(parsed.distance);
+    for (const row of rows) {
+      const score = scoreFromDistance(row.distance);
 
       if (threshold !== undefined && score < threshold) {
         continue;
       }
 
       const metadata =
-        parsed.metadata === null
+        row.metadata === null
           ? undefined
-          : (JSON.parse(parsed.metadata) as Record<string, unknown>);
+          : (JSON.parse(row.metadata) as Record<string, unknown>);
 
       results.push({
-        key: parsed.key,
+        key: row.key,
         score,
         entry: {
-          data: deserializeData<T>(parsed.data),
-          createdAt: parsed.created_at,
-          updatedAt: parsed.updated_at,
+          data: deserializeData<T>(row.data),
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
           ...(metadata && { metadata }),
         },
       });
