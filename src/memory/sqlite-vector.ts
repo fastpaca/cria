@@ -13,18 +13,6 @@ import type {
  */
 export type EmbeddingFunction = (text: string) => Promise<number[]>;
 
-interface SqliteVectorRow {
-  key: string;
-  data: string;
-  created_at: number;
-  updated_at: number;
-  metadata: string | null;
-}
-
-interface SqliteVectorSearchRow extends SqliteVectorRow {
-  distance: number;
-}
-
 /**
  * Configuration options for the SQLite vector store.
  */
@@ -67,6 +55,16 @@ const VECTOR_TYPE = "F32_BLOB";
 const VECTOR_FN = "vector32";
 const VECTOR_INDEX_SUFFIX = "_vector_idx";
 const metadataSchema = z.object({}).catchall(z.unknown());
+const sqliteRowSchema = z.object({
+  key: z.string(),
+  data: z.string(),
+  created_at: z.number(),
+  updated_at: z.number(),
+  metadata: z.string().nullable(),
+});
+const sqliteSearchRowSchema = sqliteRowSchema.extend({
+  distance: z.number(),
+});
 
 const normalizeIdentifier = (value: string): string =>
   value.replace(/[^A-Za-z0-9_]/g, "_");
@@ -179,21 +177,22 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       args: [key],
     });
 
-    const row = result.rows[0] as SqliteVectorRow | undefined;
+    const row = result.rows[0];
     if (!row) {
       return null;
     }
 
-    const data = this.schema.parse(JSON.parse(row.data));
+    const parsedRow = sqliteRowSchema.parse(row);
+    const data = this.schema.parse(JSON.parse(parsedRow.data));
     const metadata =
-      row.metadata === null
+      parsedRow.metadata === null
         ? undefined
-        : metadataSchema.parse(JSON.parse(row.metadata));
+        : metadataSchema.parse(JSON.parse(parsedRow.metadata));
 
     return {
       data,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      createdAt: parsedRow.created_at,
+      updatedAt: parsedRow.updated_at,
       ...(metadata && { metadata }),
     };
   }
@@ -285,29 +284,29 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       args: [this.indexName, serializedQuery, limit],
     });
 
-    const rows = result.rows as unknown as SqliteVectorSearchRow[];
     const results: VectorSearchResult<T>[] = [];
 
-    for (const row of rows) {
-      const score = scoreFromDistance(row.distance);
+    for (const row of result.rows) {
+      const parsedRow = sqliteSearchRowSchema.parse(row);
+      const score = scoreFromDistance(parsedRow.distance);
 
       if (threshold !== undefined && score < threshold) {
         continue;
       }
 
-      const data = this.schema.parse(JSON.parse(row.data));
+      const data = this.schema.parse(JSON.parse(parsedRow.data));
       const metadata =
-        row.metadata === null
+        parsedRow.metadata === null
           ? undefined
-          : metadataSchema.parse(JSON.parse(row.metadata));
+          : metadataSchema.parse(JSON.parse(parsedRow.metadata));
 
       results.push({
-        key: row.key,
+        key: parsedRow.key,
         score,
         entry: {
           data,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
+          createdAt: parsedRow.created_at,
+          updatedAt: parsedRow.updated_at,
           ...(metadata && { metadata }),
         },
       });
