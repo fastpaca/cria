@@ -252,16 +252,21 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
           t.created_at,
           t.updated_at,
           t.metadata,
-          i.distance AS distance
+          vector_distance_cos(t.embedding, vector32(?)) AS distance
         FROM vector_top_k(
           ?,
           vector32(?),
           CAST(? AS INTEGER)
         ) AS i
         JOIN ${this.tableName} AS t ON t.rowid = i.id
-        ORDER BY i.distance ASC
+        ORDER BY distance ASC
       `,
-      args: [`${this.tableName}_vector_idx`, serializedQuery, limit],
+      args: [
+        serializedQuery,
+        `${this.tableName}_vector_idx`,
+        serializedQuery,
+        limit,
+      ],
     });
 
     const results: VectorSearchResult<T>[] = [];
