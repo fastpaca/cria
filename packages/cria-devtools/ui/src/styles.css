@@ -166,6 +166,31 @@ body {
   color: var(--text-muted);
 }
 
+.action-button {
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.import-error {
+  color: var(--error);
+  font-size: 11px;
+}
+
+.import-input {
+  display: none;
+}
+
 .endpoint {
   max-width: 320px;
   overflow: hidden;
@@ -340,6 +365,20 @@ body {
 .details-header {
   padding: 16px;
   border-bottom: 1px solid var(--border);
+}
+
+.details-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .details-header h2 {
@@ -1209,6 +1248,13 @@ body {
 }
 
 .empty-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.empty-steps {
+  display: grid;
+  gap: 4px;
   font-size: 11px;
   color: var(--text-muted);
 }

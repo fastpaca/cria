@@ -18,6 +18,7 @@ Cria turns prompts into composable components with explicit roles and strategies
 - [Summarize long history](how-to/summarize-history.md)
 - [Fit & compaction (budgets, priorities, FitError)](how-to/fit-and-compaction.md)
 - [Observability (hooks, OpenTelemetry)](how-to/observability.md)
+- [DevTools (local prompt inspector)](how-to/devtools.md)
 - [Write custom components](how-to/custom-components.md)
 
 ## Reference (minimal)
@@ -33,3 +34,4 @@ Cria turns prompts into composable components with explicit roles and strategies
 - [Summaries](../examples/summary)
 - [RAG](../examples/rag)
 - [Provider cache pinning](../examples/provider-cache-pinning)
+- [DevTools smoke test](../examples/devtools-smoke)

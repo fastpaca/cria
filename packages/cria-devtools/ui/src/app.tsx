@@ -10,6 +10,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import {
+  type ChangeEvent,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -178,6 +179,17 @@ const formatDateTime = (iso: string): string => {
   return date.toLocaleString();
 };
 
+const downloadJson = (value: unknown, filename: string): void => {
+  const payload = JSON.stringify(value, null, 2);
+  const blob = new Blob([payload], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
 const resolveInitiator = (session: DevtoolsSessionPayload): string => {
   const initiator = session.initiator?.name;
   if (initiator) {
@@ -279,6 +291,49 @@ const filterSessions = (
   }
 
   return filtered;
+};
+
+const isSessionLike = (value: unknown): value is DevtoolsSessionPayload => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.startedAt === "string" &&
+    typeof record.durationMs === "number" &&
+    typeof record.status === "string"
+  );
+};
+
+const parseImportedSessions = (value: unknown): DevtoolsSessionPayload[] => {
+  if (Array.isArray(value)) {
+    const sessions = value.filter(isSessionLike);
+    if (sessions.length === 0) {
+      throw new Error("No sessions found in file.");
+    }
+    return sessions;
+  }
+  if (isSessionLike(value)) {
+    return [value];
+  }
+  throw new Error("Invalid session export format.");
+};
+
+const mergeSessions = (
+  current: DevtoolsSessionPayload[],
+  incoming: DevtoolsSessionPayload[]
+): DevtoolsSessionPayload[] => {
+  const map = new Map<string, DevtoolsSessionPayload>();
+  for (const session of incoming) {
+    map.set(session.id, session);
+  }
+  for (const session of current) {
+    if (!map.has(session.id)) {
+      map.set(session.id, session);
+    }
+  }
+  return [...map.values()];
 };
 
 const ROLE_CONFIG: Record<
@@ -1355,10 +1410,42 @@ const SessionHeader = ({ session }: { session: DevtoolsSessionPayload }) => {
     .filter(Boolean)
     .join(" · ");
   const initiatorLabel = resolveInitiator(session);
+  const exportPayload = () => {
+    downloadJson(
+      {
+        id: session.id,
+        label: session.label,
+        startedAt: session.startedAt,
+        snapshots: session.snapshots,
+      },
+      `cria-payload-${session.id}.json`
+    );
+  };
+  const exportSession = () => {
+    downloadJson(session, `cria-session-${session.id}.json`);
+  };
 
   return (
     <div className="details-header">
-      <h2>{session.label ?? session.id}</h2>
+      <div className="details-header-top">
+        <h2>{session.label ?? session.id}</h2>
+        <div className="details-actions">
+          <button
+            className="action-button"
+            onClick={exportPayload}
+            type="button"
+          >
+            Export payload
+          </button>
+          <button
+            className="action-button"
+            onClick={exportSession}
+            type="button"
+          >
+            Export session
+          </button>
+        </div>
+      </div>
       {session.error && <p className="error-banner">{session.error.message}</p>}
       <div className="details-meta">
         <div className="meta-item">
@@ -1596,6 +1683,8 @@ export const App = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [importError, setImportError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const traceEndpoint = origin ? `${origin}/v1/traces` : "/v1/traces";
 
@@ -1617,21 +1706,20 @@ export const App = () => {
     queryFn: fetchSessions,
   });
 
-  const handleSession = useCallback(
-    (session: DevtoolsSessionPayload) => {
-      queryClient.setQueryData<DevtoolsSessionPayload[]>(
-        ["sessions"],
-        (prev) => {
-          const current = prev ?? [];
-          const next = [
-            session,
-            ...current.filter((item) => item.id !== session.id),
-          ];
-          return next;
-        }
+  const addSessions = useCallback(
+    (incoming: DevtoolsSessionPayload[]) => {
+      queryClient.setQueryData<DevtoolsSessionPayload[]>(["sessions"], (prev) =>
+        mergeSessions(prev ?? [], incoming)
       );
     },
     [queryClient]
+  );
+
+  const handleSession = useCallback(
+    (session: DevtoolsSessionPayload) => {
+      addSessions([session]);
+    },
+    [addSessions]
   );
 
   const streamConnected = useSessionStream(handleSession);
@@ -1641,6 +1729,31 @@ export const App = () => {
       startNameResize();
     },
     [startNameResize]
+  );
+  const handleImportClick = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+  const handleImportFile = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      setImportError(null);
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text) as unknown;
+        const sessions = parseImportedSessions(parsed);
+        addSessions(sessions);
+      } catch (error) {
+        setImportError(
+          error instanceof Error ? error.message : "Failed to import sessions."
+        );
+      } finally {
+        event.target.value = "";
+      }
+    },
+    [addSessions]
   );
 
   const sessions = sessionsQuery.data ?? [];
@@ -1735,8 +1848,25 @@ export const App = () => {
             OTLP {traceEndpoint}
           </div>
           <div className="meta">{filtered.length} sessions</div>
+          <button
+            className="action-button"
+            onClick={handleImportClick}
+            type="button"
+          >
+            Import
+          </button>
+          {importError && <div className="import-error">{importError}</div>}
         </div>
       </section>
+      <input
+        accept="application/json"
+        aria-hidden="true"
+        className="import-input"
+        onChange={handleImportFile}
+        ref={importInputRef}
+        tabIndex={-1}
+        type="file"
+      />
 
       <main
         className={`network ${selected ? "has-selection" : ""}`}
@@ -1782,6 +1912,13 @@ export const App = () => {
                   <div>No sessions yet.</div>
                   <div className="empty-hint">
                     Send OTLP traces to {traceEndpoint}
+                  </div>
+                  <div className="empty-steps">
+                    <span>1. Start DevTools and refresh this page.</span>
+                    <span>
+                      2. Add createOtelRenderHooks to your render call.
+                    </span>
+                    <span>3. Render a prompt with a budget.</span>
                   </div>
                 </div>
               </div>

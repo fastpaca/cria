@@ -46,7 +46,7 @@ When you run LLM features in production, you need to:
 
 1. **Build prompts that last** — Swap providers, models, memory, or retrieval without rewriting prompt logic. A/B test components as the stack evolves.
 2. **Test like code** — Evaluate prompts with LLM-as-a-judge. Run tests in CI. Catch drift when you swap building blocks.
-3. **Inspect what runs** — See exactly what gets sent to the model. Debug token budgets. See when your RAG input messes up the context. *(Local DevTools-style inspector: planned)*
+3. **Inspect what runs** — See exactly what gets sent to the model. Debug token budgets. See when your RAG input messes up the context. *(Local DevTools-style inspector: beta)*
 
 Cria gives you composable prompt blocks, explicit token budgets, and building blocks you can easily customise and adapt so you move fast without breaking prompts.
 
@@ -61,7 +61,7 @@ Cria gives you composable prompt blocks, explicit token budgets, and building bl
 | Conversation summaries | ✅ |
 | OpenTelemetry integration | ✅ |
 | Prompt eval/test helpers | ✅ |
-| Local prompt inspector (DevTools-style) | planned |
+| Local prompt inspector (DevTools-style) | beta |
 
 ## Quick start
 

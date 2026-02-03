@@ -8,6 +8,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DevtoolsSessionPayload } from "../shared/types.js";
 import { decodeOtlpTraces } from "./otlp.js";
+import { SessionPersistence } from "./persistence.js";
 import { buildSessions } from "./sessions.js";
 import { SessionStore } from "./store.js";
 import { TraceCache } from "./trace-cache.js";
@@ -15,10 +16,14 @@ import { TraceCache } from "./trace-cache.js";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4318;
 const MAX_BODY_BYTES = 10_000_000;
+const DEFAULT_DATA_DIR = ".cria-devtools";
+const DEFAULT_RETENTION_DAYS = 7;
+const DEFAULT_RETENTION_COUNT = 500;
 
 const PING_PATH = "/cria/devtools/ping";
 const STREAM_PATH = "/cria/devtools/stream";
 const SESSIONS_PATH = "/cria/devtools/sessions";
+const SESSION_DETAIL_PREFIX = `${SESSIONS_PATH}/`;
 const OTLP_TRACE_PATH = "/v1/traces";
 
 const MIME_TYPES: Record<string, string> = {
@@ -29,12 +34,18 @@ const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
 };
 
+class OtlpBadRequestError extends Error {}
+
 export interface DevtoolsServerOptions {
   host?: string;
   port?: number;
   maxSessions?: number;
   traceTtlMs?: number;
   uiDir?: string;
+  dataDir?: string;
+  retentionDays?: number;
+  retentionCount?: number;
+  persistSessions?: boolean;
 }
 
 export interface DevtoolsServer {
@@ -84,7 +95,7 @@ const readBody = async (req: IncomingMessage): Promise<Buffer> => {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
     if (total > MAX_BODY_BYTES) {
-      throw new Error("Payload too large");
+      throw new OtlpBadRequestError("Payload too large");
     }
     chunks.push(buffer);
   }
@@ -98,6 +109,13 @@ const resolveUiDir = (override?: string): string => {
   }
   const currentDir = dirname(fileURLToPath(import.meta.url));
   return resolve(currentDir, "../../ui/dist");
+};
+
+const resolveDataDir = (override?: string): string => {
+  if (override) {
+    return resolve(override);
+  }
+  return resolve(process.cwd(), DEFAULT_DATA_DIR);
 };
 
 const getMimeType = (filePath: string): string => {
@@ -157,12 +175,20 @@ const handleOtlpTraces = async (
   store: SessionStore,
   cache: TraceCache,
   req: IncomingMessage,
-  res: ServerResponse
+  res: ServerResponse,
+  persistence?: SessionPersistence
 ): Promise<void> => {
   const contentType = req.headers["content-type"];
   try {
     const body = await readBody(req);
-    const spans = decodeOtlpTraces(body, contentType);
+    let spans: ReturnType<typeof decodeOtlpTraces>;
+    try {
+      spans = decodeOtlpTraces(body, contentType);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Invalid OTLP payload";
+      throw new OtlpBadRequestError(message);
+    }
     cache.add(spans);
     cache.prune();
 
@@ -175,10 +201,19 @@ const handleOtlpTraces = async (
     for (const session of sessions) {
       store.upsert(session);
     }
+    if (persistence) {
+      for (const session of sessions) {
+        await persistence.save(session);
+      }
+      await persistence.prune();
+      const persisted = await persistence.load();
+      store.seed(persisted);
+    }
 
     otlpResponse(res, contentType);
   } catch (error) {
-    jsonResponse(res, 400, {
+    const status = error instanceof OtlpBadRequestError ? 400 : 500;
+    jsonResponse(res, status, {
       error: error instanceof Error ? error.message : "Invalid",
     });
   }
@@ -216,55 +251,141 @@ const handleStaticFile = async (
   }
 };
 
+const handleSessionDetail = async (
+  store: SessionStore,
+  persistence: SessionPersistence | null,
+  pathname: string,
+  res: ServerResponse
+): Promise<boolean> => {
+  if (!pathname.startsWith(SESSION_DETAIL_PREFIX)) {
+    return false;
+  }
+  const id = decodeURIComponent(pathname.slice(SESSION_DETAIL_PREFIX.length));
+  const session = store.get(id) ?? (await persistence?.get(id));
+  if (!session) {
+    jsonResponse(res, 404, { error: "Not found" });
+    return true;
+  }
+  jsonResponse(res, 200, session);
+  return true;
+};
+
+const handleGetRequest = async (
+  store: SessionStore,
+  persistence: SessionPersistence | null,
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  uiDir: string
+): Promise<void> => {
+  if (pathname === PING_PATH) {
+    jsonResponse(res, 200, { ok: true });
+    return;
+  }
+  if (pathname === SESSIONS_PATH) {
+    handleSessions(store, res);
+    return;
+  }
+  const handled = await handleSessionDetail(store, persistence, pathname, res);
+  if (handled) {
+    return;
+  }
+  if (pathname === STREAM_PATH) {
+    handleStream(store, req, res);
+    return;
+  }
+  await handleStaticFile(res, pathname, uiDir);
+};
+
+const handlePostRequest = async (
+  store: SessionStore,
+  cache: TraceCache,
+  persistence: SessionPersistence | null,
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string
+): Promise<boolean> => {
+  if (pathname !== OTLP_TRACE_PATH) {
+    return false;
+  }
+  await handleOtlpTraces(store, cache, req, res, persistence ?? undefined);
+  return true;
+};
+
+const handleRequest = async (
+  store: SessionStore,
+  cache: TraceCache,
+  persistence: SessionPersistence | null,
+  req: IncomingMessage,
+  res: ServerResponse,
+  host: string,
+  port: number,
+  uiDir: string
+): Promise<void> => {
+  if (!req.url) {
+    jsonResponse(res, 400, { error: "Missing URL" });
+    return;
+  }
+  const parsedUrl = new URL(req.url, `http://${host}:${port}`);
+  const pathname = parsedUrl.pathname;
+
+  if (req.method === "OPTIONS") {
+    handleOptions(res);
+    return;
+  }
+
+  if (req.method === "GET") {
+    await handleGetRequest(store, persistence, req, res, pathname, uiDir);
+    return;
+  }
+
+  if (req.method === "POST") {
+    const handled = await handlePostRequest(
+      store,
+      cache,
+      persistence,
+      req,
+      res,
+      pathname
+    );
+    if (!handled) {
+      jsonResponse(res, 404, { error: "Not found" });
+    }
+    return;
+  }
+
+  jsonResponse(res, 404, { error: "Not found" });
+};
+
 export const startDevtoolsServer = async (
   options: DevtoolsServerOptions = {}
 ): Promise<DevtoolsServer> => {
   const host = options.host ?? DEFAULT_HOST;
   const port = options.port ?? DEFAULT_PORT;
   const uiDir = resolveUiDir(options.uiDir);
-  const store = new SessionStore({ maxSessions: options.maxSessions ?? 100 });
+  const retentionCount = options.retentionCount ?? DEFAULT_RETENTION_COUNT;
+  const retentionDays = options.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  const maxSessions = options.maxSessions ?? retentionCount;
+  const store = new SessionStore({ maxSessions });
   const cache = new TraceCache({ ttlMs: options.traceTtlMs ?? 120_000 });
+  const persistence =
+    options.persistSessions === false
+      ? null
+      : new SessionPersistence({
+          dataDir: resolveDataDir(options.dataDir),
+          retentionCount,
+          retentionDays,
+        });
 
-  const server = createServer(async (req, res) => {
-    if (!req.url) {
-      jsonResponse(res, 400, { error: "Missing URL" });
-      return;
-    }
-    const parsedUrl = new URL(req.url, `http://${host}:${port}`);
-    const pathname = parsedUrl.pathname;
+  if (persistence) {
+    await persistence.prune();
+    const sessions = await persistence.load();
+    store.seed(sessions);
+  }
 
-    if (req.method === "OPTIONS") {
-      handleOptions(res);
-      return;
-    }
-
-    if (req.method === "GET" && pathname === PING_PATH) {
-      jsonResponse(res, 200, { ok: true });
-      return;
-    }
-
-    if (req.method === "GET" && pathname === SESSIONS_PATH) {
-      handleSessions(store, res);
-      return;
-    }
-
-    if (req.method === "GET" && pathname === STREAM_PATH) {
-      handleStream(store, req, res);
-      return;
-    }
-
-    if (req.method === "POST" && pathname === OTLP_TRACE_PATH) {
-      await handleOtlpTraces(store, cache, req, res);
-      return;
-    }
-
-    if (req.method === "GET") {
-      await handleStaticFile(res, pathname, uiDir);
-      return;
-    }
-
-    jsonResponse(res, 404, { error: "Not found" });
-  });
+  const server = createServer((req, res) =>
+    handleRequest(store, cache, persistence, req, res, host, port, uiDir)
+  );
 
   await new Promise<void>((resolvePromise) => {
     server.listen(port, host, () => resolvePromise());

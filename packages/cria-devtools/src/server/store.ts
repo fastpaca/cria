@@ -19,6 +19,14 @@ export class SessionStore {
     return [...this.sessions];
   }
 
+  seed(sessions: DevtoolsSessionPayload[]): void {
+    this.sessions = [...sessions].slice(0, this.maxSessions);
+  }
+
+  get(id: string): DevtoolsSessionPayload | undefined {
+    return this.sessions.find((session) => session.id === id);
+  }
+
   upsert(session: DevtoolsSessionPayload): void {
     const next = [
       session,
