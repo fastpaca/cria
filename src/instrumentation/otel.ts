@@ -5,6 +5,7 @@ import {
   type Span,
   SpanStatusCode,
   type Tracer,
+  trace,
 } from "@opentelemetry/api";
 import type { RenderHooks } from "../render";
 import type { PromptNode, PromptPart, PromptScope } from "../types";
@@ -30,9 +31,11 @@ export function createOtelRenderHooks({
   attributes = {},
 }: OtelRenderHooksOptions): RenderHooks {
   let fitSpan: Span | null = null;
+  let fitContext: Context | null = null;
 
   const startChildSpan = (name: string, attrs: Attributes): Span => {
-    const span = tracer.startSpan(name, undefined, context.active());
+    const parentContext = fitContext ?? context.active();
+    const span = tracer.startSpan(name, undefined, parentContext);
     setAttributes(span, { ...attributes, ...attrs });
     return span;
   };
@@ -40,6 +43,7 @@ export function createOtelRenderHooks({
   return {
     onFitStart: (event) => {
       fitSpan = tracer.startSpan(spanName, undefined, context.active());
+      fitContext = trace.setSpan(context.active(), fitSpan);
       setAttributes(fitSpan, {
         ...attributes,
         "cria.budget": event.budget,
@@ -49,7 +53,7 @@ export function createOtelRenderHooks({
 
       emitPromptStructureSpans(
         tracer,
-        context.active(),
+        fitContext,
         `${spanName}.prompt.message`,
         attributes,
         event.element,
@@ -87,7 +91,7 @@ export function createOtelRenderHooks({
       if (event.result) {
         emitPromptStructureSpans(
           tracer,
-          context.active(),
+          fitContext ?? context.active(),
           `${spanName}.prompt.message`,
           attributes,
           event.result,
@@ -96,11 +100,13 @@ export function createOtelRenderHooks({
       }
       fitSpan.end();
       fitSpan = null;
+      fitContext = null;
     },
 
     onFitError: (event) => {
       if (!fitSpan) {
         fitSpan = tracer.startSpan(spanName, undefined, context.active());
+        fitContext = trace.setSpan(context.active(), fitSpan);
         setAttributes(fitSpan, {
           ...attributes,
           "cria.budget": event.error.budget,
@@ -121,6 +127,7 @@ export function createOtelRenderHooks({
       fitSpan.recordException(event.error);
       fitSpan.end();
       fitSpan = null;
+      fitContext = null;
     },
   };
 }

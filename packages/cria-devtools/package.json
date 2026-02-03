@@ -1,0 +1,47 @@
+{
+  "name": "@fastpaca/cria-devtools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local DevTools inspector for Cria prompts.",
+  "license": "MIT",
+  "bin": {
+    "cria-devtools": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "ui/dist"
+  ],
+  "scripts": {
+    "build": "pnpm run build:ui && pnpm run build:server",
+    "build:ui": "vite build --config ui/vite.config.ts",
+    "build:server": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/otlp-transformer": "^0.211.0",
+    "@tanstack/react-query": "^5.59.20",
+    "@tanstack/react-table": "^8.21.3",
+    "fast-diff": "^1.3.0",
+    "open": "^9.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "@types/react": "^18.2.74",
+    "@types/react-dom": "^18.2.23",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.11"
+  }
+}

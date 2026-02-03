@@ -103,12 +103,18 @@ export interface RenderHooks<TToolIO extends ProviderToolIO = ProviderToolIO> {
   onFitError?: (event: FitErrorEvent) => MaybePromise<void>;
 }
 
+import { getGlobalDevtoolsHooks } from "./devtools";
+
 export async function render<TRendered, TToolIO extends ProviderToolIO>(
   element: MaybePromise<PromptTree<TToolIO>>,
   options: RenderOptions<TRendered, TToolIO>
 ): Promise<TRendered> {
   const resolvedElement = element instanceof Promise ? await element : element;
   const provider = resolveProvider(resolvedElement, options.provider);
+
+  // Auto-inject devtools hooks if enabled and no hooks provided
+  const hooks = options.hooks ?? getGlobalDevtoolsHooks();
+
   if (options.budget === undefined || options.budget === null) {
     return renderOutput(resolvedElement, provider);
   }
@@ -117,7 +123,7 @@ export async function render<TRendered, TToolIO extends ProviderToolIO>(
     resolvedElement,
     options.budget,
     provider,
-    options.hooks,
+    hooks,
     { provider }
   );
 

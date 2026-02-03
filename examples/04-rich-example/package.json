@@ -1,5 +1,5 @@
 {
-  "name": "hello-world",
+  "name": "rich-example",
   "type": "module",
   "scripts": {
     "start": "npx tsx main.ts"

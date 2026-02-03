@@ -16,6 +16,8 @@
  * @packageDocumentation
  */
 
+// Devtools
+export type { DevtoolsOptions } from "./devtools";
 // DSL - primary API
 export type {
   BuilderChild,

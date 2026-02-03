@@ -42,3 +42,6 @@ plan/
 plans/
 todos/
 .docs/
+
+# Playwright MCP screenshots
+.playwright-mcp/
