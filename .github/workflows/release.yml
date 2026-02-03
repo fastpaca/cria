@@ -32,8 +32,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: npm
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Sync lock file
+        run: npm install --package-lock-only --ignore-scripts
 
       - name: Install dependencies
         run: npm clean-install
