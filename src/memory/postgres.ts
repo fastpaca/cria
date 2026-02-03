@@ -1,5 +1,6 @@
 import type { PoolConfig } from "pg";
 import { Pool } from "pg";
+import { z } from "zod";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
@@ -20,16 +21,20 @@ export interface PostgresStoreOptions extends PoolConfig {
   autoCreateTable?: boolean;
 }
 
-/**
- * Database row structure for the kv store table.
- */
-interface KVRow {
-  key: string;
-  data: unknown;
-  created_at: Date;
-  updated_at: Date;
-  metadata: Record<string, unknown> | null;
-}
+const KVRowSchema = z
+  .object({
+    key: z.string(),
+    data: z.unknown(),
+    created_at: z.coerce.date(),
+    updated_at: z.coerce.date(),
+    metadata: z.record(z.string(), z.unknown()).nullable(),
+  })
+  .transform((row) => ({
+    data: row.data,
+    createdAt: row.created_at.getTime(),
+    updatedAt: row.updated_at.getTime(),
+    ...(row.metadata && { metadata: row.metadata }),
+  }));
 
 /**
  * Postgres-backed implementation of KVMemory.
@@ -101,7 +106,7 @@ export class PostgresStore<T = unknown> implements KVMemory<T> {
   async get(key: string): Promise<MemoryEntry<T> | null> {
     await this.ensureTable();
 
-    const result = await this.pool.query<KVRow>(
+    const result = await this.pool.query(
       `SELECT key, data, created_at, updated_at, metadata FROM ${this.tableName} WHERE key = $1`,
       [key]
     );
@@ -112,12 +117,7 @@ export class PostgresStore<T = unknown> implements KVMemory<T> {
       return null;
     }
 
-    return {
-      data: row.data as T,
-      createdAt: new Date(row.created_at).getTime(),
-      updatedAt: new Date(row.updated_at).getTime(),
-      ...(row.metadata && { metadata: row.metadata }),
-    };
+    return KVRowSchema.parse(row) as MemoryEntry<T>;
   }
 
   async set(

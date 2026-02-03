@@ -1,4 +1,5 @@
 import { type Collection, IncludeEnum, type Metadata } from "chromadb";
+import { z } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
   VectorMemory,
@@ -21,22 +22,24 @@ export interface ChromaStoreOptions {
   embed: EmbeddingFunction;
 }
 
-/**
- * Parse a document string. Tries JSON.parse first, returns raw string on failure.
- * Throws if document is missing.
- */
-function parseDocument<T>(document: string | null | undefined): T {
-  if (!document) {
-    throw new Error("ChromaStore: document is missing from entry");
-  }
+const DocumentSchema = z
+  .preprocess((value) => {
+    if (typeof value !== "string" || value.length === 0) {
+      throw new Error("ChromaStore: document is missing from entry");
+    }
 
-  try {
-    return JSON.parse(document) as T;
-  } catch {
-    // Document was stored as a raw string (T is string)
-    return document as T;
-  }
-}
+    return value;
+  }, z.string())
+  .transform((document) => {
+    try {
+      return JSON.parse(document);
+    } catch {
+      // Document was stored as a raw string (T is string)
+      return document;
+    }
+  });
+
+const MetadataSchema = z.record(z.string(), z.unknown()).optional().nullable();
 
 /**
  * Convert L2 distance to a similarity score (0-1).
@@ -50,12 +53,28 @@ function distanceToScore(distance: number): number {
  * Extract timestamp from Chroma metadata field.
  */
 function extractTimestamp(
-  metadata: Metadata | null | undefined,
+  metadata: Record<string, unknown> | null | undefined,
   field: "_createdAt" | "_updatedAt"
 ): number {
   const value = metadata?.[field];
   return typeof value === "number" ? value : 0;
 }
+
+const ChromaEntrySchema = z
+  .object({
+    document: DocumentSchema,
+    metadata: MetadataSchema,
+  })
+  .transform((entry) => {
+    const metadata = entry.metadata ?? undefined;
+
+    return {
+      data: entry.document,
+      createdAt: extractTimestamp(metadata, "_createdAt"),
+      updatedAt: extractTimestamp(metadata, "_updatedAt"),
+      ...(metadata && { metadata }),
+    };
+  });
 
 /**
  * VectorMemory implementation backed by ChromaDB.
@@ -110,12 +129,7 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
     const document = response.documents?.[0];
     const metadata = response.metadatas?.[0];
 
-    return {
-      data: parseDocument<T>(document),
-      createdAt: extractTimestamp(metadata, "_createdAt"),
-      updatedAt: extractTimestamp(metadata, "_updatedAt"),
-      ...(metadata && { metadata: metadata as Record<string, unknown> }),
-    };
+    return ChromaEntrySchema.parse({ document, metadata }) as MemoryEntry<T>;
   }
 
   async set(
@@ -201,12 +215,10 @@ export class ChromaStore<T = unknown> implements VectorMemory<T> {
       results.push({
         key: id,
         score,
-        entry: {
-          data: parseDocument<T>(documents[i]),
-          createdAt: extractTimestamp(metadata, "_createdAt"),
-          updatedAt: extractTimestamp(metadata, "_updatedAt"),
-          ...(metadata && { metadata: metadata as Record<string, unknown> }),
-        },
+        entry: ChromaEntrySchema.parse({
+          document: documents[i],
+          metadata,
+        }) as MemoryEntry<T>,
       });
     }
 

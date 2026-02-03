@@ -1,5 +1,6 @@
 import type { RedisOptions } from "ioredis";
 import Redis from "ioredis";
+import { z } from "zod";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
@@ -21,19 +22,28 @@ export interface RedisStoreOptions extends RedisOptions {
   ttlSeconds?: number;
 }
 
-/**
- * Internal structure for storing entries in Redis.
- * Stored as JSON string.
- */
-interface StoredEntry<T> {
-  data: T;
-  createdAt: number;
-  updatedAt: number;
-  metadata?: Record<string, unknown>;
-}
+const StoredEntrySchema = z
+  .preprocess(
+    (value) => {
+      if (typeof value === "string") {
+        return JSON.parse(value);
+      }
 
-const parseStoredEntry = <T>(raw: string): StoredEntry<T> =>
-  JSON.parse(raw) as StoredEntry<T>;
+      return value;
+    },
+    z.object({
+      data: z.unknown(),
+      createdAt: z.number(),
+      updatedAt: z.number(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    })
+  )
+  .transform((entry) => ({
+    data: entry.data,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+    ...(entry.metadata && { metadata: entry.metadata }),
+  }));
 
 /**
  * Redis-backed implementation of KVMemory.
@@ -97,14 +107,7 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
       return null;
     }
 
-    const stored = parseStoredEntry<T>(raw);
-
-    return {
-      data: stored.data,
-      createdAt: stored.createdAt,
-      updatedAt: stored.updatedAt,
-      ...(stored.metadata && { metadata: stored.metadata }),
-    };
+    return StoredEntrySchema.parse(raw) as MemoryEntry<T>;
   }
 
   async set(
@@ -120,11 +123,11 @@ export class RedisStore<T = unknown> implements KVMemory<T> {
     let createdAt = now;
 
     if (existingRaw !== null) {
-      const existing = parseStoredEntry<T>(existingRaw);
+      const existing = StoredEntrySchema.parse(existingRaw) as MemoryEntry<T>;
       createdAt = existing.createdAt;
     }
 
-    const entry: StoredEntry<T> = {
+    const entry = {
       data,
       createdAt,
       updatedAt: now,
