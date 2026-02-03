@@ -84,7 +84,6 @@ const sqliteRowSchema = z.object({
 export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
   private readonly db: SqliteDatabase;
   private readonly tableName: string;
-  private readonly indexName: string;
   private readonly embedFn: EmbeddingFunction;
   private readonly dimensions: number;
   private readonly schema: z.ZodType<T>;
@@ -110,7 +109,6 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
         ...dbOptions,
       });
     this.tableName = tableName;
-    this.indexName = `${tableName}_vector_idx`;
     this.embedFn = embed;
     this.dimensions = dimensions;
     this.schema = schema;
@@ -142,7 +140,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
     }
 
     await this.db.execute(`
-      CREATE INDEX IF NOT EXISTS ${this.indexName}
+      CREATE INDEX IF NOT EXISTS ${this.tableName}_vector_idx
       ON ${this.tableName} (
         libsql_vector_idx(embedding, 'metric=cosine')
       )
@@ -263,7 +261,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
         JOIN ${this.tableName} AS t ON t.rowid = i.id
         ORDER BY i.distance ASC
       `,
-      args: [this.indexName, serializedQuery, limit],
+      args: [`${this.tableName}_vector_idx`, serializedQuery, limit],
     });
 
     const results: VectorSearchResult<T>[] = [];
