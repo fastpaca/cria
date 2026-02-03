@@ -1,3 +1,20 @@
+## [1.7.2](https://github.com/fastpaca/cria/compare/v1.7.1...v1.7.2) (2026-02-03)
+
+
+### Bug Fixes
+
+* add back package-lock.json for releases ([#44](https://github.com/fastpaca/cria/issues/44)) ([53e29b8](https://github.com/fastpaca/cria/commit/53e29b8e2d1779af2371a368554be1a5ece5806b))
+* **memory:** adjust sqlite vector cast ([58fbf3e](https://github.com/fastpaca/cria/commit/58fbf3e1a36be0b00a17d89ee7f4d0ab8a96ed84))
+* **memory:** align sqlite vector row typing ([d0e8972](https://github.com/fastpaca/cria/commit/d0e89728f5a39cadc32760f037406a6c74bd2165))
+* **memory:** use libsql vector distance ([7a9b4d8](https://github.com/fastpaca/cria/commit/7a9b4d8163f241e53f93666a7412db2c18284efd))
+* **release:** sync package-lock.json before npm clean-install ([9eaa448](https://github.com/fastpaca/cria/commit/9eaa44828eb9985a6dec5c5027c52cf7bcd1663a))
+
+
+### Features
+
+* **memory:** add libsql vector store ([05c44ac](https://github.com/fastpaca/cria/commit/05c44acc9f0e2076c9b34f29b598454c561f84ed))
+* **memory:** add zod schema to sqlite vector ([a114590](https://github.com/fastpaca/cria/commit/a11459025af3d5e20d6428139c11bba1b7f4ccb0))
+
 ## [1.7.1](https://github.com/fastpaca/cria/compare/v1.7.0...v1.7.1) (2026-02-02)
 
 
