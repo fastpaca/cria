@@ -1,23 +1,37 @@
 import type { SqliteDatabase } from "@fastpaca/cria/memory/sqlite";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { createClient } from "@libsql/client";
+import { getEncoding } from "js-tiktoken";
 import { afterEach, expect, test } from "vitest";
 import { z } from "zod";
 
 const clients: SqliteDatabase[] = [];
 
-const embeddings: Record<string, number[]> = {
-  alpha: [1, 0],
-  beta: [0, 1],
-  "alpha beta": [0.8, 0.6],
-};
+const encoding = getEncoding("cl100k_base");
+const alphaTokens = new Set([
+  ...encoding.encode("alpha"),
+  ...encoding.encode(" alpha"),
+]);
+const betaTokens = new Set([
+  ...encoding.encode("beta"),
+  ...encoding.encode(" beta"),
+]);
 
 const embed = (text: string): Promise<number[]> => {
-  const vector = embeddings[text];
-  if (!vector) {
-    throw new Error(`Missing embedding for ${text}`);
+  const tokens = encoding.encode(text);
+  let alphaCount = 0;
+  let betaCount = 0;
+
+  for (const token of tokens) {
+    if (alphaTokens.has(token)) {
+      alphaCount += 1;
+    }
+    if (betaTokens.has(token)) {
+      betaCount += 1;
+    }
   }
-  return Promise.resolve(vector);
+
+  return Promise.resolve([alphaCount, betaCount]);
 };
 
 const schema = z.string();
