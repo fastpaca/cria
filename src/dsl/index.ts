@@ -35,6 +35,7 @@ export type {
 } from "./summary";
 export { c, type TextInput } from "./templating";
 
+import { devtools } from "../devtools";
 import type { InputLayout, ModelProvider, PromptInput } from "../provider";
 import type {
   PromptLayout,
@@ -97,6 +98,9 @@ function createPrompt(provider?: ModelProvider<unknown, ProviderToolIO>) {
  * ```typescript
  * import { cria } from "@fastpaca/cria";
  *
+ * // Enable devtools (one line!)
+ * cria.devtools();
+ *
  * // Full prompt builder
  * const prompt = cria
  *   .prompt()
@@ -128,7 +132,18 @@ export const cria = {
   assistant: (content: TextInput) => message("assistant", content),
   input,
   inputLayout,
-} as const;
+  /**
+   * Enable devtools tracing globally. All subsequent renders will be traced.
+   *
+   * @example
+   * ```ts
+   * cria.devtools(); // enable with defaults
+   * cria.devtools({ serviceName: "my-app" }); // with options
+   * await cria.devtools.shutdown(); // cleanup
+   * ```
+   */
+  devtools,
+};
 
 /**
  * Standalone function to create a new prompt builder.

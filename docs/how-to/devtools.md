@@ -2,6 +2,51 @@
 
 Cria DevTools is a local inspector that shows the exact prompt payload before/after fit, tool calls/results, and compaction output.
 
+## Quick Start
+
+1. Start DevTools:
+
+```bash
+pnpm exec -- cria-devtools
+```
+
+2. Enable tracing in your code:
+
+```ts
+import { cria } from "@fastpaca/cria";
+import { createProvider } from "@fastpaca/cria/openai";
+import OpenAI from "openai";
+
+cria.devtools(); // that's it!
+
+const provider = createProvider(new OpenAI(), "gpt-4o-mini");
+await cria
+  .prompt(provider)
+  .system("You are helpful.")
+  .user("Hello!")
+  .render({ budget: 800 });
+```
+
+Your renders are now visible in DevTools.
+
+## Configuration
+
+```ts
+cria.devtools({
+  serviceName: "my-app",
+  endpoint: "http://127.0.0.1:4318/v1/traces",
+  attributes: { "cria.prompt.name": "main-prompt" },
+});
+```
+
+## Cleanup (optional)
+
+For graceful shutdown in long-running processes:
+
+```ts
+await cria.devtools.shutdown();
+```
+
 ## Run DevTools
 
 From the repo:
@@ -18,9 +63,9 @@ pnpm exec -- cria-devtools --data-dir .cria-devtools --retention-days 7 --retent
 pnpm exec -- cria-devtools --no-persist
 ```
 
-## Send traces
+## Advanced: Custom OpenTelemetry Setup
 
-Use the OpenTelemetry render hooks to emit traces to the DevTools server.
+For full control over OpenTelemetry configuration, use `createOtelRenderHooks` directly:
 
 ```ts
 import { createOtelRenderHooks, cria } from "@fastpaca/cria";
@@ -62,14 +107,6 @@ await cria
 await tracerProvider.shutdown();
 ```
 
-## Smoke test example
-
-Run the local example that emits a single render trace:
-
-```bash
-pnpm --filter devtools-smoke start
-```
-
 ## Export and import
 
 - Use the "Export payload" or "Export session" buttons in the session header.
@@ -86,5 +123,5 @@ DevTools persists sessions to disk by default. You can configure the storage pat
 
 ## Troubleshooting
 
-- If you see “No sessions yet,” confirm your OTLP exporter URL matches the DevTools endpoint.
+- If you see "No sessions yet," confirm your OTLP exporter URL matches the DevTools endpoint.
 - If the stream shows Offline, restart DevTools or refresh the page.
