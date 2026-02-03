@@ -137,15 +137,8 @@ const formatTokens = (before?: number, after?: number): string => {
   return `${before} → ${after}`;
 };
 
-const formatTime = (iso: string): string => {
-  const date = new Date(iso);
-  return date.toLocaleTimeString();
-};
-
-const formatDateTime = (iso: string): string => {
-  const date = new Date(iso);
-  return date.toLocaleString();
-};
+const formatDate = (iso: string, includeDate = false): string =>
+  new Date(iso)[includeDate ? "toLocaleString" : "toLocaleTimeString"]();
 
 const downloadJson = (value: unknown, filename: string): void => {
   const payload = JSON.stringify(value, null, 2);
@@ -221,7 +214,7 @@ const buildColumns = (
     columnHelper.accessor((row) => row.startedAt, {
       id: "started",
       header: "Started",
-      cell: (info) => formatTime(info.getValue()),
+      cell: (info) => formatDate(info.getValue()),
     }),
     columnHelper.accessor((row) => row, {
       id: "initiator",
@@ -382,30 +375,71 @@ const isTurn = (
   return "assistant" in item && "toolResults" in item;
 };
 
-const tryParseJson = (value: unknown): unknown => {
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-};
+const cx = (...classes: (string | false | null | undefined)[]) =>
+  classes.filter(Boolean).join(" ");
+
+interface ToggleOption<T extends string> {
+  value: T;
+  label: string;
+}
+
+const ToggleGroup = <T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly ToggleOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+}) => (
+  <div className="toggle-group">
+    {options.map((option) => (
+      <button
+        className={value === option.value ? "active" : ""}
+        key={option.value}
+        onClick={() => onChange(option.value)}
+        type="button"
+      >
+        {option.label}
+      </button>
+    ))}
+  </div>
+);
+
+const MetaItem = ({
+  label,
+  value,
+  className,
+  title,
+}: {
+  label: string;
+  value: ReactNode;
+  className?: string;
+  title?: string;
+}) => (
+  <div className="meta-item">
+    <div className="meta-label">{label}</div>
+    <div className={cx("meta-value", className)} title={title}>
+      {value}
+    </div>
+  </div>
+);
 
 const deepParseJson = (obj: unknown): unknown => {
   if (typeof obj === "string") {
-    return tryParseJson(obj);
+    try {
+      return JSON.parse(obj);
+    } catch {
+      return obj;
+    }
   }
   if (Array.isArray(obj)) {
     return obj.map(deepParseJson);
   }
   if (obj && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = deepParseJson(value);
-    }
-    return result;
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [k, deepParseJson(v)])
+    );
   }
   return obj;
 };
@@ -646,14 +680,6 @@ const diffText = (before: string, after: string): DiffOp[] =>
     text,
   }));
 
-const hashString = (value: string): string => {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 33 + value.charCodeAt(i)) % 4_294_967_291;
-  }
-  return hash.toString(36);
-};
-
 const getMessageContent = (message: DevtoolsMessageSnapshot): string => {
   const sections: string[] = [];
   if (message.text) {
@@ -698,20 +724,13 @@ const InlineDiffBlock = ({
     return null;
   }
 
-  const keyCounts = new Map<string, number>();
-
   return (
     <pre className="diff-block">
-      {ops.map((op) => {
-        const baseKey = `${op.type}-${hashString(op.text)}`;
-        const seen = keyCounts.get(baseKey) ?? 0;
-        keyCounts.set(baseKey, seen + 1);
-        return (
-          <span className={`diff-${op.type}`} key={`${baseKey}-${seen}`}>
-            {op.text}
-          </span>
-        );
-      })}
+      {ops.map((op, index) => (
+        <span className={`diff-${op.type}`} key={`${op.type}-${index}`}>
+          {op.text}
+        </span>
+      ))}
     </pre>
   );
 };
@@ -1174,7 +1193,7 @@ const InlineCompareView = ({
 
 const DiffViewSection = ({ session }: { session: DevtoolsSessionPayload }) => {
   const [diffMode, setDiffMode] = useState<DiffViewMode>("inline");
-  const [renderMarkdown, setRenderMarkdown] = useState(false);
+  const [textMode, setTextMode] = useState<TextMode>("text");
 
   const diffView =
     diffMode === "inline" ? (
@@ -1187,14 +1206,14 @@ const DiffViewSection = ({ session }: { session: DevtoolsSessionPayload }) => {
         <div className="compare-column">
           <div className="compare-title">Before Fit</div>
           <MessageSnapshot
-            renderMarkdown={renderMarkdown}
+            renderMarkdown={textMode === "markdown"}
             snapshots={session.snapshots.before}
           />
         </div>
         <div className="compare-column">
           <div className="compare-title">Sent</div>
           <MessageSnapshot
-            renderMarkdown={renderMarkdown}
+            renderMarkdown={textMode === "markdown"}
             snapshots={session.snapshots.after}
           />
         </div>
@@ -1208,39 +1227,17 @@ const DiffViewSection = ({ session }: { session: DevtoolsSessionPayload }) => {
         <span className="fit-section-subtitle">Before Fit → Sent</span>
       </div>
       <div className="panel-toolbar">
-        <div className="toggle-group">
-          <button
-            className={diffMode === "inline" ? "active" : ""}
-            onClick={() => setDiffMode("inline")}
-            type="button"
-          >
-            Inline diff
-          </button>
-          <button
-            className={diffMode === "split" ? "active" : ""}
-            onClick={() => setDiffMode("split")}
-            type="button"
-          >
-            Split
-          </button>
-        </div>
+        <ToggleGroup
+          onChange={setDiffMode}
+          options={DIFF_MODE_OPTIONS}
+          value={diffMode}
+        />
         {diffMode === "split" && (
-          <div className="toggle-group">
-            <button
-              className={renderMarkdown ? "" : "active"}
-              onClick={() => setRenderMarkdown(false)}
-              type="button"
-            >
-              Text
-            </button>
-            <button
-              className={renderMarkdown ? "active" : ""}
-              onClick={() => setRenderMarkdown(true)}
-              type="button"
-            >
-              Markdown
-            </button>
-          </div>
+          <ToggleGroup
+            onChange={setTextMode}
+            options={TEXT_MODE_OPTIONS}
+            value={textMode}
+          />
         )}
       </div>
       {diffView}
@@ -1257,6 +1254,27 @@ const DETAIL_TABS = [
 type PayloadViewMode = "after" | "before";
 type RawViewMode = "tree" | "raw";
 type DiffViewMode = "inline" | "split";
+type TextMode = "text" | "markdown";
+
+const DIFF_MODE_OPTIONS: ToggleOption<DiffViewMode>[] = [
+  { value: "inline", label: "Inline diff" },
+  { value: "split", label: "Split" },
+];
+
+const PAYLOAD_MODE_OPTIONS: ToggleOption<PayloadViewMode>[] = [
+  { value: "after", label: "Sent" },
+  { value: "before", label: "Before Fit" },
+];
+
+const RAW_MODE_OPTIONS: ToggleOption<RawViewMode>[] = [
+  { value: "tree", label: "Tree" },
+  { value: "raw", label: "Raw" },
+];
+
+const TEXT_MODE_OPTIONS: ToggleOption<TextMode>[] = [
+  { value: "text", label: "Text" },
+  { value: "markdown", label: "Markdown" },
+];
 
 const tokenDeltaClass = (delta: number | undefined): string => {
   if (delta === undefined) {
@@ -1331,58 +1349,38 @@ const SessionHeader = ({ session }: { session: DevtoolsSessionPayload }) => {
       </div>
       {session.error && <p className="error-banner">{session.error.message}</p>}
       <div className="details-meta">
-        <div className="meta-item">
-          <div className="meta-label">Status</div>
-          <div className={`meta-value status-${session.status}`}>
-            {session.status}
-          </div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Started</div>
-          <div className="meta-value">{formatDateTime(session.startedAt)}</div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Duration</div>
-          <div className="meta-value">{formatDuration(session.durationMs)}</div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Budget</div>
-          <div className="meta-value">{session.budget ?? "-"}</div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Tokens</div>
-          <div className="meta-value">
-            {formatTokens(session.totalTokensBefore, session.totalTokensAfter)}
-          </div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Delta</div>
-          <div className={`meta-value ${tokenDeltaClass(tokenDelta)}`}>
-            {formatTokenDelta(tokenDelta)}
-          </div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Iterations</div>
-          <div className="meta-value">{session.iterations ?? 0}</div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Trace</div>
-          <div className="meta-value" title={traceId ?? undefined}>
-            {traceLabel}
-          </div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Source</div>
-          <div className="meta-value" title={sourceLabel || undefined}>
-            {sourceLabel || "-"}
-          </div>
-        </div>
-        <div className="meta-item">
-          <div className="meta-label">Initiator</div>
-          <div className="meta-value" title={initiatorLabel}>
-            {initiatorLabel}
-          </div>
-        </div>
+        <MetaItem
+          className={`status-${session.status}`}
+          label="Status"
+          value={session.status}
+        />
+        <MetaItem label="Started" value={formatDate(session.startedAt, true)} />
+        <MetaItem label="Duration" value={formatDuration(session.durationMs)} />
+        <MetaItem label="Budget" value={session.budget ?? "-"} />
+        <MetaItem
+          label="Tokens"
+          value={formatTokens(
+            session.totalTokensBefore,
+            session.totalTokensAfter
+          )}
+        />
+        <MetaItem
+          className={tokenDeltaClass(tokenDelta)}
+          label="Delta"
+          value={formatTokenDelta(tokenDelta)}
+        />
+        <MetaItem label="Iterations" value={session.iterations ?? 0} />
+        <MetaItem label="Trace" title={traceId} value={traceLabel} />
+        <MetaItem
+          label="Source"
+          title={sourceLabel || undefined}
+          value={sourceLabel || "-"}
+        />
+        <MetaItem
+          label="Initiator"
+          title={initiatorLabel}
+          value={initiatorLabel}
+        />
       </div>
     </div>
   );
@@ -1396,46 +1394,24 @@ const PayloadPanel = ({
   active: boolean;
 }) => {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("after");
-  const [renderMarkdown, setRenderMarkdown] = useState(false);
+  const [textMode, setTextMode] = useState<TextMode>("text");
 
   return (
-    <div className={`panel ${active ? "active" : ""}`}>
+    <div className={cx("panel", active && "active")}>
       <div className="panel-toolbar">
-        <div className="toggle-group">
-          <button
-            className={viewMode === "after" ? "active" : ""}
-            onClick={() => setViewMode("after")}
-            type="button"
-          >
-            Sent
-          </button>
-          <button
-            className={viewMode === "before" ? "active" : ""}
-            onClick={() => setViewMode("before")}
-            type="button"
-          >
-            Before Fit
-          </button>
-        </div>
-        <div className="toggle-group">
-          <button
-            className={renderMarkdown ? "" : "active"}
-            onClick={() => setRenderMarkdown(false)}
-            type="button"
-          >
-            Text
-          </button>
-          <button
-            className={renderMarkdown ? "active" : ""}
-            onClick={() => setRenderMarkdown(true)}
-            type="button"
-          >
-            Markdown
-          </button>
-        </div>
+        <ToggleGroup
+          onChange={setViewMode}
+          options={PAYLOAD_MODE_OPTIONS}
+          value={viewMode}
+        />
+        <ToggleGroup
+          onChange={setTextMode}
+          options={TEXT_MODE_OPTIONS}
+          value={textMode}
+        />
       </div>
       <MessageSnapshot
-        renderMarkdown={renderMarkdown}
+        renderMarkdown={textMode === "markdown"}
         snapshots={
           viewMode === "before"
             ? session.snapshots.before
@@ -1461,7 +1437,7 @@ const DiffPanel = ({
   );
 
   return (
-    <div className={`panel ${active ? "active" : ""}`}>
+    <div className={cx("panel", active && "active")}>
       <DiffViewSection session={session} />
       <div className="fit-section">
         <div className="fit-section-header">
@@ -1506,24 +1482,13 @@ const RawPanel = ({
   const [rawMode, setRawMode] = useState<RawViewMode>("tree");
 
   return (
-    <div className={`panel ${active ? "active" : ""}`}>
+    <div className={cx("panel", active && "active")}>
       <div className="panel-toolbar">
-        <div className="toggle-group">
-          <button
-            className={rawMode === "tree" ? "active" : ""}
-            onClick={() => setRawMode("tree")}
-            type="button"
-          >
-            Tree
-          </button>
-          <button
-            className={rawMode === "raw" ? "active" : ""}
-            onClick={() => setRawMode("raw")}
-            type="button"
-          >
-            Raw
-          </button>
-        </div>
+        <ToggleGroup
+          onChange={setRawMode}
+          options={RAW_MODE_OPTIONS}
+          value={rawMode}
+        />
       </div>
       {rawMode === "tree" ? (
         <JsonViewer value={session} />
