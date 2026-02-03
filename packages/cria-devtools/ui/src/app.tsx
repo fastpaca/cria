@@ -562,27 +562,28 @@ const getSessionFromUrl = (): string | null => {
   return new URLSearchParams(window.location.search).get(SESSION_PARAM);
 };
 
-const MessageContent = ({
-  text,
-  renderMarkdown,
+const MessageTextBlock = ({
+  children,
+  className,
+  contentLength,
 }: {
-  text: string;
-  renderMarkdown: boolean;
+  children: ReactNode;
+  className?: string;
+  contentLength: number;
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const isLong = text.length > MAX_TEXT_PREVIEW;
+  const isLong = contentLength > MAX_TEXT_PREVIEW;
+  const classes = [
+    "message-text",
+    className,
+    isLong && !expanded ? "collapsed" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div
-      className={`message-text ${renderMarkdown ? "markdown" : "plain"} ${
-        isLong && !expanded ? "collapsed" : ""
-      }`}
-    >
-      {renderMarkdown ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-      ) : (
-        <pre>{text}</pre>
-      )}
+    <div className={classes}>
+      {children}
       {isLong && (
         <button
           className="text-toggle"
@@ -593,6 +594,27 @@ const MessageContent = ({
         </button>
       )}
     </div>
+  );
+};
+
+const MessageContent = ({
+  text,
+  renderMarkdown,
+}: {
+  text: string;
+  renderMarkdown: boolean;
+}) => {
+  return (
+    <MessageTextBlock
+      className={renderMarkdown ? "markdown" : "plain"}
+      contentLength={text.length}
+    >
+      {renderMarkdown ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      ) : (
+        <pre>{text}</pre>
+      )}
+    </MessageTextBlock>
   );
 };
 
@@ -735,7 +757,7 @@ const InlineDiffBlock = ({
   }, [afterText, beforeText, forceMode]);
 
   if (ops.length === 0) {
-    return <div className="muted">No content.</div>;
+    return null;
   }
 
   const keyCounts = new Map<string, number>();
@@ -833,24 +855,22 @@ const ToolInvocation = ({
   );
 };
 
-const MessageCard = ({
+const MessageCardShell = ({
   message,
+  badge,
   showConnector = false,
-  renderMarkdown,
+  children,
 }: {
   message: DevtoolsMessageSnapshot;
+  badge?: ReactNode;
   showConnector?: boolean;
-  renderMarkdown: boolean;
+  children?: ReactNode;
 }) => {
   const roleConfig = ROLE_CONFIG[message.role] ?? {
     icon: "?",
     label: message.role,
     className: "role-unknown",
   };
-
-  const hasText = Boolean(message.text);
-  const hasReasoning = Boolean(message.reasoning);
-  const hasToolResults = message.toolResults && message.toolResults.length > 0;
 
   return (
     <div className={`timeline-item ${showConnector ? "has-connector" : ""}`}>
@@ -865,47 +885,67 @@ const MessageCard = ({
           <div className="message-role">
             <span className="role-label">{roleConfig.label}</span>
             <span className="message-index">#{message.index}</span>
+            {badge}
           </div>
           <div className="message-meta">
             {message.id && <span className="message-id">{message.id}</span>}
             <span className="scope-path">{message.scopePath}</span>
           </div>
         </header>
-
-        {(hasText || hasReasoning || hasToolResults) && (
-          <div className="message-body">
-            {hasText && (
-              <MessageContent
-                renderMarkdown={renderMarkdown}
-                text={message.text ?? ""}
-              />
-            )}
-
-            {hasReasoning && (
-              <CollapsibleSection defaultOpen={false} title="Reasoning">
-                <pre className="reasoning-content">{message.reasoning}</pre>
-              </CollapsibleSection>
-            )}
-
-            {hasToolResults &&
-              message.toolResults?.map((result) => {
-                const parsedOutput = deepParseJson(result.output);
-                return (
-                  <div
-                    className="standalone-tool-result"
-                    key={result.toolCallId}
-                  >
-                    <div className="tool-result-label">
-                      {result.toolName} result
-                    </div>
-                    <JsonViewer value={parsedOutput} />
-                  </div>
-                );
-              })}
-          </div>
-        )}
+        {children}
       </article>
     </div>
+  );
+};
+
+const MessageCard = ({
+  message,
+  showConnector = false,
+  renderMarkdown,
+}: {
+  message: DevtoolsMessageSnapshot;
+  showConnector?: boolean;
+  renderMarkdown: boolean;
+}) => {
+  const hasText = Boolean(message.text);
+  const hasReasoning = Boolean(message.reasoning);
+  const hasToolResults = message.toolResults && message.toolResults.length > 0;
+
+  const body =
+    hasText || hasReasoning || hasToolResults ? (
+      <div className="message-body">
+        {hasText && (
+          <MessageContent
+            renderMarkdown={renderMarkdown}
+            text={message.text ?? ""}
+          />
+        )}
+
+        {hasReasoning && (
+          <CollapsibleSection defaultOpen={false} title="Reasoning">
+            <pre className="reasoning-content">{message.reasoning}</pre>
+          </CollapsibleSection>
+        )}
+
+        {hasToolResults &&
+          message.toolResults?.map((result) => {
+            const parsedOutput = deepParseJson(result.output);
+            return (
+              <div className="standalone-tool-result" key={result.toolCallId}>
+                <div className="tool-result-label">
+                  {result.toolName} result
+                </div>
+                <JsonViewer value={parsedOutput} />
+              </div>
+            );
+          })}
+      </div>
+    ) : null;
+
+  return (
+    <MessageCardShell message={message} showConnector={showConnector}>
+      {body}
+    </MessageCardShell>
   );
 };
 
@@ -1093,17 +1133,38 @@ const resolveDiffStatus = (
   return "changed";
 };
 
+const DiffMessageContent = ({
+  beforeText,
+  afterText,
+  forceMode,
+}: {
+  beforeText: string;
+  afterText: string;
+  forceMode?: "add" | "del";
+}) => {
+  if (beforeText.length === 0 && afterText.length === 0) {
+    return <div className="muted">No content.</div>;
+  }
+
+  return (
+    <MessageTextBlock
+      className="plain"
+      contentLength={Math.max(beforeText.length, afterText.length)}
+    >
+      <InlineDiffBlock
+        afterText={afterText}
+        beforeText={beforeText}
+        forceMode={forceMode}
+      />
+    </MessageTextBlock>
+  );
+};
+
 const InlineDiffCard = ({ before, after }: CompareRow) => {
   const message = after ?? before;
   if (!message) {
     return null;
   }
-
-  const roleConfig = ROLE_CONFIG[message.role] ?? {
-    icon: "?",
-    label: message.role,
-    className: "role-unknown",
-  };
 
   const beforeText = before ? getMessageContent(before) : "";
   const afterText = after ? getMessageContent(after) : "";
@@ -1121,13 +1182,13 @@ const InlineDiffCard = ({ before, after }: CompareRow) => {
   let body: ReactNode;
   if (status === "unchanged") {
     body = content ? (
-      <pre>{content}</pre>
+      <MessageContent renderMarkdown={false} text={content} />
     ) : (
       <div className="muted">No content.</div>
     );
   } else {
     body = (
-      <InlineDiffBlock
+      <DiffMessageContent
         afterText={afterText}
         beforeText={beforeText}
         forceMode={diffMode}
@@ -1136,27 +1197,12 @@ const InlineDiffCard = ({ before, after }: CompareRow) => {
   }
 
   return (
-    <div className="timeline-item">
-      <div className="timeline-marker">
-        <span className={`timeline-dot ${roleConfig.className}`}>
-          {roleConfig.icon}
-        </span>
-      </div>
-      <article className={`message-card ${roleConfig.className}`}>
-        <header className="message-header">
-          <div className="message-role">
-            <span className="role-label">{roleConfig.label}</span>
-            <span className="message-index">#{message.index}</span>
-            <span className={`diff-badge ${status}`}>{status}</span>
-          </div>
-          <div className="message-meta">
-            {message.id && <span className="message-id">{message.id}</span>}
-            <span className="scope-path">{message.scopePath}</span>
-          </div>
-        </header>
-        <div className="message-body">{body}</div>
-      </article>
-    </div>
+    <MessageCardShell
+      badge={<span className={`diff-badge ${status}`}>{status}</span>}
+      message={message}
+    >
+      <div className="message-body">{body}</div>
+    </MessageCardShell>
   );
 };
 
@@ -1188,11 +1234,7 @@ const InlineCompareView = ({
   );
 };
 
-const PayloadDiffSection = ({
-  session,
-}: {
-  session: DevtoolsSessionPayload;
-}) => {
+const DiffViewSection = ({ session }: { session: DevtoolsSessionPayload }) => {
   const [diffMode, setDiffMode] = useState<DiffViewMode>("inline");
   const [renderMarkdown, setRenderMarkdown] = useState(false);
 
@@ -1224,7 +1266,7 @@ const PayloadDiffSection = ({
   return (
     <div className="fit-section">
       <div className="fit-section-header">
-        <span>Payload Diff</span>
+        <span>Diff View</span>
         <span className="fit-section-subtitle">Before Fit → Sent</span>
       </div>
       <div className="panel-toolbar">
@@ -1451,7 +1493,7 @@ const FitPanel = ({
 
   return (
     <div className={`panel ${active ? "active" : ""}`}>
-      <PayloadDiffSection session={session} />
+      <DiffViewSection session={session} />
       <div className="fit-section">
         <div className="fit-section-header">
           <span>Fit Loop</span>
