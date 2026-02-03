@@ -59,14 +59,6 @@ const sqliteRowSchema = z.object({
   updated_at: z.number(),
   metadata: z.string().nullable(),
 });
-const sqliteSearchRowSchema = sqliteRowSchema.extend({
-  distance: z.number(),
-});
-
-const scoreFromDistance = (distance: number): number => {
-  const score = 1 - distance / 2;
-  return Math.max(0, Math.min(1, score));
-};
 
 /**
  * SQLite-backed implementation of VectorMemory.
@@ -277,9 +269,13 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
 
     const results: VectorSearchResult<T>[] = [];
 
+    const searchRowSchema = sqliteRowSchema.extend({
+      distance: z.number(),
+    });
+
     for (const row of result.rows) {
-      const parsedRow = sqliteSearchRowSchema.parse(row);
-      const score = scoreFromDistance(parsedRow.distance);
+      const parsedRow = searchRowSchema.parse(row);
+      const score = Math.max(0, Math.min(1, 1 - parsedRow.distance / 2));
 
       if (threshold !== undefined && score < threshold) {
         continue;
