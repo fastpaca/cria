@@ -50,7 +50,6 @@ export interface SqliteVectorStoreOptions<T = unknown> {
   schema: z.ZodType<T>;
 }
 
-const VECTOR_FN = "vector32";
 const metadataSchema = z.object({}).catchall(z.unknown());
 const sqliteRowSchema = z.object({
   key: z.string(),
@@ -205,7 +204,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
     await this.db.execute({
       sql: `
         INSERT INTO ${this.tableName} (key, data, embedding, created_at, updated_at, metadata)
-        VALUES (?, ?, ${VECTOR_FN}(?), ?, ?, ?)
+        VALUES (?, ?, vector32(?), ?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET
           data = excluded.data,
           embedding = excluded.embedding,
@@ -258,7 +257,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
           i.distance AS distance
         FROM vector_top_k(
           ?,
-          ${VECTOR_FN}(?),
+          vector32(?),
           CAST(? AS INTEGER)
         ) AS i
         JOIN ${this.tableName} AS t ON t.rowid = i.id
