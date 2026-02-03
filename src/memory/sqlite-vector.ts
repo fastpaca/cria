@@ -50,10 +50,7 @@ export interface SqliteVectorStoreOptions<T = unknown> {
   schema: z.ZodType<T>;
 }
 
-const DEFAULT_VECTOR_TABLE_NAME = "cria_vector_store";
-const VECTOR_TYPE = "F32_BLOB";
 const VECTOR_FN = "vector32";
-const VECTOR_INDEX_SUFFIX = "_vector_idx";
 const metadataSchema = z.object({}).catchall(z.unknown());
 const sqliteRowSchema = z.object({
   key: z.string(),
@@ -65,12 +62,6 @@ const sqliteRowSchema = z.object({
 const sqliteSearchRowSchema = sqliteRowSchema.extend({
   distance: z.number(),
 });
-
-const normalizeIdentifier = (value: string): string =>
-  value.replace(/[^A-Za-z0-9_]/g, "_");
-
-const buildIndexName = (tableName: string): string =>
-  `${normalizeIdentifier(tableName)}${VECTOR_INDEX_SUFFIX}`;
 
 const scoreFromDistance = (distance: number): number => {
   const score = 1 - distance / 2;
@@ -115,7 +106,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       filename = ":memory:",
       options: dbOptions,
       database,
-      tableName = DEFAULT_VECTOR_TABLE_NAME,
+      tableName = "cria_vector_store",
       dimensions,
       embed,
       schema,
@@ -128,7 +119,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
         ...dbOptions,
       });
     this.tableName = tableName;
-    this.indexName = buildIndexName(tableName);
+    this.indexName = `${tableName}_vector_idx`;
     this.embedFn = embed;
     this.dimensions = dimensions;
     this.schema = schema;
@@ -144,7 +135,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       CREATE TABLE IF NOT EXISTS ${this.tableName} (
         key TEXT PRIMARY KEY,
         data TEXT NOT NULL,
-        embedding ${VECTOR_TYPE}(${this.dimensions}) NOT NULL,
+        embedding F32_BLOB(${this.dimensions}) NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         metadata TEXT
