@@ -1191,29 +1191,6 @@ body {
   color: var(--text-muted);
 }
 
-/* Timing */
-.timing-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.timing-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-}
-
-.timing-row:last-child {
-  border-bottom: none;
-}
-
-.timing-row span:last-child {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
 /* Empty state */
 .empty {
   display: flex;

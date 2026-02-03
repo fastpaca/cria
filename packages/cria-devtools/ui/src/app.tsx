@@ -1312,8 +1312,7 @@ const DiffViewSection = ({ session }: { session: DevtoolsSessionPayload }) => {
 
 const DETAIL_TABS = [
   { key: "payload", label: "Payload" },
-  { key: "fit", label: "Fit Loop" },
-  { key: "timing", label: "Timing" },
+  { key: "diff", label: "Diff" },
   { key: "raw", label: "Raw" },
 ] as const;
 
@@ -1477,7 +1476,7 @@ const PayloadPanel = ({
   );
 };
 
-const FitPanel = ({
+const DiffPanel = ({
   session,
   active,
 }: {
@@ -1523,34 +1522,6 @@ const FitPanel = ({
           </div>
         )}
       </div>
-    </div>
-  );
-};
-
-const TimingPanel = ({
-  session,
-  active,
-}: {
-  session: DevtoolsSessionPayload;
-  active: boolean;
-}) => {
-  return (
-    <div className={`panel ${active ? "active" : ""}`}>
-      {session.timing.length === 0 ? (
-        <div className="empty">No timing data.</div>
-      ) : (
-        <div className="timing-list">
-          {session.timing.map((event, index) => (
-            <div className="timing-row" key={`${event.name}-${index}`}>
-              <span>{event.name}</span>
-              <span>
-                {formatDuration(event.endOffsetMs - event.startOffsetMs)} (+
-                {event.startOffsetMs.toFixed(0)}ms)
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -1614,8 +1585,7 @@ const SessionDetails = ({ session }: { session: DevtoolsSessionPayload }) => {
       </div>
 
       <PayloadPanel active={activeTab === "payload"} session={session} />
-      <FitPanel active={activeTab === "fit"} session={session} />
-      <TimingPanel active={activeTab === "timing"} session={session} />
+      <DiffPanel active={activeTab === "diff"} session={session} />
       <RawPanel active={activeTab === "raw"} session={session} />
     </section>
   );
