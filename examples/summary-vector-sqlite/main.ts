@@ -9,6 +9,7 @@ import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
+import { z } from "zod";
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) {
@@ -45,6 +46,7 @@ const vectorStore = new SqliteVectorStore<string>({
   tableName: "cria_vectors",
   dimensions: 1536,
   embed,
+  schema: z.string(),
 });
 
 // Set RESET_SUMMARY=1 to drop only the summary cache entry.

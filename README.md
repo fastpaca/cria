@@ -328,12 +328,14 @@ const messages = await cria
 <summary><strong>SQLite (vector search)</strong></summary>
 
 ```ts
+import { z } from "zod";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 
 const store = new SqliteVectorStore({
   filename: "cria.sqlite",
   dimensions: 1536,
   embed: async (text) => await getEmbedding(text),
+  schema: z.string(),
 });
 
 const messages = await cria

@@ -1,5 +1,6 @@
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { beforeEach, expect, test, vi } from "vitest";
+import { z } from "zod";
 
 interface StoredRow {
   key: string;
@@ -235,8 +236,14 @@ const embed = (text: string): Promise<number[]> => {
   return Promise.resolve(vector);
 };
 
+const schema = z.string();
+
 test("SqliteVectorStore: set and get", async () => {
-  const store = new SqliteVectorStore<string>({ embed, dimensions: 2 });
+  const store = new SqliteVectorStore<string>({
+    embed,
+    dimensions: 2,
+    schema,
+  });
 
   await store.set("alpha", "alpha", { source: "unit" });
 
@@ -248,7 +255,11 @@ test("SqliteVectorStore: set and get", async () => {
 });
 
 test("SqliteVectorStore: search returns ordered results with limit", async () => {
-  const store = new SqliteVectorStore<string>({ embed, dimensions: 2 });
+  const store = new SqliteVectorStore<string>({
+    embed,
+    dimensions: 2,
+    schema,
+  });
 
   await store.set("alpha", "alpha");
   await store.set("alpha-beta", "alpha beta");
@@ -260,7 +271,11 @@ test("SqliteVectorStore: search returns ordered results with limit", async () =>
 });
 
 test("SqliteVectorStore: search respects threshold", async () => {
-  const store = new SqliteVectorStore<string>({ embed, dimensions: 2 });
+  const store = new SqliteVectorStore<string>({
+    embed,
+    dimensions: 2,
+    schema,
+  });
 
   await store.set("alpha", "alpha");
   await store.set("alpha-beta", "alpha beta");
@@ -271,7 +286,11 @@ test("SqliteVectorStore: search respects threshold", async () => {
 });
 
 test("SqliteVectorStore: delete removes entry", async () => {
-  const store = new SqliteVectorStore<string>({ embed, dimensions: 2 });
+  const store = new SqliteVectorStore<string>({
+    embed,
+    dimensions: 2,
+    schema,
+  });
 
   await store.set("alpha", "alpha");
   expect(await store.get("alpha")).not.toBeNull();
@@ -282,7 +301,11 @@ test("SqliteVectorStore: delete removes entry", async () => {
 });
 
 test("SqliteVectorStore: close closes the client", async () => {
-  const store = new SqliteVectorStore<string>({ embed, dimensions: 2 });
+  const store = new SqliteVectorStore<string>({
+    embed,
+    dimensions: 2,
+    schema,
+  });
   await store.get("alpha");
   store.close();
   expect(getLastClient()?.closed).toBe(true);
@@ -292,6 +315,7 @@ test("SqliteVectorStore: uses custom table name", async () => {
   const store = new SqliteVectorStore<string>({
     embed,
     dimensions: 2,
+    schema,
     tableName: "custom_vector_table",
   });
 
