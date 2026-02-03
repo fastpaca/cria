@@ -1,4 +1,5 @@
 import { type Client, type Config, createClient } from "@libsql/client";
+import { z } from "zod";
 import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
@@ -11,13 +12,29 @@ export type SqliteConnectionOptions = Omit<Config, "url">;
  */
 export type SqliteDatabase = Client;
 
-interface SqliteRow {
-  key: string;
-  data: string;
-  created_at: number;
-  updated_at: number;
-  metadata: string | null;
-}
+const MetadataSchema = z.record(z.string(), z.unknown());
+
+const SqliteRowSchema = z
+  .object({
+    key: z.string(),
+    data: z.string(),
+    created_at: z.coerce.number(),
+    updated_at: z.coerce.number(),
+    metadata: z.string().nullable(),
+  })
+  .transform((row) => {
+    const metadata =
+      row.metadata === null
+        ? undefined
+        : MetadataSchema.parse(JSON.parse(row.metadata));
+
+    return {
+      data: JSON.parse(row.data),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      ...(metadata && { metadata }),
+    };
+  });
 
 /**
  * Configuration options for the SQLite store.
@@ -120,23 +137,12 @@ export class SqliteStore<T = unknown> implements KVMemory<T> {
       args: [key],
     });
 
-    const row = result.rows[0] as SqliteRow | undefined;
+    const row = result.rows[0];
     if (row === undefined) {
       return null;
     }
 
-    const data = JSON.parse(row.data) as T;
-    const metadata =
-      row.metadata === null
-        ? undefined
-        : (JSON.parse(row.metadata) as Record<string, unknown>);
-
-    return {
-      data,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      ...(metadata && { metadata }),
-    };
+    return SqliteRowSchema.parse(row) as MemoryEntry<T>;
   }
 
   async set(

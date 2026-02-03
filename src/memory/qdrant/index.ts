@@ -1,4 +1,5 @@
 import type { QdrantClient } from "@qdrant/js-client-rest";
+import { z } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
   VectorMemory,
@@ -25,15 +26,19 @@ export interface QdrantStoreOptions {
   vectorName?: string;
 }
 
-/**
- * Internal payload structure stored in Qdrant.
- */
-interface QdrantPayload<T> {
-  data: T;
-  createdAt: number;
-  updatedAt: number;
-  metadata?: Record<string, unknown>;
-}
+const QdrantPayloadSchema = z
+  .object({
+    data: z.unknown(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .transform((payload) => ({
+    data: payload.data,
+    createdAt: payload.createdAt,
+    updatedAt: payload.updatedAt,
+    ...(payload.metadata && { metadata: payload.metadata }),
+  }));
 
 /**
  * VectorMemory implementation backed by Qdrant.
@@ -90,16 +95,11 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
       return null;
     }
 
-    const payload = point.payload as QdrantPayload<T> | undefined;
+    if (!point.payload) {
+      throw new Error("QdrantStore: payload is missing from entry");
+    }
 
-    return payload
-      ? {
-          data: payload.data,
-          createdAt: payload.createdAt,
-          updatedAt: payload.updatedAt,
-          ...(payload.metadata && { metadata: payload.metadata }),
-        }
-      : null;
+    return QdrantPayloadSchema.parse(point.payload) as MemoryEntry<T>;
   }
 
   async set(
@@ -113,7 +113,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
     const textToEmbed = typeof data === "string" ? data : JSON.stringify(data);
     const vector = await this.embedFn(textToEmbed);
 
-    const payload: QdrantPayload<T> = {
+    const payload = {
       data,
       createdAt: now,
       updatedAt: now,
@@ -126,7 +126,7 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
         {
           id: key,
           vector: this.vectorName ? { [this.vectorName]: vector } : vector,
-          payload: payload as unknown as Record<string, unknown>,
+          payload,
         },
       ],
     });
@@ -165,21 +165,16 @@ export class QdrantStore<T = unknown> implements VectorMemory<T> {
     const results: VectorSearchResult<T>[] = [];
 
     for (const point of response) {
-      const payload = point.payload as QdrantPayload<T> | undefined;
-
-      if (!payload) {
-        continue;
+      if (!point.payload) {
+        throw new Error("QdrantStore: payload is missing from entry");
       }
+
+      const entry = QdrantPayloadSchema.parse(point.payload) as MemoryEntry<T>;
 
       results.push({
         key: String(point.id),
         score: point.score,
-        entry: {
-          data: payload.data,
-          createdAt: payload.createdAt,
-          updatedAt: payload.updatedAt,
-          ...(payload.metadata && { metadata: payload.metadata }),
-        },
+        entry,
       });
     }
 
