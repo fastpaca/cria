@@ -1,4 +1,4 @@
-import type { SqliteDatabase } from "@fastpaca/cria/memory/sqlite";
+import { type SqliteDatabase, SqliteStore } from "@fastpaca/cria/memory/sqlite";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { createClient } from "@libsql/client";
 import { getEncoding } from "js-tiktoken";
@@ -126,4 +126,30 @@ test("SqliteVectorStore: uses custom table name", async () => {
   const tables = await listTables(db);
   expect(tables).toContain("custom_vector_table");
   expect(tables).not.toContain("cria_vector_store");
+});
+
+test("SqliteStore + SqliteVectorStore: shared database", async () => {
+  const db = createClient({ url: ":memory:" });
+  clients.push(db);
+
+  const store = new SqliteStore<string>({
+    database: db,
+    tableName: "kv_table",
+  });
+  const vector = new SqliteVectorStore<string>({
+    database: db,
+    tableName: "vector_table",
+    embed,
+    dimensions: 2,
+    schema,
+  });
+
+  await store.set("key", "value");
+  expect((await store.get("key"))?.data).toBe("value");
+
+  await vector.set("alpha", "alpha");
+  expect((await vector.get("alpha"))?.data).toBe("alpha");
+
+  const results = await vector.search("alpha", { limit: 1 });
+  expect(results[0]?.key).toBe("alpha");
 });
