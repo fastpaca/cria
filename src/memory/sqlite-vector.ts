@@ -1,4 +1,5 @@
 import { createClient } from "@libsql/client";
+import { z } from "zod";
 import type { MemoryEntry } from "./key-value";
 import type { SqliteConnectionOptions, SqliteDatabase } from "./sqlite";
 import type {
@@ -27,7 +28,7 @@ interface SqliteVectorSearchRow extends SqliteVectorRow {
 /**
  * Configuration options for the SQLite vector store.
  */
-export interface SqliteVectorStoreOptions {
+export interface SqliteVectorStoreOptions<T = unknown> {
   /**
    * Database filename. Use ":memory:" for in-memory databases.
    * @default ":memory:"
@@ -55,16 +56,17 @@ export interface SqliteVectorStoreOptions {
    * Function to generate embeddings from text.
    */
   embed: EmbeddingFunction;
+  /**
+   * Schema for validating stored data.
+   */
+  schema: z.ZodType<T>;
 }
 
 const DEFAULT_VECTOR_TABLE_NAME = "cria_vector_store";
 const VECTOR_TYPE = "F32_BLOB";
 const VECTOR_FN = "vector32";
 const VECTOR_INDEX_SUFFIX = "_vector_idx";
-
-const serializeData = <T>(data: T): string => JSON.stringify(data);
-
-const deserializeData = <T>(data: string): T => JSON.parse(data) as T;
+const metadataSchema = z.object({}).catchall(z.unknown());
 
 const normalizeIdentifier = (value: string): string =>
   value.replace(/[^A-Za-z0-9_]/g, "_");
@@ -72,34 +74,9 @@ const normalizeIdentifier = (value: string): string =>
 const buildIndexName = (tableName: string): string =>
   `${normalizeIdentifier(tableName)}${VECTOR_INDEX_SUFFIX}`;
 
-const assertDimensions = (dimensions: number): void => {
-  if (!Number.isInteger(dimensions) || dimensions <= 0) {
-    throw new Error("SqliteVectorStore: dimensions must be a positive integer");
-  }
-};
-
-const ensureEmbeddingDimensions = (
-  embedding: number[],
-  dimensions: number,
-  context: "stored" | "query"
-): void => {
-  if (embedding.length !== dimensions) {
-    throw new Error(
-      `SqliteVectorStore: ${context} embedding length ` +
-        `(${embedding.length}) does not match dimensions (${dimensions})`
-    );
-  }
-};
-
 const scoreFromDistance = (distance: number): number => {
   const score = 1 - distance / 2;
-  if (score <= 0) {
-    return 0;
-  }
-  if (score >= 1) {
-    return 1;
-  }
-  return score;
+  return Math.max(0, Math.min(1, score));
 };
 
 /**
@@ -111,12 +88,14 @@ const scoreFromDistance = (distance: number): number => {
  *
  * @example
  * ```typescript
+ * import { z } from "zod";
  * import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
  *
  * const store = new SqliteVectorStore<string>({
  *   filename: "cria.sqlite",
  *   dimensions: 1536,
  *   embed: async (text) => getEmbedding(text),
+ *   schema: z.string(),
  * });
  *
  * const results = await store.search("What is RAG?", { limit: 5 });
@@ -128,10 +107,12 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
   private readonly indexName: string;
   private readonly embedFn: EmbeddingFunction;
   private readonly dimensions: number;
+  private readonly schema: z.ZodType<T>;
+  private readonly embeddingSchema: z.ZodType<number[]>;
   private tableCreated = false;
   private indexCreated = false;
 
-  constructor(options: SqliteVectorStoreOptions) {
+  constructor(options: SqliteVectorStoreOptions<T>) {
     const {
       filename = ":memory:",
       options: dbOptions,
@@ -139,9 +120,8 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       tableName = DEFAULT_VECTOR_TABLE_NAME,
       dimensions,
       embed,
+      schema,
     } = options;
-
-    assertDimensions(dimensions);
 
     this.db =
       database ??
@@ -153,6 +133,8 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
     this.indexName = buildIndexName(tableName);
     this.embedFn = embed;
     this.dimensions = dimensions;
+    this.schema = schema;
+    this.embeddingSchema = z.array(z.number()).length(dimensions);
   }
 
   private async ensureTable(): Promise<void> {
@@ -202,13 +184,14 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
       return null;
     }
 
+    const data = this.schema.parse(JSON.parse(row.data));
     const metadata =
       row.metadata === null
         ? undefined
-        : (JSON.parse(row.metadata) as Record<string, unknown>);
+        : metadataSchema.parse(JSON.parse(row.metadata));
 
     return {
-      data: deserializeData<T>(row.data),
+      data,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       ...(metadata && { metadata }),
@@ -224,13 +207,18 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
     await this.ensureIndex();
 
     const now = Date.now();
-    const serializedData = serializeData(data);
+    const parsedData = this.schema.parse(data);
+    const serializedData = JSON.stringify(parsedData);
     const serializedMetadata =
-      metadata !== undefined ? JSON.stringify(metadata) : null;
+      metadata === undefined
+        ? null
+        : JSON.stringify(metadataSchema.parse(metadata));
 
-    const textToEmbed = typeof data === "string" ? data : serializedData;
-    const embedding = await this.embedFn(textToEmbed);
-    ensureEmbeddingDimensions(embedding, this.dimensions, "stored");
+    const textToEmbed =
+      typeof parsedData === "string" ? parsedData : serializedData;
+    const embedding = this.embeddingSchema.parse(
+      await this.embedFn(textToEmbed)
+    );
 
     await this.db.execute({
       sql: `
@@ -274,8 +262,7 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
     const limit = Math.max(0, Math.trunc(options?.limit ?? 10));
     const threshold = options?.threshold;
 
-    const queryVector = await this.embedFn(query);
-    ensureEmbeddingDimensions(queryVector, this.dimensions, "query");
+    const queryVector = this.embeddingSchema.parse(await this.embedFn(query));
     const serializedQuery = JSON.stringify(queryVector);
 
     const result = await this.db.execute({
@@ -308,16 +295,17 @@ export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
         continue;
       }
 
+      const data = this.schema.parse(JSON.parse(row.data));
       const metadata =
         row.metadata === null
           ? undefined
-          : (JSON.parse(row.metadata) as Record<string, unknown>);
+          : metadataSchema.parse(JSON.parse(row.metadata));
 
       results.push({
         key: row.key,
         score,
         entry: {
-          data: deserializeData<T>(row.data),
+          data,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
           ...(metadata && { metadata }),

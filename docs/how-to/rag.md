@@ -37,6 +37,7 @@ const prompt = cria
 ## SQLite adapter (libSQL)
 
 ```ts
+import { z } from "zod";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { cria } from "@fastpaca/cria";
 
@@ -44,6 +45,7 @@ const store = new SqliteVectorStore<string>({
   filename: "cria.sqlite",
   dimensions: 1536,
   embed: async (text) => embed(text), // supply your embedding function
+  schema: z.string(),
 });
 
 const prompt = cria
@@ -59,3 +61,4 @@ const prompt = cria
 - If no results are found, the default formatter emits a placeholder message.
 - `SqliteVectorStore` uses libSQL vector columns + indexes for DB-side similarity search.
 - `SqliteVectorStore` requires the embedding dimensionality via `dimensions`.
+- `SqliteVectorStore` validates stored data via the provided Zod `schema`.
