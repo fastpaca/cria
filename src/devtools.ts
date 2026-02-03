@@ -1,3 +1,4 @@
+import type { Attributes, Tracer } from "@opentelemetry/api";
 import type { RenderHooks } from "./render";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:4318/v1/traces";
@@ -39,36 +40,43 @@ export function enableDevtools(options?: DevtoolsOptions): void {
     options?.serviceInstanceId ?? `${serviceName}-${Date.now()}`;
   const endpoint = options?.endpoint ?? DEFAULT_ENDPOINT;
 
-  // Dynamic import to avoid bundling OTEL when devtools not used
-  const { trace } = requireOtel("@opentelemetry/api");
-  const { BasicTracerProvider, SimpleSpanProcessor } = requireOtel(
+  // Dynamic require to avoid bundling OTEL when devtools not used
+  // Type imports above are erased at runtime
+  const otelApi =
+    requireOtel<typeof import("@opentelemetry/api")>("@opentelemetry/api");
+  const otelSdk = requireOtel<typeof import("@opentelemetry/sdk-trace-base")>(
     "@opentelemetry/sdk-trace-base"
   );
-  const { OTLPTraceExporter } = requireOtel(
-    "@opentelemetry/exporter-trace-otlp-http"
+  const otelExporter = requireOtel<
+    typeof import("@opentelemetry/exporter-trace-otlp-http")
+  >("@opentelemetry/exporter-trace-otlp-http");
+  const otelResources = requireOtel<typeof import("@opentelemetry/resources")>(
+    "@opentelemetry/resources"
   );
-  const { resourceFromAttributes } = requireOtel("@opentelemetry/resources");
-  const { createOtelRenderHooks } = require("./instrumentation/otel") as {
-    createOtelRenderHooks: typeof import("./instrumentation/otel").createOtelRenderHooks;
-  };
+  const { createOtelRenderHooks } = requireOtel<
+    typeof import("./instrumentation/otel")
+  >("./instrumentation/otel");
 
-  const tracerProvider = new BasicTracerProvider({
-    resource: resourceFromAttributes({
+  const tracerProvider = new otelSdk.BasicTracerProvider({
+    resource: otelResources.resourceFromAttributes({
       "service.name": serviceName,
       "service.instance.id": instanceId,
     }),
     spanProcessors: [
-      new SimpleSpanProcessor(new OTLPTraceExporter({ url: endpoint })),
+      new otelSdk.SimpleSpanProcessor(
+        new otelExporter.OTLPTraceExporter({ url: endpoint })
+      ),
     ],
   });
 
-  trace.setGlobalTracerProvider(tracerProvider);
-  const tracer = trace.getTracer(serviceName);
+  otelApi.trace.setGlobalTracerProvider(tracerProvider);
+  const tracer: Tracer = otelApi.trace.getTracer(serviceName);
 
-  const hooks = createOtelRenderHooks({
-    tracer,
-    attributes: options?.attributes,
-  });
+  const hooks = createOtelRenderHooks(
+    options?.attributes
+      ? { tracer, attributes: options.attributes as Attributes }
+      : { tracer }
+  );
 
   globalDevtools = {
     hooks,
