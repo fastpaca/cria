@@ -9,6 +9,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import fastDiff from "fast-diff";
 import {
   type ChangeEvent,
   type CSSProperties,
@@ -22,6 +23,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { z } from "zod";
 
 const fetchSessions = async (): Promise<DevtoolsSessionPayload[]> => {
   const response = await fetch("/cria/devtools/sessions");
@@ -56,14 +58,22 @@ const useSessionStream = (
   return connected;
 };
 
-const useResizablePanel = (
-  initialWidth: number,
-  minWidth: number,
-  maxWidthPercent: number
-) => {
-  const [width, setWidth] = useState(initialWidth);
+interface ResizableOptions {
+  initialWidth?: number | null;
+  minWidth: number;
+  maxWidth?: number;
+  maxWidthPercent?: number;
+}
+
+const useResizable = <T extends HTMLElement>({
+  initialWidth = null,
+  minWidth,
+  maxWidth,
+  maxWidthPercent,
+}: ResizableOptions) => {
+  const [width, setWidth] = useState<number | null>(initialWidth);
   const [isDragging, setIsDragging] = useState(false);
-  const containerRef = useRef<HTMLElement | null>(null);
+  const ref = useRef<T | null>(null);
 
   useEffect(() => {
     if (!isDragging) {
@@ -71,14 +81,16 @@ const useResizablePanel = (
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) {
+      if (!ref.current) {
         return;
       }
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const maxWidth = containerRect.width * maxWidthPercent;
+      const rect = ref.current.getBoundingClientRect();
+      const resolvedMax =
+        maxWidth ??
+        (maxWidthPercent ? rect.width * maxWidthPercent : rect.width);
       const newWidth = Math.min(
-        Math.max(e.clientX - containerRect.left, minWidth),
-        maxWidth
+        Math.max(e.clientX - rect.left, minWidth),
+        resolvedMax
       );
       setWidth(newWidth);
     };
@@ -95,58 +107,14 @@ const useResizablePanel = (
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, minWidth, maxWidthPercent]);
+  }, [isDragging, minWidth, maxWidth, maxWidthPercent]);
 
   const startDragging = useCallback(() => {
     setIsDragging(true);
     document.body.classList.add("resizing");
   }, []);
 
-  return { width, isDragging, startDragging, containerRef };
-};
-
-const useResizableColumn = (minWidth: number, maxWidth: number) => {
-  const [width, setWidth] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const tableRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isDragging) {
-      return;
-    }
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!tableRef.current) {
-        return;
-      }
-      const rect = tableRef.current.getBoundingClientRect();
-      const nextWidth = Math.min(
-        Math.max(event.clientX - rect.left, minWidth),
-        maxWidth
-      );
-      setWidth(nextWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      document.body.classList.remove("resizing");
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isDragging, maxWidth, minWidth]);
-
-  const startDragging = useCallback(() => {
-    setIsDragging(true);
-    document.body.classList.add("resizing");
-  }, []);
-
-  return { width, isDragging, startDragging, tableRef };
+  return { width, isDragging, startDragging, ref };
 };
 
 const formatDuration = (ms?: number): string => {
@@ -293,31 +261,28 @@ const filterSessions = (
   return filtered;
 };
 
-const isSessionLike = (value: unknown): value is DevtoolsSessionPayload => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.startedAt === "string" &&
-    typeof record.durationMs === "number" &&
-    typeof record.status === "string"
-  );
-};
+const SessionSchema = z
+  .object({
+    id: z.string(),
+    startedAt: z.string(),
+    durationMs: z.number(),
+    status: z.string(),
+  })
+  .passthrough();
+
+const SessionsSchema = z.union([
+  z.array(SessionSchema).min(1, "No sessions found in file."),
+  SessionSchema.transform((s) => [s]),
+]);
 
 const parseImportedSessions = (value: unknown): DevtoolsSessionPayload[] => {
-  if (Array.isArray(value)) {
-    const sessions = value.filter(isSessionLike);
-    if (sessions.length === 0) {
-      throw new Error("No sessions found in file.");
-    }
-    return sessions;
+  const result = SessionsSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(
+      result.error.issues[0]?.message ?? "Invalid session format"
+    );
   }
-  if (isSessionLike(value)) {
-    return [value];
-  }
-  throw new Error("Invalid session export format.");
+  return result.data as DevtoolsSessionPayload[];
 };
 
 const mergeSessions = (
@@ -446,7 +411,6 @@ const deepParseJson = (obj: unknown): unknown => {
 };
 
 const MAX_TEXT_PREVIEW = 600;
-const DIFF_TOKEN_REGEX = /(\s+)/;
 const SESSION_PARAM = "session";
 const NAME_COLUMN_MIN_WIDTH = 160;
 const NAME_COLUMN_MAX_WIDTH = 900;
@@ -478,26 +442,18 @@ const primitiveClass = (value: unknown): string => {
 };
 
 const stableKeyForValue = (value: unknown): string => {
-  if (value === null) {
-    return "null";
+  if (value === null || value === undefined) {
+    return String(value);
   }
-  if (value === undefined) {
-    return "undefined";
+  const type = typeof value;
+  if (type === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "unserializable";
+    }
   }
-  if (typeof value === "string") {
-    return `s:${value}`;
-  }
-  if (typeof value === "number") {
-    return `n:${value}`;
-  }
-  if (typeof value === "boolean") {
-    return `b:${value}`;
-  }
-  try {
-    return `j:${JSON.stringify(value)}`;
-  } catch {
-    return "j:unserializable";
-  }
+  return `${type[0]}:${value}`;
 };
 
 const JsonTree = ({
@@ -678,90 +634,17 @@ interface DiffOp {
   text: string;
 }
 
-const MAX_DIFF_MATRIX = 120_000;
+const DIFF_TYPE_MAP = {
+  [fastDiff.EQUAL]: "equal",
+  [fastDiff.INSERT]: "add",
+  [fastDiff.DELETE]: "del",
+} as const;
 
-const tokenizeDiffText = (text: string): string[] =>
-  text.length === 0 ? [] : text.split(DIFF_TOKEN_REGEX);
-
-const mergeDiffOps = (ops: DiffOp[]): DiffOp[] => {
-  const merged: DiffOp[] = [];
-  for (const op of ops) {
-    const last = merged.at(-1);
-    if (last && last.type === op.type) {
-      last.text += op.text;
-      continue;
-    }
-    merged.push({ ...op });
-  }
-  return merged;
-};
-
-const diffTokenArrays = (before: string[], after: string[]): DiffOp[] => {
-  if (before.length === 0 && after.length === 0) {
-    return [];
-  }
-  if (before.length === 0) {
-    return after.map((token) => ({ type: "add", text: token }));
-  }
-  if (after.length === 0) {
-    return before.map((token) => ({ type: "del", text: token }));
-  }
-
-  const cellCount = before.length * after.length;
-  if (cellCount > MAX_DIFF_MATRIX) {
-    return [
-      { type: "del", text: before.join("") },
-      { type: "add", text: after.join("") },
-    ];
-  }
-
-  const dp = Array.from({ length: before.length + 1 }, () =>
-    new Array(after.length + 1).fill(0)
-  );
-
-  for (let i = before.length - 1; i >= 0; i -= 1) {
-    for (let j = after.length - 1; j >= 0; j -= 1) {
-      if (before[i] === after[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
-        continue;
-      }
-      dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-  }
-
-  const ops: DiffOp[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < before.length && j < after.length) {
-    if (before[i] === after[j]) {
-      ops.push({ type: "equal", text: before[i] });
-      i += 1;
-      j += 1;
-      continue;
-    }
-    if (dp[i + 1][j] >= dp[i][j + 1]) {
-      ops.push({ type: "del", text: before[i] });
-      i += 1;
-      continue;
-    }
-    ops.push({ type: "add", text: after[j] });
-    j += 1;
-  }
-  for (; i < before.length; i += 1) {
-    ops.push({ type: "del", text: before[i] });
-  }
-  for (; j < after.length; j += 1) {
-    ops.push({ type: "add", text: after[j] });
-  }
-
-  return mergeDiffOps(ops);
-};
-
-const diffText = (before: string, after: string): DiffOp[] => {
-  const beforeTokens = tokenizeDiffText(before);
-  const afterTokens = tokenizeDiffText(after);
-  return diffTokenArrays(beforeTokens, afterTokens);
-};
+const diffText = (before: string, after: string): DiffOp[] =>
+  fastDiff(before, after).map(([type, text]) => ({
+    type: DIFF_TYPE_MAP[type],
+    text,
+  }));
 
 const hashString = (value: string): string => {
   let hash = 5381;
@@ -1692,14 +1575,21 @@ export const App = () => {
     width: tableWidth,
     isDragging: isPanelDragging,
     startDragging: startPanelDragging,
-    containerRef,
-  } = useResizablePanel(450, 300, 0.7);
+    ref: containerRef,
+  } = useResizable<HTMLElement>({
+    initialWidth: 450,
+    minWidth: 300,
+    maxWidthPercent: 0.7,
+  });
   const {
     width: nameColumnWidth,
     isDragging: isNameResizing,
     startDragging: startNameResize,
-    tableRef,
-  } = useResizableColumn(NAME_COLUMN_MIN_WIDTH, NAME_COLUMN_MAX_WIDTH);
+    ref: tableRef,
+  } = useResizable<HTMLDivElement>({
+    minWidth: NAME_COLUMN_MIN_WIDTH,
+    maxWidth: NAME_COLUMN_MAX_WIDTH,
+  });
 
   const sessionsQuery = useQuery({
     queryKey: ["sessions"],
