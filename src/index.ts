@@ -20,11 +20,17 @@
 export type {
   BuilderChild,
   Prompt,
+  PromptPlugin,
   ScopeContent,
   StoredSummary,
   Summarizer,
   SummarizerContext,
+  SummaryOptions,
   TextInput,
+  VectorDBEntry,
+  VectorDBFormatter,
+  VectorDBOptions,
+  VectorDBSearchOptions,
 } from "./dsl";
 export {
   BuilderBase,
@@ -36,17 +42,24 @@ export {
   merge,
   PromptBuilder,
   prompt,
+  Summary,
+  VectorDB,
 } from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
   KVMemory,
   MemoryEntry,
+  UserScopeOptions,
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
 } from "./memory";
 // LLM Memory
-export { InMemoryStore } from "./memory";
+export {
+  InMemoryStore,
+  UserScopedStore,
+  UserScopedVectorStore,
+} from "./memory";
 export type {
   ChatCompletionsInput,
   ChatMessage,

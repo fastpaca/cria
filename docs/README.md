@@ -14,7 +14,7 @@ Cria turns prompts into composable components with explicit roles and strategies
 - [Use with Vercel AI SDK](how-to/use-with-vercel-ai-sdk.md)
 - [Provider cache pinning](how-to/provider-cache-pinning.md)
 - [Prompt evaluation (LLM-as-a-judge)](how-to/prompt-evaluation.md)
-- [RAG with VectorSearch](how-to/rag.md)
+- [RAG with VectorDB](how-to/rag.md)
 - [Summarize long history](how-to/summarize-history.md)
 - [Fit & compaction (budgets, priorities, FitError)](how-to/fit-and-compaction.md)
 - [Observability (hooks, OpenTelemetry)](how-to/observability.md)

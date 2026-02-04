@@ -1,6 +1,6 @@
 # Summarize long history
 
-Use `Summary` as a drop-in component for chat history: keep recent turns verbatim, and compress older turns into a cached summary. When you render with a budget, `Summary` helps compaction stay predictable without losing all long-term context.
+Use the summary plugin as a drop-in component for chat history: keep recent turns verbatim, and compress older turns into a cached summary. When you render with a budget, the summary plugin helps compaction stay predictable without losing all long-term context.
 
 Runnable example: [summary](../../examples/summary)
 
@@ -24,27 +24,34 @@ export OPENAI_API_KEY="sk-..."
 ```ts
 import OpenAI from "openai";
 import { createProvider } from "@fastpaca/cria/openai";
-import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
+import { Summary, cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 
 const store = new InMemoryStore<StoredSummary>();
 const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
+const summary = new Summary({
+  id: "history",
+  store,
+  priority: 2,
+  provider,
+}).extend(cria.input(history));
+
 const prompt = cria
-  .prompt()
-  .providerScope(provider, (p) =>
-    p.summary(cria.input(history), { id: "history", store, priority: 2 })
-  )
+  .prompt(provider)
+  .use(summary)
   .user(question);
 ```
 
-Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` when passing into `summary()` or other scope helpers.
+Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` and pass a `provider` to the summary plugin so it can decode the input.
+
+Tip: for per-user or per-session isolation, wrap your summary store with `UserScopedStore` (or scope the `id` with a user/session prefix).
 
 Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore` (`@fastpaca/cria/memory/redis`), `SqliteStore` (`@fastpaca/cria/memory/sqlite`), or `PostgresStore` (`@fastpaca/cria/memory/postgres`).
 
-## When to use Summary vs Last/Truncate
+## When to use summary vs last/truncate
 
 - Use `Last` to keep the last N turns verbatim.
 - Use `Truncate` to keep as much as possible up to a token cap.
-- Use `Summary` to keep older context “alive” in fewer tokens.
+- Use the summary plugin to keep older context “alive” in fewer tokens.
 
 Next: [Fit & compaction](fit-and-compaction.md)

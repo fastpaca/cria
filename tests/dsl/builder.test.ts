@@ -1,5 +1,11 @@
-import { c, cria, PromptBuilder, prompt } from "@fastpaca/cria/dsl";
-import type { StoredSummary } from "@fastpaca/cria/dsl/summary";
+import {
+  c,
+  cria,
+  PromptBuilder,
+  prompt,
+  type StoredSummary,
+  Summary,
+} from "@fastpaca/cria";
 import { InMemoryStore } from "@fastpaca/cria/memory";
 import {
   ListMessageCodec,
@@ -225,9 +231,16 @@ describe("PromptBuilder", () => {
         { role: "user", content: "User history." },
       ];
 
+      const summary = new Summary({
+        id: "history",
+        store,
+        priority: 1,
+        provider,
+      }).extend(cria.input(input));
+
       const output = await cria
         .prompt(provider)
-        .summary(cria.input(input), { id: "history", store, priority: 1 })
+        .use(summary)
         .render({ budget: 1000 });
 
       expect(output).toEqual(input);

@@ -42,12 +42,12 @@ Lower number = more important.
 
 Priorities only matter for content that can actually shrink. If a node has no shrinking strategy, it can’t be reduced (and may lead to `FitError` if everything left is non-shrinkable).
 
-These DSL methods create shrinkable regions:
+These helpers create shrinkable regions:
 
 - `truncate(...)`
 - `omit(...)`
 - `last(...)`
-- `summary(...)`
+- summary plugin (via `prompt.use(...)`)
 
 Plain messages (`system/user/assistant/message`) are not shrinkable by default.
 
@@ -57,7 +57,7 @@ Plain messages (`system/user/assistant/message`) are not shrinkable by default.
 
 - `last(...)` for “keep last N turns”
 - `truncate(...)` for “cap to N tokens”
-- `summary(...)` for “replace older content with a cached summary”
+- summary plugin for “replace older content with a cached summary”
 
 ### Drop optional context
 
@@ -106,7 +106,7 @@ const prompt = cria
 If the prompt cannot be reduced further, `render()` throws `FitError`. Treat that as a signal to either:
 
 - Increase the budget
-- Add/adjust strategies (truncate/omit/summary/last)
+- Add/adjust strategies (truncate/omit/summary plugin/last)
 - Re-prioritize content so the right things can shrink first
 
 ```ts

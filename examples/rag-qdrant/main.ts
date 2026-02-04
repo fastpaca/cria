@@ -4,7 +4,7 @@
  * Requires: Qdrant running locally (docker run -p 6333:6333 qdrant/qdrant)
  */
 
-import { cria } from "@fastpaca/cria";
+import { cria, VectorDB } from "@fastpaca/cria";
 import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
 import { createProvider } from "@fastpaca/cria/openai";
 import { QdrantClient } from "@qdrant/js-client-rest";
@@ -37,24 +37,28 @@ const store = new QdrantStore<string>({
   embed,
 });
 
+const vectors = new VectorDB({ store });
+
 // Seed some documents (using UUIDs as Qdrant requires UUID or integer IDs)
-await store.set(
-  "550e8400-e29b-41d4-a716-446655440001",
-  "Brandenburg Gate is Berlin's most famous landmark, a neoclassical monument built in the 18th century."
-);
-await store.set(
-  "550e8400-e29b-41d4-a716-446655440002",
-  "The Berlin Wall Memorial preserves a section of the wall that divided the city from 1961 to 1989."
-);
-await store.set(
-  "550e8400-e29b-41d4-a716-446655440003",
-  "Museum Island is a UNESCO World Heritage site with 5 world-renowned museums on the Spree river."
-);
+await vectors.index({
+  id: "550e8400-e29b-41d4-a716-446655440001",
+  data: "Brandenburg Gate is Berlin's most famous landmark, a neoclassical monument built in the 18th century.",
+});
+await vectors.index({
+  id: "550e8400-e29b-41d4-a716-446655440002",
+  data: "The Berlin Wall Memorial preserves a section of the wall that divided the city from 1961 to 1989.",
+});
+await vectors.index({
+  id: "550e8400-e29b-41d4-a716-446655440003",
+  data: "Museum Island is a UNESCO World Heritage site with 5 world-renowned museums on the Spree river.",
+});
+
+const retrieval = vectors.search({ query: "Berlin landmarks", limit: 3 });
 
 const prompt = cria
   .prompt(provider)
   .system("Answer using the provided context.")
-  .vectorSearch({ store, query: "Berlin landmarks", limit: 3 })
+  .use(retrieval)
   .user("What are the main landmarks in Berlin?");
 
 const { messages } = await prompt.render({ budget: 1000 });

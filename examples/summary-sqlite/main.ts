@@ -4,7 +4,7 @@
  * Requires: OPENAI_API_KEY
  */
 
-import { cria, type StoredSummary } from "@fastpaca/cria";
+import { cria, type StoredSummary, Summary } from "@fastpaca/cria";
 import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
@@ -25,10 +25,17 @@ const history = cria
   .user("What neighborhoods should I stay in?")
   .assistant("Prenzlauer Berg and Kreuzberg are popular.");
 
+const summary = new Summary({
+  id: "travel-chat",
+  store,
+  priority: 2,
+  provider,
+}).extend(history);
+
 const prompt = cria
   .prompt(provider)
   .system("You are a helpful travel assistant.")
-  .summary(history, { id: "travel-chat", store, priority: 2 })
+  .use(summary)
   .user("Plan a one-day itinerary.");
 
 const { messages } = await prompt.render({ budget: 300 });

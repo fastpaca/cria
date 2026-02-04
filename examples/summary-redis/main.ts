@@ -4,7 +4,7 @@
  * Requires: Redis running locally (docker run -p 6379:6379 redis)
  */
 
-import { cria, type StoredSummary } from "@fastpaca/cria";
+import { cria, type StoredSummary, Summary } from "@fastpaca/cria";
 import { RedisStore } from "@fastpaca/cria/memory/redis";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
@@ -23,10 +23,17 @@ const history = cria
   .user("What are the must-see historical sites?")
   .assistant("Brandenburg Gate, Berlin Wall Memorial, Museum Island.");
 
+const summary = new Summary({
+  id: "travel-chat",
+  store,
+  priority: 2,
+  provider,
+}).extend(history);
+
 const prompt = cria
   .prompt(provider)
   .system("You are a helpful travel assistant.")
-  .summary(history, { id: "travel-chat", store, priority: 2 })
+  .use(summary)
   .user("What's a good 1-day itinerary?");
 
 const { messages } = await prompt.render({ budget: 300 });
