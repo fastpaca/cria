@@ -19,11 +19,11 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 - `Truncate`: shrink content to a token budget when fitting.
 - `Omit`: drop content entirely when fitting.
 - `Last`: keep only the last N items (useful for chat history).
-- `Summary`: replace older content with a cached summary when fitting (requires a store; uses a provider or custom summarizer).
+- `Summary`: plugin that replaces older content with a cached summary when fitting (requires a store; uses a provider or custom summarizer).
 
 ## Retrieval
 
-- `VectorSearch`: inject retrieval results at render time from a `VectorMemory` store.
+- `VectorDB.search(...)`: plugin that injects retrieval results at render time from a `VectorMemory` store.
 
 ## Semantic nodes (provider mapping)
 

@@ -1,4 +1,4 @@
-import { cria } from "@fastpaca/cria/dsl";
+import { cria, VectorDB } from "@fastpaca/cria";
 import { describe, expect, test } from "vitest";
 import { createTestProvider } from "../utils/plaintext";
 
@@ -35,7 +35,7 @@ describe("vector search", () => {
     };
   }
 
-  test("vectorSearch renders results at prompt level", async () => {
+  test("vector search renders results at prompt level", async () => {
     const store = createMockVectorStore([
       {
         key: "doc-1",
@@ -44,13 +44,11 @@ describe("vector search", () => {
       },
     ]);
 
+    const vectors = new VectorDB({ store });
+
     const result = await cria
       .prompt()
-      .vectorSearch({
-        store,
-        query: "search query",
-        limit: 1,
-      })
+      .use(vectors.search({ query: "search query", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
@@ -58,7 +56,7 @@ describe("vector search", () => {
     expect(result).toContain("Doc 1");
   });
 
-  test("vectorSearch renders results inside message", async () => {
+  test("vector search renders results between messages", async () => {
     const store = createMockVectorStore([
       {
         key: "doc-1",
@@ -67,15 +65,12 @@ describe("vector search", () => {
       },
     ]);
 
+    const vectors = new VectorDB({ store });
+
     const result = await cria
       .prompt()
-      .user((m) =>
-        m.append("Here are the search results:\n").vectorSearch({
-          store,
-          query: "test query",
-          limit: 1,
-        })
-      )
+      .user("Here are the search results:")
+      .use(vectors.search({ query: "test query", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
@@ -83,16 +78,13 @@ describe("vector search", () => {
     expect(result).toContain("Result");
   });
 
-  test("vectorSearch handles empty results", async () => {
+  test("vector search handles empty results", async () => {
     const store = createMockVectorStore([]);
+    const vectors = new VectorDB({ store });
 
     const result = await cria
       .prompt()
-      .vectorSearch({
-        store,
-        query: "no matches",
-        limit: 5,
-      })
+      .use(vectors.search({ query: "no matches", limit: 5 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("Vector search returned no results");

@@ -4,7 +4,7 @@
  * Requires: OPENAI_API_KEY
  */
 
-import { cria, type StoredSummary } from "@fastpaca/cria";
+import { cria, type StoredSummary, Summary, VectorDB } from "@fastpaca/cria";
 import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { createProvider } from "@fastpaca/cria/openai";
@@ -49,24 +49,26 @@ const vectorStore = new SqliteVectorStore<string>({
   schema: z.string(),
 });
 
+const vectors = new VectorDB({ store: vectorStore });
+
 // Set RESET_SUMMARY=1 to drop only the summary cache entry.
 const resetSummary = process.env.RESET_SUMMARY === "1";
 if (resetSummary) {
   await summaryStore.delete(summaryId);
 }
 
-await vectorStore.set(
-  "doc-1",
-  "Brandenburg Gate is a landmark built in the 18th century."
-);
-await vectorStore.set(
-  "doc-2",
-  "The Berlin Wall Memorial preserves a section of the wall."
-);
-await vectorStore.set(
-  "doc-3",
-  "Museum Island is a UNESCO site with five museums."
-);
+await vectors.index({
+  id: "doc-1",
+  data: "Brandenburg Gate is a landmark built in the 18th century.",
+});
+await vectors.index({
+  id: "doc-2",
+  data: "The Berlin Wall Memorial preserves a section of the wall.",
+});
+await vectors.index({
+  id: "doc-3",
+  data: "Museum Island is a UNESCO site with five museums.",
+});
 
 const history = cria
   .prompt()
@@ -80,18 +82,16 @@ const summaryOpts = {
   id: summaryId,
   store: summaryStore,
   priority: 2,
+  provider,
 };
-const searchOpts = {
-  store: vectorStore,
-  query: question,
-  limit: 3,
-};
+const summary = new Summary(summaryOpts).extend(history);
+const retrieval = vectors.search({ query: question, limit: 3 });
 
 const prompt = cria
   .prompt(provider)
   .system("Answer using the summary and the retrieved context.")
-  .summary(history, summaryOpts)
-  .vectorSearch(searchOpts)
+  .use(summary)
+  .use(retrieval)
   .user(question);
 
 const { messages } = await prompt.render({ budget: 1000 });

@@ -10,11 +10,16 @@ import type {
   PromptRole,
   PromptScope,
   ProviderToolIO,
-  ScopeChildren,
   StrategyInput,
 } from "../types";
-import { PromptBuilder } from "./builder";
-import { createScope } from "./strategies";
+import {
+  PromptBuilder,
+  type PromptPlugin,
+  resolveScopeContent,
+  type ScopeContent,
+} from "./builder";
+import { createMessage, createScope } from "./strategies";
+import { textPart } from "./templating";
 
 /**
  * Stored summary data persisted across renders.
@@ -71,69 +76,158 @@ async function defaultSummarizer(
   return provider.completion(rendered);
 }
 
-interface SummaryProps<TToolIO extends ProviderToolIO = ProviderToolIO> {
+export interface SummaryOptions {
   /** Unique identifier for this summary in the store */
   id: string;
   /** Storage adapter for persisting summaries */
   store: KVMemory<StoredSummary>;
+  /** Optional metadata to attach to stored summaries (e.g., user/session ids) */
+  metadata?: Record<string, unknown>;
   /**
    * Function that generates summaries.
-   * If omitted, uses the ModelProvider from render options with a default prompt.
+   * If omitted, uses the provided ModelProvider with a default prompt.
    */
   summarize?: Summarizer;
-  /** Priority for this scope (higher number = reduced first). Default: 0 */
-  priority?: number;
+  /** Provider to use for the default summarizer */
+  provider?: ModelProvider<unknown, ProviderToolIO>;
   /** Role for the summary message. Default: "system" */
   role?: PromptRole;
-  /** Content to potentially summarize */
-  children?: ScopeChildren<TToolIO>;
+  /** Priority for this scope (higher number = reduced first). Default: 0 */
+  priority?: number;
 }
 
-/**
- * A scope that summarizes its content when the prompt needs to shrink.
- */
-export function Summary<TToolIO extends ProviderToolIO>({
+export interface WriteSummaryOptions {
+  id: string;
+  store: KVMemory<StoredSummary>;
+  target: PromptScope<ProviderToolIO>;
+  metadata?: Record<string, unknown>;
+  summarize?: Summarizer;
+  provider?: ModelProvider<unknown, ProviderToolIO>;
+}
+
+export async function writeSummary({
   id,
   store,
+  target,
+  metadata,
   summarize,
-  priority = 0,
-  role = "system",
-  children = [],
-}: SummaryProps<TToolIO>): PromptScope<TToolIO> {
-  return createScope(children, {
-    priority,
-    strategy: async (input: StrategyInput) => {
-      const { target, context } = input;
-      const existingEntry = await store.get(id);
+  provider,
+}: WriteSummaryOptions): Promise<string> {
+  const existingEntry = await store.get(id);
 
-      const summarizerContext: SummarizerContext = {
-        target,
-        existingSummary: existingEntry?.data.content ?? null,
-        ...(context.provider ? { provider: context.provider } : {}),
-      };
+  const summarizerContext: SummarizerContext = {
+    target,
+    existingSummary: existingEntry?.data.content ?? null,
+    ...(provider ? { provider } : {}),
+  };
 
-      let newSummary: string;
-      if (summarize) {
-        newSummary = await summarize(summarizerContext);
-      } else if (context.provider) {
-        newSummary = await defaultSummarizer(
-          summarizerContext,
-          context.provider
-        );
-      } else {
-        throw new Error(
-          `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to render(), bind one with cria.prompt(provider) or cria.prompt().provider(provider), or wrap the summary in cria.prompt().providerScope(provider, (p) => p.summary(...)).`
-        );
-      }
+  let newSummary: string;
+  if (summarize) {
+    newSummary = await summarize(summarizerContext);
+  } else if (provider) {
+    newSummary = await defaultSummarizer(summarizerContext, provider);
+  } else {
+    throw new Error(
+      `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to the Summary options or supply a custom summarizer.`
+    );
+  }
 
-      await store.set(id, {
+  if (metadata) {
+    await store.set(
+      id,
+      {
         content: newSummary,
-      });
+      },
+      metadata
+    );
+  } else {
+    await store.set(id, {
+      content: newSummary,
+    });
+  }
 
-      const tree = await PromptBuilder.create()
-        .message(role, newSummary)
-        .build();
-      return { ...tree, priority: target.priority };
-    },
-  });
+  return newSummary;
+}
+
+export class Summary<P = unknown> implements PromptPlugin<P> {
+  private readonly options: SummaryOptions;
+  private readonly content: ScopeContent<P> | null;
+
+  constructor(options: SummaryOptions, content?: ScopeContent<P>) {
+    this.options = options;
+    this.content = content ?? null;
+  }
+
+  extend<T>(content: ScopeContent<T>): Summary<T> {
+    return new Summary<T>(this.options, content);
+  }
+
+  private requireContent(): ScopeContent<P> {
+    if (!this.content) {
+      throw new Error(
+        `Summary "${this.options.id}" requires content. Call .extend(...) before use.`
+      );
+    }
+
+    return this.content;
+  }
+
+  async render(): Promise<ScopeContent<P>> {
+    const content = this.requireContent();
+    const children = await resolveScopeContent(
+      content,
+      this.options.provider?.codec
+    );
+    const role = this.options.role ?? "system";
+
+    return createScope(children, {
+      ...(this.options.priority !== undefined
+        ? { priority: this.options.priority }
+        : {}),
+      strategy: async <TToolIO extends ProviderToolIO>(
+        input: StrategyInput<TToolIO>
+      ) => {
+        const provider = this.options.provider ?? input.context.provider;
+        const summaryText = await writeSummary({
+          id: this.options.id,
+          store: this.options.store,
+          target: input.target,
+          ...(this.options.metadata ? { metadata: this.options.metadata } : {}),
+          ...(this.options.summarize
+            ? { summarize: this.options.summarize }
+            : {}),
+          ...(provider ? { provider } : {}),
+        });
+
+        const message = createMessage<TToolIO>(role, [
+          textPart<TToolIO>(summaryText),
+        ]);
+        return createScope<TToolIO>([message], {
+          priority: input.target.priority,
+        });
+      },
+    });
+  }
+
+  async writeNow(): Promise<string> {
+    const content = this.requireContent();
+    const children = await resolveScopeContent(
+      content,
+      this.options.provider?.codec
+    );
+    const target = createScope(children, {
+      ...(this.options.priority !== undefined
+        ? { priority: this.options.priority }
+        : {}),
+    });
+
+    return await writeSummary({
+      id: this.options.id,
+      store: this.options.store,
+      target,
+      ...(this.options.metadata ? { metadata: this.options.metadata } : {}),
+      ...(this.options.summarize ? { summarize: this.options.summarize } : {}),
+      ...(this.options.provider ? { provider: this.options.provider } : {}),
+    });
+  }
 }

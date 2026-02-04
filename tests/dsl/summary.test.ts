@@ -1,5 +1,4 @@
-import { cria } from "@fastpaca/cria/dsl";
-import type { StoredSummary } from "@fastpaca/cria/dsl/summary";
+import { cria, type StoredSummary, Summary } from "@fastpaca/cria";
 import { InMemoryStore } from "@fastpaca/cria/memory";
 import { describe, expect, test } from "vitest";
 import { createTestProvider } from "../utils/plaintext";
@@ -15,12 +14,14 @@ describe("summary helper", () => {
     const store = new InMemoryStore<StoredSummary>();
     const summarizer = () => "S";
 
-    const builder = cria.prompt().summary(cria.prompt().user("x".repeat(200)), {
+    const summary = new Summary({
       id: "conv-summary",
       store,
       summarize: summarizer,
       priority: 1,
-    });
+    }).extend(cria.prompt().user("x".repeat(200)));
+
+    const builder = cria.prompt().use(summary);
 
     const summaryOutput = "system: S";
     const fullOutput = `user: ${"x".repeat(200)}`;

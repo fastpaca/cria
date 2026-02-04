@@ -67,8 +67,7 @@ export interface KVMemory<T = unknown> {
  * import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
  *
  * const store = new InMemoryStore<StoredSummary>();
- *
- * <Summary store={store} ... />
+ * const summary = new Summary({ id: "conv", store }).extend(history);
  * ```
  */
 export class InMemoryStore<T = unknown> implements KVMemory<T> {

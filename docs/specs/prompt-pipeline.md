@@ -167,7 +167,7 @@ RenderOut is provider-specific. Renderers map each `PromptMessage` to the provid
 ### Phase 2: Update components
 
 - Components return scopes or message nodes only.
-- Summaries and vector search emit message parts, not raw strings.
+- Summary and VectorDB search emit message parts, not raw strings.
 
 ### Phase 3: Update rendering and fit
 

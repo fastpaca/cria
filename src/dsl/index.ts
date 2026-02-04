@@ -19,6 +19,7 @@
 export type {
   BuilderChild,
   Prompt,
+  PromptPlugin,
   ScopeContent,
 } from "./builder";
 // biome-ignore lint/performance/noBarrelFile: dsl/index.ts is the primary DSL module entry point, not a barrel file
@@ -32,8 +33,17 @@ export type {
   StoredSummary,
   Summarizer,
   SummarizerContext,
+  SummaryOptions,
 } from "./summary";
+export { Summary } from "./summary";
 export { c, type TextInput } from "./templating";
+export type {
+  VectorDBEntry,
+  VectorDBFormatter,
+  VectorDBOptions,
+  VectorDBSearchOptions,
+} from "./vector-db";
+export { VectorDB } from "./vector-db";
 
 import type { InputLayout, ModelProvider, PromptInput } from "../provider";
 import type {

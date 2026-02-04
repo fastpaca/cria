@@ -2,7 +2,6 @@
  * Fluent builders for constructing prompts.
  */
 
-import type { KVMemory, VectorMemory } from "../memory";
 import type {
   InputLayout,
   MessageCodec,
@@ -33,15 +32,12 @@ import {
   createTruncateStrategy,
   formatExamples,
 } from "./strategies";
-import type { StoredSummary, Summarizer } from "./summary";
-import { Summary } from "./summary";
 import {
   isPromptPart,
   normalizeTextInput,
   type TextInput,
   textPart,
 } from "./templating";
-import { VectorSearch } from "./vector-search";
 
 type PinState = "unpinned" | "pinned";
 
@@ -108,19 +104,31 @@ export type ScopeContent<P = unknown> =
   | Promise<PromptNodeFor<P>>
   | readonly ScopeContent<P>[];
 
+export interface PromptPlugin<P = unknown> {
+  render(): ScopeContent<P> | Promise<ScopeContent<P>>;
+}
+
 /**
- * Children can include promises (async components like VectorSearch).
- * These are resolved when `.build()` resolves the tree.
+ * Children can include promises and node fragments (async components like plugins).
+ * These are resolved and flattened when `.build()` resolves the tree.
  */
 export type BuilderChild<P = unknown> =
   | PromptNodeFor<P>
   | PromptPartFor<P>
   | PromptBuilder<P, PinState>
   | AnyPromptBuilder
+  | readonly PromptNodeFor<P>[]
   | string
   | number
   | boolean
-  | Promise<PromptNodeFor<P> | PromptPartFor<P> | string | number | boolean>;
+  | Promise<
+      | PromptNodeFor<P>
+      | PromptPartFor<P>
+      | readonly PromptNodeFor<P>[]
+      | string
+      | number
+      | boolean
+    >;
 
 type BoundProvider = ModelProvider<unknown, ProviderToolIO>;
 // Tie a builder's provider type to the codec render output for that provider.
@@ -225,32 +233,6 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
   append(content: TextInputFor<P>): MessageBuilder<P> {
     const normalized = normalizeTextInput<ToolIOFor<P>>(content);
     return this.addChildren(normalized);
-  }
-
-  /**
-   * Add vector search results as message content (async, resolved at render time).
-   */
-  vectorSearch<T = unknown>(opts: {
-    store: VectorMemory<T>;
-    query: string;
-    limit: number;
-  }): MessageBuilder<P> {
-    const asyncPart = VectorSearch<T, ToolIOFor<P>>({
-      store: opts.store,
-      query: opts.query,
-      limit: opts.limit,
-    }).then((scope) => {
-      const message = scope.children[0];
-      if (!message || message.kind !== "message") {
-        throw new Error("VectorSearch did not return a message node.");
-      }
-      const part = message.children[0];
-      if (!part || part.type !== "text") {
-        throw new Error("VectorSearch did not return a text part.");
-      }
-      return part;
-    });
-    return this.addChild(asyncPart);
   }
 
   /**
@@ -505,13 +487,14 @@ export class PromptBuilder<
    *
    * @example
    * ```typescript
+   * import { Summary } from "@fastpaca/cria";
    * import { createProvider } from "@fastpaca/cria/ai-sdk";
    * import { openai } from "@ai-sdk/openai";
    *
    * const provider = createProvider(openai("gpt-4o"));
    * cria.prompt()
    *   .providerScope(provider, (p) =>
-   *     p.summary(content, { id: "conv", store })
+   *     p.use(new Summary({ id: "conv", store }).extend(content))
    *   )
    * ```
    */
@@ -561,50 +544,6 @@ export class PromptBuilder<
    */
   inputLayout(content: PromptLayout<ToolIOFor<P>>): PromptBuilder<P, TPinned> {
     return this.addChildren(promptLayoutToNodes(content));
-  }
-
-  /**
-   * Add vector search results (async, resolved at render time).
-   */
-  vectorSearch<T = unknown>(opts: {
-    store: VectorMemory<T>;
-    query: string;
-    limit: number;
-  }): PromptBuilder<P, TPinned> {
-    const asyncElement = VectorSearch<T, ToolIOFor<P>>({
-      store: opts.store,
-      query: opts.query,
-      limit: opts.limit,
-    });
-    return this.addChild(asyncElement);
-  }
-
-  /**
-   * Add content that will be summarized when over budget.
-   */
-  summary(
-    content: ScopeContent<P>,
-    opts: {
-      id: string;
-      store: KVMemory<StoredSummary>;
-      summarize?: Summarizer;
-      priority?: number;
-    }
-  ): PromptBuilder<P, TPinned> {
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec
-    ).then((children) =>
-      Summary({
-        id: opts.id,
-        store: opts.store,
-        children,
-        ...(opts.summarize ? { summarize: opts.summarize } : {}),
-        ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
-      })
-    );
-
-    return this.addChild(element);
   }
 
   /**
@@ -767,6 +706,21 @@ export class PromptBuilder<
       this.boundProvider,
       nextPinState
     );
+  }
+
+  /**
+   * Insert a prompt plugin at the current position.
+   */
+  use(plugin: PromptPlugin<P>): PromptBuilder<P, TPinned> {
+    if (!plugin || typeof plugin.render !== "function") {
+      throw new Error("use() requires a plugin with a render() method.");
+    }
+
+    const element = Promise.resolve(plugin.render()).then((content) =>
+      resolveScopeContent(content, this.boundProvider?.codec)
+    );
+
+    return this.addChild(element);
   }
 
   /**
@@ -1017,7 +971,7 @@ async function resolveScopeChildren<P>(
   return resolved.flat();
 }
 
-async function resolveScopeContent<P>(
+export async function resolveScopeContent<P>(
   content: ScopeContent<P>,
   codec: MessageCodec<unknown, ProviderToolIO> | null | undefined
 ): Promise<PromptNodeFor<P>[]> {
@@ -1179,6 +1133,10 @@ function resolveMessageChild<P>(child: BuilderChild<P>): PromptPartFor<P>[] {
     throw new Error("Prompt builders cannot be nested inside messages.");
   }
 
+  if (Array.isArray(child)) {
+    throw new Error("Message content cannot be arrays.");
+  }
+
   if (typeof child === "string") {
     return [textPart<ToolIOFor<P>>(child)];
   }
@@ -1207,6 +1165,17 @@ async function resolveScopeChild<P>(
       throw new Error("Scope content must be prompt nodes.");
     }
     return [built];
+  }
+
+  if (Array.isArray(child)) {
+    const nodes: PromptNodeFor<P>[] = [];
+    for (const node of child) {
+      if (!isPromptNode<ToolIOFor<P>>(node)) {
+        throw new Error("Scope content must be prompt nodes.");
+      }
+      nodes.push(node);
+    }
+    return nodes;
   }
 
   if (
