@@ -1,7 +1,6 @@
 import { z } from "zod";
-import type { TextInput } from "../dsl";
-import { cria } from "../dsl";
-import { normalizeTextInput } from "../dsl/templating";
+import { cria } from "../cria";
+import { normalizeTextInput, type TextInput } from "../dsl/templating";
 import type { ModelProvider } from "../provider";
 import { render } from "../render";
 import type { PromptTree, ProviderToolIO } from "../types";

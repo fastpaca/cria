@@ -27,7 +27,7 @@
  * @packageDocumentation
  */
 
-import { cria as baseCria } from "../dsl";
+import { cria as baseCria } from "../cria";
 import { createJudge } from "./judge";
 
 export type { EvalResult, Judge, JudgeConfig, Judgment } from "./judge";
