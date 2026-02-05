@@ -21,10 +21,9 @@ export interface VectorDBEntry<T> {
 
 export type VectorDBFormatter<T> = (data: T) => string;
 
-export interface VectorDBConfig<TStored, TInput = TStored> {
-  store: VectorMemory<TStored>;
-  format?: VectorDBFormatter<TInput>;
-}
+export type VectorDBConfig<T> =
+  | { store: VectorMemory<T> }
+  | { store: VectorMemory<string>; format: VectorDBFormatter<T> };
 
 export interface VectorDBComponent<TInput = unknown, TStored = TInput> {
   <P = unknown>(options: VectorDBSearchOptions): PromptPlugin<P>;
@@ -53,36 +52,44 @@ const createPlugin = <P, TStored>(
   } satisfies PromptPlugin<P>;
 };
 
-export const vectordb = <TStored, TInput = TStored>(
-  config: VectorDBConfig<TStored, TInput>
-): VectorDBComponent<TInput, TStored> => {
-  const { store, format } = config;
-  const plugin = <P = unknown>(
-    options: VectorDBSearchOptions
-  ): PromptPlugin<P> => createPlugin<P, TStored>(store, options);
+export function vectordb<T>(config: {
+  store: VectorMemory<T>;
+}): VectorDBComponent<T, T>;
+export function vectordb<T>(config: {
+  store: VectorMemory<string>;
+  format: VectorDBFormatter<T>;
+}): VectorDBComponent<T, string>;
+export function vectordb<T>(config: VectorDBConfig<T>) {
+  if ("format" in config) {
+    const store = config.store;
+    const formatter = config.format;
+    const plugin = <P = unknown>(
+      options: VectorDBSearchOptions
+    ): PromptPlugin<P> => createPlugin<P, string>(store, options);
 
-  if (format) {
-    const component: VectorDBComponent<TInput, TStored> = Object.assign(
-      plugin,
-      {
-        search: plugin,
-        index: async (options: VectorDBEntry<TInput>) => {
-          await store.set(options.id, format(options.data), options.metadata);
-        },
-        load: async ({ id }: { id: string }) => await store.get(id),
-      }
-    );
+    const component: VectorDBComponent<T, string> = Object.assign(plugin, {
+      search: plugin,
+      index: async (options: VectorDBEntry<T>) => {
+        await store.set(options.id, formatter(options.data), options.metadata);
+      },
+      load: async ({ id }: { id: string }) => await store.get(id),
+    });
 
     return component;
   }
 
-  const component: VectorDBComponent<TStored, TStored> = Object.assign(plugin, {
+  const store = config.store;
+  const plugin = <P = unknown>(
+    options: VectorDBSearchOptions
+  ): PromptPlugin<P> => createPlugin<P, T>(store, options);
+
+  const component: VectorDBComponent<T, T> = Object.assign(plugin, {
     search: plugin,
-    index: async (options: VectorDBEntry<TStored>) => {
+    index: async (options: VectorDBEntry<T>) => {
       await store.set(options.id, options.data, options.metadata);
     },
     load: async ({ id }: { id: string }) => await store.get(id),
   });
 
   return component;
-};
+}
