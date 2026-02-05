@@ -2,7 +2,8 @@
  * Summary strategy for progressively summarizing conversation history.
  */
 
-import type { KVMemory } from "../memory";
+import type { KVMemory, MemoryEntry } from "../memory";
+import { UserScopedStore } from "../memory";
 import type { ModelProvider } from "../provider";
 import { render } from "../render";
 import type {
@@ -18,6 +19,8 @@ import {
   resolveScopeContent,
   type ScopeContent,
 } from "./builder";
+import type { KVStoreConfig } from "./store-config";
+import { resolveKVStore } from "./store-config";
 import { createMessage, createScope } from "./strategies";
 import { textPart } from "./templating";
 
@@ -76,12 +79,16 @@ async function defaultSummarizer(
   return provider.completion(rendered);
 }
 
-export interface SummaryOptions {
-  /** Unique identifier for this summary in the store */
-  id: string;
-  /** Storage adapter for persisting summaries */
-  store: KVMemory<StoredSummary>;
-  /** Optional metadata to attach to stored summaries (e.g., user/session ids) */
+export interface SummarizerConfig<
+  TProvider extends
+    | ModelProvider<unknown, ProviderToolIO>
+    | undefined = undefined,
+> {
+  /** Storage adapter or shorthand config for persisting summaries */
+  store: KVStoreConfig<StoredSummary>;
+  /** Default summary id (overridable per call) */
+  id?: string;
+  /** Optional metadata to attach to stored summaries */
   metadata?: Record<string, unknown>;
   /**
    * Function that generates summaries.
@@ -89,11 +96,57 @@ export interface SummaryOptions {
    */
   summarize?: Summarizer;
   /** Provider to use for the default summarizer */
-  provider?: ModelProvider<unknown, ProviderToolIO>;
+  provider?: TProvider;
   /** Role for the summary message. Default: "system" */
   role?: PromptRole;
   /** Priority for this scope (higher number = reduced first). Default: 0 */
   priority?: number;
+}
+
+export interface SummarizerUseOptions<P = unknown> {
+  /** Content to summarize (prompt nodes/builders/inputs) */
+  history?: ScopeContent<P>;
+  /** Override summary id */
+  id?: string;
+  /** Optional metadata to attach to stored summaries */
+  metadata?: Record<string, unknown>;
+  /** Optional provider for decoding inputs or summarizing outside a prompt */
+  provider?: ModelProvider<unknown, ProviderToolIO>;
+  /** Required for per-user scoping */
+  userId?: string;
+  /** Optional session identifier for further scoping */
+  sessionId?: string;
+  /** Override the default key prefix for scoped storage */
+  keyPrefix?: string;
+}
+
+export interface SummarizerWriteOptions<P = unknown>
+  extends SummarizerUseOptions<P> {}
+
+export interface SummarizerLoadOptions {
+  /** Override summary id */
+  id?: string;
+  /** Required for per-user scoping */
+  userId?: string;
+  /** Optional session identifier for further scoping */
+  sessionId?: string;
+  /** Override the default key prefix for scoped storage */
+  keyPrefix?: string;
+}
+
+type SummarizerProvider<T> =
+  T extends ModelProvider<unknown, ProviderToolIO> ? T : unknown;
+
+export interface SummarizerComponent<PDefault = unknown> {
+  <P extends PDefault = PDefault>(
+    options?: SummarizerUseOptions<P>
+  ): PromptPlugin<P>;
+  writeNow<P extends PDefault = PDefault>(
+    options: SummarizerWriteOptions<P>
+  ): Promise<string>;
+  load(
+    options?: SummarizerLoadOptions
+  ): Promise<MemoryEntry<StoredSummary> | null>;
 }
 
 export interface WriteSummaryOptions {
@@ -128,7 +181,7 @@ export async function writeSummary({
     newSummary = await defaultSummarizer(summarizerContext, provider);
   } else {
     throw new Error(
-      `Summary "${id}" requires either a 'summarize' function or a provider. Pass a provider to the Summary options or supply a custom summarizer.`
+      `Summarizer "${id}" requires either a 'summarize' function or a provider. Pass a provider to the summarizer config or supply a custom summarizer.`
     );
   }
 
@@ -136,79 +189,168 @@ export async function writeSummary({
   return newSummary;
 }
 
-export class Summary<P = unknown> implements PromptPlugin<P> {
-  private readonly options: SummaryOptions;
-  private readonly content: ScopeContent<P> | null;
-
-  constructor(options: SummaryOptions, content?: ScopeContent<P>) {
-    this.options = options;
-    this.content = content ?? null;
-  }
-
-  extend<T>(content: ScopeContent<T>): Summary<T> {
-    return new Summary<T>(this.options, content);
-  }
-
-  private requireContent(): ScopeContent<P> {
-    if (!this.content) {
-      throw new Error(
-        `Summary "${this.options.id}" requires content. Call .extend(...) before use.`
-      );
-    }
-
-    return this.content;
-  }
-
-  async render(): Promise<ScopeContent<P>> {
-    const content = this.requireContent();
-    const children = await resolveScopeContent(
-      content,
-      this.options.provider?.codec
+const resolveSummaryId = (
+  configId: string | undefined,
+  callId: string | undefined
+): string => {
+  const id = callId ?? configId;
+  if (!id) {
+    throw new Error(
+      "Summarizer requires an id. Provide one in the config or per call."
     );
-    const role = this.options.role ?? "system";
-    const { id, store, metadata, summarize, provider, priority } = this.options;
+  }
+  return id;
+};
 
-    return createScope(children, {
-      priority,
-      strategy: async <TToolIO extends ProviderToolIO>(
-        input: StrategyInput<TToolIO>
-      ) => {
-        const resolvedProvider = provider ?? input.context.provider;
-        const summaryText = await writeSummary({
-          id,
-          store,
-          target: input.target,
-          metadata,
-          summarize,
-          provider: resolvedProvider,
-        });
+const resolveScope = (options: {
+  userId?: string;
+  sessionId?: string;
+  keyPrefix?: string;
+}): { userId?: string; sessionId?: string; keyPrefix?: string } => {
+  if (!options.userId && (options.sessionId || options.keyPrefix)) {
+    throw new Error("userId is required when using sessionId or keyPrefix.");
+  }
+  return options;
+};
 
-        const message = createMessage<TToolIO>(role, [
-          textPart<TToolIO>(summaryText),
-        ]);
-        return createScope<TToolIO>([message], {
-          priority: input.target.priority,
+const withUserScope = <T>(
+  store: KVMemory<T>,
+  options: { userId?: string; sessionId?: string; keyPrefix?: string }
+): KVMemory<T> => {
+  const scope = resolveScope(options);
+  if (!scope.userId) {
+    return store;
+  }
+  return new UserScopedStore(store, {
+    userId: scope.userId,
+    sessionId: scope.sessionId,
+    keyPrefix: scope.keyPrefix,
+  });
+};
+
+const mergeMetadata = (
+  base: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined => {
+  if (!(base || override)) {
+    return undefined;
+  }
+  return { ...(base ?? {}), ...(override ?? {}) };
+};
+
+const requireHistory = <P>(
+  history: ScopeContent<P> | undefined
+): ScopeContent<P> => {
+  if (!history) {
+    throw new Error(
+      "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
+    );
+  }
+  return history;
+};
+
+export const summarizer = <
+  TProvider extends
+    | ModelProvider<unknown, ProviderToolIO>
+    | undefined = undefined,
+>(
+  config: SummarizerConfig<TProvider>
+): SummarizerComponent<SummarizerProvider<TProvider>> => {
+  const store = resolveKVStore<StoredSummary>(config.store);
+
+  const component = (<
+    P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>,
+  >(
+    options?: SummarizerUseOptions<P>
+  ): PromptPlugin<P> => {
+    const callOptions = options ?? {};
+    const id = resolveSummaryId(config.id, callOptions.id);
+    const history = requireHistory(callOptions.history);
+    const scopedStore = withUserScope(store, {
+      userId: callOptions.userId,
+      sessionId: callOptions.sessionId,
+      keyPrefix: callOptions.keyPrefix,
+    });
+    const metadata = mergeMetadata(config.metadata, callOptions.metadata);
+    const role = config.role ?? "system";
+    const priority = config.priority;
+    const decodeProvider = config.provider ?? callOptions.provider;
+
+    return {
+      render: async () => {
+        const children = await resolveScopeContent(
+          history,
+          decodeProvider?.codec
+        );
+
+        return createScope(children, {
+          priority,
+          strategy: async <TToolIO extends ProviderToolIO>(
+            input: StrategyInput<TToolIO>
+          ) => {
+            const resolvedProvider =
+              config.provider ?? callOptions.provider ?? input.context.provider;
+            const summaryText = await writeSummary({
+              id,
+              store: scopedStore,
+              target: input.target,
+              metadata,
+              summarize: config.summarize,
+              provider: resolvedProvider,
+            });
+
+            const message = createMessage<TToolIO>(role, [
+              textPart<TToolIO>(summaryText),
+            ]);
+            return createScope<TToolIO>([message], {
+              priority: input.target.priority,
+            });
+          },
         });
       },
-    });
-  }
+    } satisfies PromptPlugin<P>;
+  }) as SummarizerComponent<SummarizerProvider<TProvider>>;
 
-  async writeNow(): Promise<string> {
-    const content = this.requireContent();
-    const children = await resolveScopeContent(
-      content,
-      this.options.provider?.codec
-    );
-    const { id, store, metadata, summarize, provider, priority } = this.options;
-    const target = createScope(children, { priority });
+  component.writeNow = async <
+    P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>,
+  >(
+    options: SummarizerWriteOptions<P>
+  ): Promise<string> => {
+    const id = resolveSummaryId(config.id, options.id);
+    const history = requireHistory(options.history);
+    const scopedStore = withUserScope(store, {
+      userId: options.userId,
+      sessionId: options.sessionId,
+      keyPrefix: options.keyPrefix,
+    });
+    const metadata = mergeMetadata(config.metadata, options.metadata);
+    const decodeProvider = config.provider ?? options.provider;
+
+    const children = await resolveScopeContent(history, decodeProvider?.codec);
+    const target = createScope(children, { priority: config.priority });
 
     return await writeSummary({
       id,
-      store,
+      store: scopedStore,
       target,
       metadata,
-      summarize,
-      provider,
+      summarize: config.summarize,
+      provider: config.provider ?? options.provider,
     });
-  }
-}
+  };
+
+  component.load = async (
+    options: SummarizerLoadOptions = {}
+  ): Promise<MemoryEntry<StoredSummary> | null> => {
+    const id = resolveSummaryId(config.id, options.id);
+    const scopedStore = withUserScope(store, {
+      userId: options.userId,
+      sessionId: options.sessionId,
+      keyPrefix: options.keyPrefix,
+    });
+
+    return await scopedStore.get(id);
+  };
+
+  return component;
+};

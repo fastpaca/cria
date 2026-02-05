@@ -1,10 +1,4 @@
-import {
-  cria,
-  type PromptPlugin,
-  type StoredSummary,
-  Summary,
-  VectorDB,
-} from "@fastpaca/cria";
+import { cria, type PromptPlugin, type StoredSummary } from "@fastpaca/cria";
 import { InMemoryStore } from "@fastpaca/cria/memory";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { type Client, createClient } from "@libsql/client";
@@ -60,15 +54,15 @@ describe("prompt plugins", () => {
 
   test("summary plugin writes when over budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
-    const summarizer = () => "S";
+    const summarize = () => "S";
 
-    const summaryPlugin = new Summary({
+    const summaryPlugin = cria.summarizer({
       id: "conv-summary",
       store,
       metadata: { sessionId: "s-1" },
-      summarize: summarizer,
+      summarize,
       priority: 1,
-    }).extend(cria.prompt().user("x".repeat(200)));
+    })({ history: cria.prompt().user("x".repeat(200)) });
 
     const summaryOutput = "system: S";
     const fullOutput = `user: ${"x".repeat(200)}`;
@@ -90,15 +84,17 @@ describe("prompt plugins", () => {
 
   test("summary writeNow writes immediately", async () => {
     const store = new InMemoryStore<StoredSummary>();
-    const summarizer = () => "Now";
+    const summarize = () => "Now";
 
-    const summaryPlugin = new Summary({
+    const summaryPlugin = cria.summarizer({
       id: "conv-now",
       store,
-      summarize: summarizer,
-    }).extend(cria.prompt().user("Hello"));
+      summarize,
+    });
 
-    const result = await summaryPlugin.writeNow();
+    const result = await summaryPlugin.writeNow({
+      history: cria.prompt().user("Hello"),
+    });
 
     expect(result).toBe("Now");
     const entry = store.get("conv-now");
@@ -111,8 +107,8 @@ describe("prompt plugins", () => {
     );
     await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
-    const vectors = new VectorDB({ store });
-    const retrieval = vectors.search({ query: "search query", limit: 1 });
+    const vectors = cria.vectordb({ store });
+    const retrieval = vectors({ query: "search query", limit: 1 });
 
     const output = await cria
       .prompt()
@@ -124,7 +120,7 @@ describe("prompt plugins", () => {
 
   test("vector index uses formatter for both index and search", async () => {
     const store = createStore(z.string());
-    const vectors = new VectorDB({
+    const vectors = cria.vectordb({
       store,
       format: (data: string) => `Title: ${data}`,
     });
@@ -141,7 +137,7 @@ describe("prompt plugins", () => {
 
     const output = await cria
       .prompt()
-      .use(vectors.search({ query: "Indexed", limit: 1 }))
+      .use(vectors({ query: "Indexed", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(output).toContain("Title: Indexed");

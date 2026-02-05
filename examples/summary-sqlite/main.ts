@@ -4,8 +4,7 @@
  * Requires: OPENAI_API_KEY
  */
 
-import { cria, type StoredSummary, Summary } from "@fastpaca/cria";
-import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
+import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
@@ -16,7 +15,6 @@ if (!apiKey) {
 
 const client = new OpenAI({ apiKey });
 const provider = createProvider(client, "gpt-4o-mini");
-const store = new SqliteStore<StoredSummary>({ filename: "cria.sqlite" });
 
 const history = cria
   .prompt()
@@ -25,12 +23,14 @@ const history = cria
   .user("What neighborhoods should I stay in?")
   .assistant("Prenzlauer Berg and Kreuzberg are popular.");
 
-const summary = new Summary({
+const summarizer = cria.summarizer({
   id: "travel-chat",
-  store,
+  store: { sqlite: "cria.sqlite" },
   priority: 2,
   provider,
-}).extend(history);
+});
+
+const summary = summarizer({ history });
 
 const prompt = cria
   .prompt(provider)
@@ -45,5 +45,3 @@ const response = await client.chat.completions.create({
 });
 
 console.log(response.choices[0]?.message?.content);
-
-store.close();

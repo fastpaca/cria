@@ -4,7 +4,6 @@ import {
   PromptBuilder,
   prompt,
   type StoredSummary,
-  Summary,
 } from "@fastpaca/cria";
 import { InMemoryStore } from "@fastpaca/cria/memory";
 import {
@@ -231,12 +230,12 @@ describe("PromptBuilder", () => {
         { role: "user", content: "User history." },
       ];
 
-      const summary = new Summary({
+      const summary = cria.summarizer({
         id: "history",
         store,
         priority: 1,
         provider,
-      }).extend(cria.input(input));
+      })({ history: cria.input(input) });
 
       const output = await cria
         .prompt(provider)

@@ -4,9 +4,7 @@
  * Requires: OPENAI_API_KEY
  */
 
-import { cria, type StoredSummary, Summary, VectorDB } from "@fastpaca/cria";
-import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
-import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
+import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 import { z } from "zod";
@@ -36,26 +34,24 @@ const embed = async (text: string): Promise<number[]> => {
 const dbFile = "cria.sqlite";
 const summaryId = "travel-chat";
 
-const summaryStore = new SqliteStore<StoredSummary>({
-  filename: dbFile,
-  tableName: "cria_summaries",
+const summarizer = cria.summarizer({
+  id: summaryId,
+  store: { sqlite: { filename: dbFile, tableName: "cria_summaries" } },
+  priority: 2,
+  provider,
 });
 
-const vectorStore = new SqliteVectorStore<string>({
-  filename: dbFile,
-  tableName: "cria_vectors",
-  dimensions: 1536,
-  embed,
-  schema: z.string(),
+const vectors = cria.vectordb({
+  store: {
+    sqlite: {
+      filename: dbFile,
+      tableName: "cria_vectors",
+      dimensions: 1536,
+      embed,
+      schema: z.string(),
+    },
+  },
 });
-
-const vectors = new VectorDB({ store: vectorStore });
-
-// Set RESET_SUMMARY=1 to drop only the summary cache entry.
-const resetSummary = process.env.RESET_SUMMARY === "1";
-if (resetSummary) {
-  await summaryStore.delete(summaryId);
-}
 
 await vectors.index({
   id: "doc-1",
@@ -78,14 +74,8 @@ const history = cria
   .assistant("Prenzlauer Berg and Kreuzberg are popular.");
 
 const question = "What are the main landmarks in Berlin?";
-const summaryOpts = {
-  id: summaryId,
-  store: summaryStore,
-  priority: 2,
-  provider,
-};
-const summary = new Summary(summaryOpts).extend(history);
-const retrieval = vectors.search({ query: question, limit: 3 });
+const summary = summarizer({ history });
+const retrieval = vectors({ query: question, limit: 3 });
 
 const prompt = cria
   .prompt(provider)
@@ -101,6 +91,3 @@ const response = await client.chat.completions.create({
 });
 
 console.log(response.choices[0]?.message?.content);
-
-summaryStore.close();
-vectorStore.close();

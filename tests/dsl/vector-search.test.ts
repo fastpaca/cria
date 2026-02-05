@@ -1,4 +1,4 @@
-import { cria, VectorDB } from "@fastpaca/cria";
+import { cria } from "@fastpaca/cria";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { type Client, createClient } from "@libsql/client";
 import { afterEach, describe, expect, test } from "vitest";
@@ -40,11 +40,11 @@ describe("vector search", () => {
     const store = createStore();
     await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
-    const vectors = new VectorDB({ store });
+    const vectors = cria.vectordb({ store });
 
     const result = await cria
       .prompt()
-      .use(vectors.search({ query: "search query", limit: 1 }))
+      .use(vectors({ query: "search query", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
@@ -56,12 +56,12 @@ describe("vector search", () => {
     const store = createStore();
     await store.set("doc-1", { title: "Result", content: "Found it" });
 
-    const vectors = new VectorDB({ store });
+    const vectors = cria.vectordb({ store });
 
     const result = await cria
       .prompt()
       .user("Here are the search results:")
-      .use(vectors.search({ query: "test query", limit: 1 }))
+      .use(vectors({ query: "test query", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
@@ -71,11 +71,11 @@ describe("vector search", () => {
 
   test("vector search handles empty results", async () => {
     const store = createStore();
-    const vectors = new VectorDB({ store });
+    const vectors = cria.vectordb({ store });
 
     const result = await cria
       .prompt()
-      .use(vectors.search({ query: "no matches", limit: 5 }))
+      .use(vectors({ query: "no matches", limit: 5 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("Vector search returned no results");

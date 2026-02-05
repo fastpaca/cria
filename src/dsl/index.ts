@@ -32,18 +32,26 @@ export {
 export type {
   StoredSummary,
   Summarizer,
+  SummarizerComponent,
+  SummarizerConfig,
   SummarizerContext,
-  SummaryOptions,
+  SummarizerLoadOptions,
+  SummarizerUseOptions,
+  SummarizerWriteOptions,
 } from "./summary";
-export { Summary } from "./summary";
+export { summarizer } from "./summary";
 export { c, type TextInput } from "./templating";
 export type {
+  VectorDBComponent,
+  VectorDBConfig,
   VectorDBEntry,
   VectorDBFormatter,
-  VectorDBOptions,
+  VectorDBLoadOptions,
+  VectorDBScopeOptions,
   VectorDBSearchOptions,
+  VectorDBUseOptions,
 } from "./vector-db";
-export { VectorDB } from "./vector-db";
+export { vectordb } from "./vector-db";
 
 import type { InputLayout, ModelProvider, PromptInput } from "../provider";
 import type {
@@ -56,12 +64,14 @@ import type {
 } from "../types";
 import { PromptBuilder } from "./builder";
 import { createMessage, createScope } from "./strategies";
+import { summarizer } from "./summary";
 // Import for namespace
 import {
   normalizeTextInput,
   type TextInput,
   c as templateC,
 } from "./templating";
+import { vectordb } from "./vector-db";
 
 /** Create a standalone message node */
 function message<TToolIO extends ProviderToolIO>(
@@ -138,6 +148,8 @@ export const cria = {
   assistant: (content: TextInput) => message("assistant", content),
   input,
   inputLayout,
+  summarizer,
+  vectordb,
 } as const;
 
 /**

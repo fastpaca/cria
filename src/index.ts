@@ -24,13 +24,21 @@ export type {
   ScopeContent,
   StoredSummary,
   Summarizer,
+  SummarizerComponent,
+  SummarizerConfig,
   SummarizerContext,
-  SummaryOptions,
+  SummarizerLoadOptions,
+  SummarizerUseOptions,
+  SummarizerWriteOptions,
   TextInput,
+  VectorDBComponent,
+  VectorDBConfig,
   VectorDBEntry,
   VectorDBFormatter,
-  VectorDBOptions,
+  VectorDBLoadOptions,
+  VectorDBScopeOptions,
   VectorDBSearchOptions,
+  VectorDBUseOptions,
 } from "./dsl";
 export {
   BuilderBase,
@@ -42,8 +50,8 @@ export {
   merge,
   PromptBuilder,
   prompt,
-  Summary,
-  VectorDB,
+  summarizer,
+  vectordb,
 } from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {

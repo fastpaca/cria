@@ -64,10 +64,11 @@ export interface KVMemory<T = unknown> {
  *
  * @example
  * ```typescript
- * import { InMemoryStore, Summary, type StoredSummary } from "@fastpaca/cria";
+ * import { InMemoryStore, cria, type StoredSummary } from "@fastpaca/cria";
  *
  * const store = new InMemoryStore<StoredSummary>();
- * const summary = new Summary({ id: "conv", store }).extend(history);
+ * const summarizer = cria.summarizer({ id: "conv", store });
+ * const summary = summarizer({ history });
  * ```
  */
 export class InMemoryStore<T = unknown> implements KVMemory<T> {
