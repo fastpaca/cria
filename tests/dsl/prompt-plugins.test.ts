@@ -6,12 +6,38 @@ import {
   VectorDB,
 } from "@fastpaca/cria";
 import { InMemoryStore } from "@fastpaca/cria/memory";
-import { describe, expect, test } from "vitest";
+import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
+import { type Client, createClient } from "@libsql/client";
+import { afterEach, describe, expect, test } from "vitest";
+import { z } from "zod";
 import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
   includeRolePrefix: true,
   joinMessagesWith: "\n\n",
+});
+
+// Simple embedding: text length as single dimension
+const embed = async (text: string): Promise<number[]> => [text.length];
+
+const clients: Client[] = [];
+
+const createStore = <T>(schema: z.ZodType<T>) => {
+  const db = createClient({ url: ":memory:" });
+  clients.push(db);
+  return new SqliteVectorStore<T>({
+    database: db,
+    embed,
+    dimensions: 1,
+    schema,
+  });
+};
+
+afterEach(() => {
+  for (const db of clients) {
+    db.close();
+  }
+  clients.length = 0;
 });
 
 describe("prompt plugins", () => {
@@ -80,13 +106,10 @@ describe("prompt plugins", () => {
   });
 
   test("vector search plugin renders results", async () => {
-    const store = createMockVectorStore([
-      {
-        key: "doc-1",
-        score: 0.95,
-        data: { title: "Doc 1", content: "Content 1" },
-      },
-    ]);
+    const store = createStore(
+      z.object({ title: z.string(), content: z.string() })
+    );
+    await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
     const vectors = new VectorDB({ store });
     const retrieval = vectors.search({ query: "search query", limit: 1 });
@@ -99,22 +122,22 @@ describe("prompt plugins", () => {
     expect(output).toContain("Doc 1");
   });
 
-  test("vector index shares formatter with index", async () => {
-    const store = createMockStringVectorStore();
+  test("vector index uses formatter for both index and search", async () => {
+    const store = createStore(z.string());
     const vectors = new VectorDB({
       store,
-      format: (data: { title: string }) => `Title: ${data.title}`,
+      format: (data: string) => `Title: ${data}`,
     });
 
     await vectors.index({
       id: "doc-1",
-      data: { title: "Indexed" },
+      data: "Indexed",
       metadata: { source: "test" },
     });
 
-    const indexed = store.getLastSet();
-    expect(indexed?.data).toBe("Title: Indexed");
-    expect(indexed?.metadata).toEqual({ source: "test" });
+    const entry = await store.get("doc-1");
+    expect(entry?.data).toBe("Title: Indexed");
+    expect(entry?.metadata).toEqual({ source: "test" });
 
     const output = await cria
       .prompt()
@@ -124,60 +147,3 @@ describe("prompt plugins", () => {
     expect(output).toContain("Title: Indexed");
   });
 });
-
-function createMockVectorStore<T>(
-  results: { key: string; score: number; data: T }[]
-) {
-  return {
-    get: () => null,
-    set: () => {
-      /* no-op */
-    },
-    delete: () => false,
-    search: () =>
-      results.map((result) => ({
-        key: result.key,
-        score: result.score,
-        entry: {
-          data: result.data,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        },
-      })),
-  };
-}
-
-function createMockStringVectorStore() {
-  let lastSet:
-    | {
-        key: string;
-        data: string;
-        metadata?: Record<string, unknown>;
-      }
-    | undefined;
-
-  return {
-    getLastSet: () => lastSet,
-    get: () => null,
-    set: (key: string, data: string, metadata?: Record<string, unknown>) => {
-      lastSet = { key, data, metadata };
-    },
-    delete: () => false,
-    search: () => {
-      if (!lastSet) {
-        return [];
-      }
-      return [
-        {
-          key: lastSet.key,
-          score: 0.9,
-          entry: {
-            data: lastSet.data,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          },
-        },
-      ];
-    },
-  };
-}
