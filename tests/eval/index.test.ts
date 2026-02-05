@@ -1,4 +1,4 @@
-import { c, cria } from "@fastpaca/cria/dsl";
+import { c, cria } from "@fastpaca/cria";
 import { createJudge } from "@fastpaca/cria/eval";
 import {
   ModelProvider,

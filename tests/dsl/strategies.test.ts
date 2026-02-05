@@ -1,4 +1,4 @@
-import { cria } from "@fastpaca/cria/dsl";
+import { cria } from "@fastpaca/cria";
 import { render } from "@fastpaca/cria/render";
 import { describe, expect, test } from "vitest";
 import { createTestProvider } from "../utils/plaintext";
