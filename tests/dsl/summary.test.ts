@@ -1,4 +1,4 @@
-import { cria, type StoredSummary, Summary } from "@fastpaca/cria";
+import { cria, type StoredSummary } from "@fastpaca/cria";
 import { InMemoryStore } from "@fastpaca/cria/memory";
 import { describe, expect, test } from "vitest";
 import { createTestProvider } from "../utils/plaintext";
@@ -12,14 +12,14 @@ const tokensFor = (text: string): number => provider.countTokens(text);
 describe("summary helper", () => {
   test("summary uses custom summarizer when over budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
-    const summarizer = () => "S";
+    const summarize = () => "S";
 
-    const summary = new Summary({
+    const summary = cria.summarizer({
       id: "conv-summary",
       store,
-      summarize: summarizer,
+      summarize,
       priority: 1,
-    }).extend(cria.prompt().user("x".repeat(200)));
+    })({ history: cria.prompt().user("x".repeat(200)) });
 
     const builder = cria.prompt().use(summary);
 

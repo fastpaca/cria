@@ -47,7 +47,7 @@ These helpers create shrinkable regions:
 - `truncate(...)`
 - `omit(...)`
 - `last(...)`
-- summary plugin (via `prompt.use(...)`)
+- summarizer component (via `prompt.use(...)`)
 
 Plain messages (`system/user/assistant/message`) are not shrinkable by default.
 
@@ -57,7 +57,7 @@ Plain messages (`system/user/assistant/message`) are not shrinkable by default.
 
 - `last(...)` for “keep last N turns”
 - `truncate(...)` for “cap to N tokens”
-- summary plugin for “replace older content with a cached summary”
+- summarizer for “replace older content with a cached summary”
 
 ### Drop optional context
 
@@ -106,7 +106,7 @@ const prompt = cria
 If the prompt cannot be reduced further, `render()` throws `FitError`. Treat that as a signal to either:
 
 - Increase the budget
-- Add/adjust strategies (truncate/omit/summary plugin/last)
+- Add/adjust strategies (truncate/omit/summarizer/last)
 - Re-prioritize content so the right things can shrink first
 
 ```ts

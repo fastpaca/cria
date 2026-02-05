@@ -483,18 +483,19 @@ export class PromptBuilder<
   }
 
   /**
-   * Create a provider scope for AI-powered operations like Summary.
+   * Create a provider scope for AI-powered operations like summaries.
    *
    * @example
    * ```typescript
-   * import { Summary } from "@fastpaca/cria";
+   * import { cria } from "@fastpaca/cria";
    * import { createProvider } from "@fastpaca/cria/ai-sdk";
    * import { openai } from "@ai-sdk/openai";
    *
    * const provider = createProvider(openai("gpt-4o"));
+   * const summarizer = cria.summarizer({ id: "conv", store });
    * cria.prompt()
    *   .providerScope(provider, (p) =>
-   *     p.use(new Summary({ id: "conv", store }).extend(content))
+   *     p.use(summarizer({ history: content }))
    *   )
    * ```
    */

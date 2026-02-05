@@ -1,16 +1,16 @@
 # Summarize long history
 
-Use the summary plugin as a drop-in component for chat history: keep recent turns verbatim, and compress older turns into a cached summary. When you render with a budget, the summary plugin helps compaction stay predictable without losing all long-term context.
+Use the summarizer component as a drop-in for chat history: keep recent turns verbatim, and compress older turns into a cached summary. When you render with a budget, the summarizer helps compaction stay predictable without losing all long-term context.
 
-Runnable example: [summary](../../examples/summary)
+Runnable example: [summary-sqlite](../../examples/summary-sqlite)
 
 ```bash
-cd examples/summary
+cd examples/summary-sqlite
 pnpm install
 pnpm start
 ```
 
-This example calls a model to summarize, so it requires `OPENAI_API_KEY`. See `../../examples/summary/README.md`.
+This example calls a model to summarize, so it requires `OPENAI_API_KEY`. See `../../examples/summary-sqlite/README.md`.
 
 ## Install
 
@@ -24,17 +24,18 @@ export OPENAI_API_KEY="sk-..."
 ```ts
 import OpenAI from "openai";
 import { createProvider } from "@fastpaca/cria/openai";
-import { Summary, cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
+import { cria, InMemoryStore, type StoredSummary } from "@fastpaca/cria";
 
 const store = new InMemoryStore<StoredSummary>();
 const provider = createProvider(new OpenAI(), "gpt-4o-mini");
 
-const summary = new Summary({
+const summarizer = cria.summarizer({
   id: "history",
   store,
   priority: 2,
   provider,
-}).extend(cria.input(history));
+});
+const summary = summarizer({ history: cria.input(history) });
 
 const prompt = cria
   .prompt(provider)
@@ -42,9 +43,9 @@ const prompt = cria
   .user(question);
 ```
 
-Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` and pass a `provider` to the summary plugin so it can decode the input.
+Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` and pass a `provider` to the summarizer (config or call option) so it can decode the input.
 
-Tip: for per-user or per-session isolation, wrap your summary store with `UserScopedStore` (or scope the `id` with a user/session prefix).
+Tip: for per-user or per-session isolation, pass `userId`/`sessionId` when you call the summarizer (it will scope the store automatically).
 
 Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore` (`@fastpaca/cria/memory/redis`), `SqliteStore` (`@fastpaca/cria/memory/sqlite`), or `PostgresStore` (`@fastpaca/cria/memory/postgres`).
 
@@ -52,6 +53,6 @@ Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore`
 
 - Use `Last` to keep the last N turns verbatim.
 - Use `Truncate` to keep as much as possible up to a token cap.
-- Use the summary plugin to keep older context “alive” in fewer tokens.
+- Use the summarizer to keep older context “alive” in fewer tokens.
 
 Next: [Fit & compaction](fit-and-compaction.md)

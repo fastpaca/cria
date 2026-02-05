@@ -4,15 +4,19 @@
  * Requires: Redis running locally (docker run -p 6379:6379 redis)
  */
 
-import { cria, type StoredSummary, Summary } from "@fastpaca/cria";
-import { RedisStore } from "@fastpaca/cria/memory/redis";
+import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
 const client = new OpenAI();
 const provider = createProvider(client, "gpt-4o-mini");
 
-const store = new RedisStore<StoredSummary>({ keyPrefix: "cria:summary:" });
+const summarizer = cria.summarizer({
+  id: "travel-chat",
+  store: { redis: { keyPrefix: "cria:summary:" } },
+  priority: 2,
+  provider,
+});
 
 const history = cria
   .prompt()
@@ -23,12 +27,7 @@ const history = cria
   .user("What are the must-see historical sites?")
   .assistant("Brandenburg Gate, Berlin Wall Memorial, Museum Island.");
 
-const summary = new Summary({
-  id: "travel-chat",
-  store,
-  priority: 2,
-  provider,
-}).extend(history);
+const summary = summarizer({ history });
 
 const prompt = cria
   .prompt(provider)
@@ -47,5 +46,3 @@ const response = await client.chat.completions.create({
 
 console.log("\n=== Response ===");
 console.log(response.choices[0]?.message?.content);
-
-await store.disconnect();

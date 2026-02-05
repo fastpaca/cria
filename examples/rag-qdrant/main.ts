@@ -4,8 +4,7 @@
  * Requires: Qdrant running locally (docker run -p 6333:6333 qdrant/qdrant)
  */
 
-import { cria, VectorDB } from "@fastpaca/cria";
-import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
+import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import OpenAI from "openai";
@@ -31,13 +30,15 @@ const embed = async (text: string) => {
   return response.data[0]?.embedding ?? [];
 };
 
-const store = new QdrantStore<string>({
-  client: qdrant,
-  collectionName: "docs",
-  embed,
+const vectors = cria.vectordb({
+  store: {
+    qdrant: {
+      client: qdrant,
+      collectionName: "docs",
+      embed,
+    },
+  },
 });
-
-const vectors = new VectorDB({ store });
 
 // Seed some documents (using UUIDs as Qdrant requires UUID or integer IDs)
 await vectors.index({
@@ -53,7 +54,7 @@ await vectors.index({
   data: "Museum Island is a UNESCO World Heritage site with 5 world-renowned museums on the Spree river.",
 });
 
-const retrieval = vectors.search({ query: "Berlin landmarks", limit: 3 });
+const retrieval = vectors({ query: "Berlin landmarks", limit: 3 });
 
 const prompt = cria
   .prompt(provider)
