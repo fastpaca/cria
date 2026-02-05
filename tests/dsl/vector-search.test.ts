@@ -1,5 +1,8 @@
 import { cria, VectorDB } from "@fastpaca/cria";
-import { describe, expect, test } from "vitest";
+import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
+import { type Client, createClient } from "@libsql/client";
+import { afterEach, describe, expect, test } from "vitest";
+import { z } from "zod";
 import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
@@ -7,42 +10,35 @@ const provider = createTestProvider({
   joinMessagesWith: "\n\n",
 });
 
+// Simple embedding: text length as single dimension
+const embed = async (text: string): Promise<number[]> => [text.length];
+
+const SCORE_PATTERN = /score: \d+\.\d+/;
+
+const clients: Client[] = [];
+
+const createStore = () => {
+  const db = createClient({ url: ":memory:" });
+  clients.push(db);
+  return new SqliteVectorStore({
+    database: db,
+    embed,
+    dimensions: 1,
+    schema: z.object({ title: z.string(), content: z.string() }),
+  });
+};
+
+afterEach(() => {
+  for (const db of clients) {
+    db.close();
+  }
+  clients.length = 0;
+});
+
 describe("vector search", () => {
-  interface TestDocument {
-    title: string;
-    content: string;
-  }
-
-  function createMockVectorStore(
-    results: { key: string; score: number; data: TestDocument }[]
-  ) {
-    return {
-      get: () => null,
-      set: () => {
-        /* no-op */
-      },
-      delete: () => false,
-      search: () =>
-        results.map((r) => ({
-          key: r.key,
-          score: r.score,
-          entry: {
-            data: r.data,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          },
-        })),
-    };
-  }
-
   test("vector search renders results at prompt level", async () => {
-    const store = createMockVectorStore([
-      {
-        key: "doc-1",
-        score: 0.95,
-        data: { title: "Doc 1", content: "Content 1" },
-      },
-    ]);
+    const store = createStore();
+    await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
     const vectors = new VectorDB({ store });
 
@@ -52,18 +48,13 @@ describe("vector search", () => {
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
-    expect(result).toContain("score: 0.950");
+    expect(result).toMatch(SCORE_PATTERN);
     expect(result).toContain("Doc 1");
   });
 
   test("vector search renders results between messages", async () => {
-    const store = createMockVectorStore([
-      {
-        key: "doc-1",
-        score: 0.9,
-        data: { title: "Result", content: "Found it" },
-      },
-    ]);
+    const store = createStore();
+    await store.set("doc-1", { title: "Result", content: "Found it" });
 
     const vectors = new VectorDB({ store });
 
@@ -79,7 +70,7 @@ describe("vector search", () => {
   });
 
   test("vector search handles empty results", async () => {
-    const store = createMockVectorStore([]);
+    const store = createStore();
     const vectors = new VectorDB({ store });
 
     const result = await cria

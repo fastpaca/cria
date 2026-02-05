@@ -118,7 +118,7 @@ export async function writeSummary({
   const summarizerContext: SummarizerContext = {
     target,
     existingSummary: existingEntry?.data.content ?? null,
-    ...(provider ? { provider } : {}),
+    provider,
   };
 
   let newSummary: string;
@@ -132,20 +132,7 @@ export async function writeSummary({
     );
   }
 
-  if (metadata) {
-    await store.set(
-      id,
-      {
-        content: newSummary,
-      },
-      metadata
-    );
-  } else {
-    await store.set(id, {
-      content: newSummary,
-    });
-  }
-
+  await store.set(id, { content: newSummary }, metadata);
   return newSummary;
 }
 
@@ -179,24 +166,21 @@ export class Summary<P = unknown> implements PromptPlugin<P> {
       this.options.provider?.codec
     );
     const role = this.options.role ?? "system";
+    const { id, store, metadata, summarize, provider, priority } = this.options;
 
     return createScope(children, {
-      ...(this.options.priority !== undefined
-        ? { priority: this.options.priority }
-        : {}),
+      priority,
       strategy: async <TToolIO extends ProviderToolIO>(
         input: StrategyInput<TToolIO>
       ) => {
-        const provider = this.options.provider ?? input.context.provider;
+        const resolvedProvider = provider ?? input.context.provider;
         const summaryText = await writeSummary({
-          id: this.options.id,
-          store: this.options.store,
+          id,
+          store,
           target: input.target,
-          ...(this.options.metadata ? { metadata: this.options.metadata } : {}),
-          ...(this.options.summarize
-            ? { summarize: this.options.summarize }
-            : {}),
-          ...(provider ? { provider } : {}),
+          metadata,
+          summarize,
+          provider: resolvedProvider,
         });
 
         const message = createMessage<TToolIO>(role, [
@@ -215,19 +199,16 @@ export class Summary<P = unknown> implements PromptPlugin<P> {
       content,
       this.options.provider?.codec
     );
-    const target = createScope(children, {
-      ...(this.options.priority !== undefined
-        ? { priority: this.options.priority }
-        : {}),
-    });
+    const { id, store, metadata, summarize, provider, priority } = this.options;
+    const target = createScope(children, { priority });
 
     return await writeSummary({
-      id: this.options.id,
-      store: this.options.store,
+      id,
+      store,
       target,
-      ...(this.options.metadata ? { metadata: this.options.metadata } : {}),
-      ...(this.options.summarize ? { summarize: this.options.summarize } : {}),
-      ...(this.options.provider ? { provider: this.options.provider } : {}),
+      metadata,
+      summarize,
+      provider,
     });
   }
 }

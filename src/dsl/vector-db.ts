@@ -20,50 +20,29 @@ export interface VectorDBEntry<T> {
 
 export type VectorDBFormatter<T> = (data: T) => string;
 
-type VectorDBMode<T> =
-  | { kind: "raw"; store: VectorMemory<T> }
-  | {
-      kind: "formatted";
-      store: VectorMemory<string>;
-      format: VectorDBFormatter<T>;
-    };
-
 export type VectorDBOptions<T> =
   | { store: VectorMemory<T> }
   | { store: VectorMemory<string>; format: VectorDBFormatter<T> };
 
 export class VectorDB<T> {
-  private readonly mode: VectorDBMode<T>;
+  private readonly store: VectorMemory<unknown>;
+  private readonly format: VectorDBFormatter<T> | null;
 
   constructor(options: VectorDBOptions<T>) {
     if ("format" in options) {
-      this.mode = {
-        kind: "formatted",
-        store: options.store,
-        format: options.format,
-      };
+      this.store = options.store;
+      this.format = options.format;
     } else {
-      this.mode = { kind: "raw", store: options.store };
+      this.store = options.store;
+      this.format = null;
     }
   }
 
   search<P = unknown>(options: VectorDBSearchOptions): PromptPlugin<P> {
-    const mode = this.mode;
-    if (mode.kind === "formatted") {
-      return {
-        render: () =>
-          VectorSearch<string, ToolIOForProvider<P>>({
-            store: mode.store,
-            query: options.query,
-            limit: options.limit,
-          }),
-      };
-    }
-
     return {
       render: () =>
-        VectorSearch<T, ToolIOForProvider<P>>({
-          store: mode.store,
+        VectorSearch<unknown, ToolIOForProvider<P>>({
+          store: this.store,
           query: options.query,
           limit: options.limit,
         }),
@@ -71,12 +50,7 @@ export class VectorDB<T> {
   }
 
   async index({ id, data, metadata }: VectorDBEntry<T>): Promise<void> {
-    const mode = this.mode;
-    if (mode.kind === "formatted") {
-      await mode.store.set(id, mode.format(data), metadata);
-      return;
-    }
-
-    await mode.store.set(id, data, metadata);
+    const value = this.format ? this.format(data) : data;
+    await this.store.set(id, value, metadata);
   }
 }
