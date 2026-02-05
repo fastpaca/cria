@@ -1,5 +1,5 @@
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
-import { cria } from "@fastpaca/cria/dsl";
+import { cria } from "@fastpaca/cria";
 import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
 import {

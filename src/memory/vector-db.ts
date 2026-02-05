@@ -2,10 +2,11 @@
  * Vector DB helper for shared retrieval + indexing.
  */
 
-import type { MemoryEntry, VectorMemory } from "../memory";
+import type { PromptPlugin } from "../dsl/builder";
+import { VectorSearch } from "../dsl/vector-search";
 import type { ToolIOForProvider } from "../types";
-import type { PromptPlugin } from "./builder";
-import { VectorSearch } from "./vector-search";
+import type { MemoryEntry } from "./key-value";
+import type { VectorMemory } from "./vector";
 
 export interface VectorDBSearchOptions {
   query: string;

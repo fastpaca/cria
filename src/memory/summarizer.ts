@@ -2,7 +2,14 @@
  * Summary strategy for progressively summarizing conversation history.
  */
 
-import type { KVMemory, MemoryEntry } from "../memory";
+import {
+  PromptBuilder,
+  type PromptPlugin,
+  resolveScopeContent,
+  type ScopeContent,
+} from "../dsl/builder";
+import { createMessage, createScope } from "../dsl/strategies";
+import { textPart } from "../dsl/templating";
 import type { ModelProvider } from "../provider";
 import { render } from "../render";
 import type {
@@ -12,14 +19,7 @@ import type {
   ProviderToolIO,
   StrategyInput,
 } from "../types";
-import {
-  PromptBuilder,
-  type PromptPlugin,
-  resolveScopeContent,
-  type ScopeContent,
-} from "./builder";
-import { createMessage, createScope } from "./strategies";
-import { textPart } from "./templating";
+import type { KVMemory, MemoryEntry } from "./key-value";
 
 /**
  * Stored summary data persisted across renders.

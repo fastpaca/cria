@@ -1,4 +1,4 @@
-import { cria } from "@fastpaca/cria/dsl";
+import { cria } from "@fastpaca/cria";
 import {
   ResponsesProtocol,
   type ResponsesToolIO,

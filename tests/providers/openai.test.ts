@@ -1,4 +1,4 @@
-import { cria } from "@fastpaca/cria/dsl";
+import { cria } from "@fastpaca/cria";
 import type { ChatCompletionsInput } from "@fastpaca/cria/protocols/chat-completions";
 import { ChatCompletionsProtocol } from "@fastpaca/cria/protocols/chat-completions";
 import type { ResponsesInput } from "@fastpaca/cria/protocols/responses";

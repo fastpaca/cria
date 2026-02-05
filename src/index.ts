@@ -16,12 +16,29 @@
  * @packageDocumentation
  */
 
+export { cria } from "./cria";
 // DSL - primary API
 export type {
   BuilderChild,
   Prompt,
   PromptPlugin,
   ScopeContent,
+  TextInput,
+} from "./dsl";
+export {
+  BuilderBase,
+  c,
+  input,
+  inputLayout,
+  MessageBuilder,
+  merge,
+  PromptBuilder,
+  prompt,
+} from "./dsl";
+export { createOtelRenderHooks } from "./instrumentation/otel";
+export type {
+  KVMemory,
+  MemoryEntry,
   StoredSummary,
   Summarizer,
   SummarizerComponent,
@@ -31,7 +48,7 @@ export type {
   SummarizerPluginOptions,
   SummarizerUseOptions,
   SummarizerWriteOptions,
-  TextInput,
+  UserScopeOptions,
   VectorDBComponent,
   VectorDBConfig,
   VectorDBEntry,
@@ -39,25 +56,6 @@ export type {
   VectorDBLoadOptions,
   VectorDBSearchOptions,
   VectorDBUseOptions,
-} from "./dsl";
-export {
-  BuilderBase,
-  c,
-  cria,
-  input,
-  inputLayout,
-  MessageBuilder,
-  merge,
-  PromptBuilder,
-  prompt,
-  summarizer,
-  vectordb,
-} from "./dsl";
-export { createOtelRenderHooks } from "./instrumentation/otel";
-export type {
-  KVMemory,
-  MemoryEntry,
-  UserScopeOptions,
   VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
@@ -67,6 +65,8 @@ export {
   InMemoryStore,
   scopeKVStore,
   scopeVectorStore,
+  summarizer,
+  vectordb,
 } from "./memory";
 export type {
   ChatCompletionsInput,
