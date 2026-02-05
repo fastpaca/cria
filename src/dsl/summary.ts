@@ -3,7 +3,6 @@
  */
 
 import type { KVMemory, MemoryEntry } from "../memory";
-import { scopeKVStore } from "../memory";
 import type { ModelProvider } from "../provider";
 import { render } from "../render";
 import type {
@@ -115,12 +114,6 @@ export interface SummarizerUseOptions<P = unknown> {
   metadata?: Record<string, unknown>;
   /** Optional provider for decoding inputs or summarizing outside a prompt */
   provider?: SummarizerProviderFor<P>;
-  /** Required for per-user scoping */
-  userId?: string;
-  /** Optional session identifier for further scoping */
-  sessionId?: string;
-  /** Override the default key prefix for scoped storage */
-  keyPrefix?: string;
 }
 
 export type SummarizerPluginOptions<P = unknown> = SummarizerUseOptions<P>;
@@ -130,12 +123,6 @@ export type SummarizerWriteOptions<P = unknown> = SummarizerUseOptions<P>;
 export interface SummarizerLoadOptions {
   /** Override summary id */
   id?: string;
-  /** Required for per-user scoping */
-  userId?: string;
-  /** Optional session identifier for further scoping */
-  sessionId?: string;
-  /** Override the default key prefix for scoped storage */
-  keyPrefix?: string;
 }
 
 type SummarizerProvider<T> =
@@ -206,32 +193,6 @@ const resolveSummaryId = (
   return id;
 };
 
-const resolveScope = (options: {
-  userId?: string;
-  sessionId?: string;
-  keyPrefix?: string;
-}): { userId?: string; sessionId?: string; keyPrefix?: string } => {
-  if (!options.userId && (options.sessionId || options.keyPrefix)) {
-    throw new Error("userId is required when using sessionId or keyPrefix.");
-  }
-  return options;
-};
-
-const withUserScope = <T>(
-  store: KVMemory<T>,
-  options: { userId?: string; sessionId?: string; keyPrefix?: string }
-): KVMemory<T> => {
-  const scope = resolveScope(options);
-  if (!scope.userId) {
-    return store;
-  }
-  return scopeKVStore(store, {
-    userId: scope.userId,
-    sessionId: scope.sessionId,
-    keyPrefix: scope.keyPrefix,
-  });
-};
-
 const mergeMetadata = (
   base: Record<string, unknown> | undefined,
   override: Record<string, unknown> | undefined
@@ -270,11 +231,6 @@ export const summarizer = <
     const callOptions = options;
     const id = resolveSummaryId(config.id, callOptions.id);
     const history = requireHistory(callOptions.history);
-    const scopedStore = withUserScope(store, {
-      userId: callOptions.userId,
-      sessionId: callOptions.sessionId,
-      keyPrefix: callOptions.keyPrefix,
-    });
     const metadata = mergeMetadata(config.metadata, callOptions.metadata);
     const role = config.role ?? "system";
     const priority = config.priority;
@@ -296,7 +252,7 @@ export const summarizer = <
               config.provider ?? callOptions.provider ?? input.context.provider;
             const summaryText = await writeSummary({
               id,
-              store: scopedStore,
+              store,
               target: input.target,
               metadata,
               summarize: config.summarize,
@@ -322,11 +278,6 @@ export const summarizer = <
   ): Promise<string> => {
     const id = resolveSummaryId(config.id, options.id);
     const history = requireHistory(options.history);
-    const scopedStore = withUserScope(store, {
-      userId: options.userId,
-      sessionId: options.sessionId,
-      keyPrefix: options.keyPrefix,
-    });
     const metadata = mergeMetadata(config.metadata, options.metadata);
     const decodeProvider = config.provider ?? options.provider;
 
@@ -335,7 +286,7 @@ export const summarizer = <
 
     return await writeSummary({
       id,
-      store: scopedStore,
+      store,
       target,
       metadata,
       summarize: config.summarize,
@@ -347,13 +298,7 @@ export const summarizer = <
     options: SummarizerLoadOptions = {}
   ): Promise<MemoryEntry<StoredSummary> | null> => {
     const id = resolveSummaryId(config.id, options.id);
-    const scopedStore = withUserScope(store, {
-      userId: options.userId,
-      sessionId: options.sessionId,
-      keyPrefix: options.keyPrefix,
-    });
-
-    return await scopedStore.get(id);
+    return await store.get(id);
   };
 
   return component;

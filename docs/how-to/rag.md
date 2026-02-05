@@ -37,7 +37,7 @@ const prompt = cria
   .user(userQuestion);
 ```
 
-Tip: for per-user or per-session isolation, pass `userId`/`sessionId` when you call `vectors(...)`.
+Tip: for per-user or per-session isolation, wrap your store with `scopeVectorStore` from `@fastpaca/cria/memory` and pass the scoped store to `vectordb(...)`.
 
 ## SQLite adapter (libSQL)
 
