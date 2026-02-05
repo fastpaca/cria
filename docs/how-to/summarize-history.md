@@ -45,7 +45,7 @@ const prompt = cria
 
 Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` and pass a `provider` to the summarizer (config or call option) so it can decode the input.
 
-Tip: for per-user or per-session isolation, pass `userId`/`sessionId` when you call the summarizer (it will scope the store automatically).
+Tip: for per-user or per-session isolation, wrap your store with `scopeKVStore` from `@fastpaca/cria/memory` and pass the scoped store to the summarizer.
 
 Note: `InMemoryStore` is meant for demos/tests. For production, use `RedisStore` (`@fastpaca/cria/memory/redis`), `SqliteStore` (`@fastpaca/cria/memory/sqlite`), or `PostgresStore` (`@fastpaca/cria/memory/postgres`).
 

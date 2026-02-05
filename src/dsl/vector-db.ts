@@ -3,7 +3,6 @@
  */
 
 import type { MemoryEntry, VectorMemory } from "../memory";
-import { scopeVectorStore } from "../memory";
 import type { ToolIOForProvider } from "../types";
 import type { PromptPlugin } from "./builder";
 import { VectorSearch } from "./vector-search";
@@ -25,48 +24,18 @@ export type VectorDBConfig<T> =
   | { store: VectorMemory<T> }
   | { store: VectorMemory<string>; format: VectorDBFormatter<T> };
 
-export interface VectorDBScopeOptions {
-  userId?: string;
-  sessionId?: string;
-  keyPrefix?: string;
-}
+export type VectorDBUseOptions = VectorDBSearchOptions;
 
-export interface VectorDBUseOptions
-  extends VectorDBSearchOptions,
-    VectorDBScopeOptions {}
-
-export interface VectorDBLoadOptions extends VectorDBScopeOptions {
+export interface VectorDBLoadOptions {
   id: string;
 }
 
 export interface VectorDBComponent<T = unknown, TStored = T> {
   <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P>;
   search<P = unknown>(options: VectorDBUseOptions): PromptPlugin<P>;
-  index(options: VectorDBEntry<T> & VectorDBScopeOptions): Promise<void>;
+  index(options: VectorDBEntry<T>): Promise<void>;
   load(options: VectorDBLoadOptions): Promise<MemoryEntry<TStored> | null>;
 }
-
-const resolveScope = (options: VectorDBScopeOptions): VectorDBScopeOptions => {
-  if (!options.userId && (options.sessionId || options.keyPrefix)) {
-    throw new Error("userId is required when using sessionId or keyPrefix.");
-  }
-  return options;
-};
-
-const withUserScope = <T>(
-  store: VectorMemory<T>,
-  options: VectorDBScopeOptions
-): VectorMemory<T> => {
-  const scope = resolveScope(options);
-  if (!scope.userId) {
-    return store;
-  }
-  return scopeVectorStore(store, {
-    userId: scope.userId,
-    sessionId: scope.sessionId,
-    keyPrefix: scope.keyPrefix,
-  });
-};
 
 const resolveQuery = (options: VectorDBUseOptions): string => {
   const trimmed = options.query.trim();
@@ -86,16 +55,11 @@ const createPlugin = <P, T>(
 ): PromptPlugin<P> => {
   const query = resolveQuery(options);
   const limit = resolveLimit(options);
-  const scopedStore = withUserScope(store, {
-    userId: options.userId,
-    sessionId: options.sessionId,
-    keyPrefix: options.keyPrefix,
-  });
 
   return {
     render: () =>
       VectorSearch<T, ToolIOForProvider<P>>({
-        store: scopedStore,
+        store,
         query,
         limit,
       }),
@@ -120,24 +84,14 @@ export function vectordb<T>(config: VectorDBConfig<T>) {
       {
         search: <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P> =>
           createPlugin<P, string>(baseStore, options),
-        index: async (options: VectorDBEntry<T> & VectorDBScopeOptions) => {
-          const scopedStore = withUserScope(baseStore, {
-            userId: options.userId,
-            sessionId: options.sessionId,
-            keyPrefix: options.keyPrefix,
-          });
+        index: async (options: VectorDBEntry<T>) => {
           const value = formatter(options.data);
-          await scopedStore.set(options.id, value, options.metadata);
+          await baseStore.set(options.id, value, options.metadata);
         },
         load: async (
           options: VectorDBLoadOptions
         ): Promise<MemoryEntry<string> | null> => {
-          const scopedStore = withUserScope(baseStore, {
-            userId: options.userId,
-            sessionId: options.sessionId,
-            keyPrefix: options.keyPrefix,
-          });
-          return await scopedStore.get(options.id);
+          return await baseStore.get(options.id);
         },
       }
     );
@@ -153,23 +107,13 @@ export function vectordb<T>(config: VectorDBConfig<T>) {
     {
       search: <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P> =>
         createPlugin<P, T>(baseStore, options),
-      index: async (options: VectorDBEntry<T> & VectorDBScopeOptions) => {
-        const scopedStore = withUserScope(baseStore, {
-          userId: options.userId,
-          sessionId: options.sessionId,
-          keyPrefix: options.keyPrefix,
-        });
-        await scopedStore.set(options.id, options.data, options.metadata);
+      index: async (options: VectorDBEntry<T>) => {
+        await baseStore.set(options.id, options.data, options.metadata);
       },
       load: async (
         options: VectorDBLoadOptions
       ): Promise<MemoryEntry<T> | null> => {
-        const scopedStore = withUserScope(baseStore, {
-          userId: options.userId,
-          sessionId: options.sessionId,
-          keyPrefix: options.keyPrefix,
-        });
-        return await scopedStore.get(options.id);
+        return await baseStore.get(options.id);
       },
     }
   );

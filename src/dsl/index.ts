@@ -48,7 +48,6 @@ export type {
   VectorDBEntry,
   VectorDBFormatter,
   VectorDBLoadOptions,
-  VectorDBScopeOptions,
   VectorDBSearchOptions,
   VectorDBUseOptions,
 } from "./vector-db";
