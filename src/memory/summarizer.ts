@@ -46,18 +46,18 @@ export interface SummarizerContext {
  */
 export type Summarizer = (ctx: SummarizerContext) => MaybePromise<string>;
 
+const SUMMARY_SYSTEM_PROMPT =
+  "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
+
 /**
  * Default summarizer that uses a ModelProvider.
- * This is used when no custom summarize function is provided.
  */
 async function defaultSummarizer(
   ctx: SummarizerContext,
   provider: ModelProvider<unknown, ProviderToolIO>
 ): Promise<string> {
   const summaryPrompt = await PromptBuilder.create()
-    .system(
-      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information."
-    )
+    .system(SUMMARY_SYSTEM_PROMPT)
     .when(ctx.existingSummary !== null, (p) =>
       p.assistant(`Current summary:\n${ctx.existingSummary}`)
     )
@@ -105,7 +105,10 @@ type SummarizerProviderFor<P> =
     ? P
     : ModelProvider<unknown, ProviderToolIO>;
 
-export interface SummarizerUseOptions<P = unknown> {
+type SummarizerProvider<T> =
+  T extends ModelProvider<unknown, ProviderToolIO> ? T : unknown;
+
+export interface SummarizerOptions<P = unknown> {
   /** Content to summarize (prompt nodes/builders/inputs) */
   history?: ScopeContent<P>;
   /** Override summary id */
@@ -116,37 +119,14 @@ export interface SummarizerUseOptions<P = unknown> {
   provider?: SummarizerProviderFor<P>;
 }
 
-export type SummarizerPluginOptions<P = unknown> = SummarizerUseOptions<P>;
-
-export type SummarizerWriteOptions<P = unknown> = SummarizerUseOptions<P>;
-
-export interface SummarizerLoadOptions {
-  /** Override summary id */
-  id?: string;
-}
-
-type SummarizerProvider<T> =
-  T extends ModelProvider<unknown, ProviderToolIO> ? T : unknown;
-
 export interface SummarizerComponent<PDefault = unknown> {
   <P extends PDefault = PDefault>(
-    options: SummarizerPluginOptions<P>
+    options: SummarizerOptions<P>
   ): PromptPlugin<P>;
   writeNow<P extends PDefault = PDefault>(
-    options: SummarizerWriteOptions<P>
+    options: SummarizerOptions<P>
   ): Promise<string>;
-  load(
-    options?: SummarizerLoadOptions
-  ): Promise<MemoryEntry<StoredSummary> | null>;
-}
-
-export interface WriteSummaryOptions {
-  id: string;
-  store: KVMemory<StoredSummary>;
-  target: PromptScope<ProviderToolIO>;
-  metadata?: Record<string, unknown>;
-  summarize?: Summarizer;
-  provider?: ModelProvider<unknown, ProviderToolIO>;
+  load(options?: { id?: string }): Promise<MemoryEntry<StoredSummary> | null>;
 }
 
 export async function writeSummary({
@@ -156,7 +136,14 @@ export async function writeSummary({
   metadata,
   summarize,
   provider,
-}: WriteSummaryOptions): Promise<string> {
+}: {
+  id: string;
+  store: KVMemory<StoredSummary>;
+  target: PromptScope<ProviderToolIO>;
+  metadata?: Record<string, unknown>;
+  summarize?: Summarizer;
+  provider?: ModelProvider<unknown, ProviderToolIO>;
+}): Promise<string> {
   const existingEntry = await store.get(id);
 
   const summarizerContext: SummarizerContext = {
@@ -193,27 +180,6 @@ const resolveSummaryId = (
   return id;
 };
 
-const mergeMetadata = (
-  base: Record<string, unknown> | undefined,
-  override: Record<string, unknown> | undefined
-): Record<string, unknown> | undefined => {
-  if (!(base || override)) {
-    return undefined;
-  }
-  return { ...(base ?? {}), ...(override ?? {}) };
-};
-
-const requireHistory = <P>(
-  history: ScopeContent<P> | undefined
-): ScopeContent<P> => {
-  if (!history) {
-    throw new Error(
-      "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
-    );
-  }
-  return history;
-};
-
 export const summarizer = <
   TProvider extends
     | ModelProvider<unknown, ProviderToolIO>
@@ -223,83 +189,99 @@ export const summarizer = <
 ): SummarizerComponent<SummarizerProvider<TProvider>> => {
   const store = config.store;
 
-  const component = (<
-    P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>,
-  >(
-    options: SummarizerPluginOptions<P>
-  ): PromptPlugin<P> => {
-    const callOptions = options;
-    const id = resolveSummaryId(config.id, callOptions.id);
-    const history = requireHistory(callOptions.history);
-    const metadata = mergeMetadata(config.metadata, callOptions.metadata);
-    const role = config.role ?? "system";
-    const priority = config.priority;
-    const decodeProvider = config.provider ?? callOptions.provider;
+  const component: SummarizerComponent<SummarizerProvider<TProvider>> =
+    Object.assign(
+      <P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>>(
+        options: SummarizerOptions<P>
+      ): PromptPlugin<P> => {
+        const id = resolveSummaryId(config.id, options.id);
+        if (!options.history) {
+          throw new Error(
+            "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
+          );
+        }
+        const metadata =
+          config.metadata || options.metadata
+            ? { ...(config.metadata ?? {}), ...(options.metadata ?? {}) }
+            : undefined;
+        const role = config.role ?? "system";
+        const priority = config.priority;
+        const decodeProvider = config.provider ?? options.provider;
 
-    return {
-      render: async () => {
-        const children = await resolveScopeContent(
-          history,
-          decodeProvider?.codec
-        );
+        return {
+          render: async () => {
+            const children = await resolveScopeContent(
+              options.history,
+              decodeProvider?.codec
+            );
 
-        return createScope(children, {
-          priority,
-          strategy: async <TToolIO extends ProviderToolIO>(
-            input: StrategyInput<TToolIO>
-          ) => {
-            const resolvedProvider =
-              config.provider ?? callOptions.provider ?? input.context.provider;
-            const summaryText = await writeSummary({
-              id,
-              store,
-              target: input.target,
-              metadata,
-              summarize: config.summarize,
-              provider: resolvedProvider,
-            });
+            return createScope(children, {
+              priority,
+              strategy: async <TToolIO extends ProviderToolIO>(
+                input: StrategyInput<TToolIO>
+              ) => {
+                const resolvedProvider =
+                  config.provider ?? options.provider ?? input.context.provider;
+                const summaryText = await writeSummary({
+                  id,
+                  store,
+                  target: input.target,
+                  metadata,
+                  summarize: config.summarize,
+                  provider: resolvedProvider,
+                });
 
-            const message = createMessage<TToolIO>(role, [
-              textPart<TToolIO>(summaryText),
-            ]);
-            return createScope<TToolIO>([message], {
-              priority: input.target.priority,
+                const message = createMessage<TToolIO>(role, [
+                  textPart<TToolIO>(summaryText),
+                ]);
+                return createScope<TToolIO>([message], {
+                  priority: input.target.priority,
+                });
+              },
             });
           },
-        });
+        } satisfies PromptPlugin<P>;
       },
-    } satisfies PromptPlugin<P>;
-  }) as SummarizerComponent<SummarizerProvider<TProvider>>;
+      {
+        writeNow: async <
+          P extends
+            SummarizerProvider<TProvider> = SummarizerProvider<TProvider>,
+        >(
+          options: SummarizerOptions<P>
+        ): Promise<string> => {
+          const id = resolveSummaryId(config.id, options.id);
+          if (!options.history) {
+            throw new Error(
+              "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
+            );
+          }
+          const metadata =
+            config.metadata || options.metadata
+              ? { ...(config.metadata ?? {}), ...(options.metadata ?? {}) }
+              : undefined;
+          const decodeProvider = config.provider ?? options.provider;
 
-  component.writeNow = async <
-    P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>,
-  >(
-    options: SummarizerWriteOptions<P>
-  ): Promise<string> => {
-    const id = resolveSummaryId(config.id, options.id);
-    const history = requireHistory(options.history);
-    const metadata = mergeMetadata(config.metadata, options.metadata);
-    const decodeProvider = config.provider ?? options.provider;
+          const children = await resolveScopeContent(
+            options.history,
+            decodeProvider?.codec
+          );
+          const target = createScope(children, { priority: config.priority });
 
-    const children = await resolveScopeContent(history, decodeProvider?.codec);
-    const target = createScope(children, { priority: config.priority });
-
-    return await writeSummary({
-      id,
-      store,
-      target,
-      metadata,
-      summarize: config.summarize,
-      provider: config.provider ?? options.provider,
-    });
-  };
-
-  component.load = async (
-    options: SummarizerLoadOptions = {}
-  ): Promise<MemoryEntry<StoredSummary> | null> => {
-    const id = resolveSummaryId(config.id, options.id);
-    return await store.get(id);
-  };
+          return await writeSummary({
+            id,
+            store,
+            target,
+            metadata,
+            summarize: config.summarize,
+            provider: config.provider ?? options.provider,
+          });
+        },
+        load: async (options: { id?: string } = {}) => {
+          const id = resolveSummaryId(config.id, options.id);
+          return await store.get(id);
+        },
+      }
+    );
 
   return component;
 };

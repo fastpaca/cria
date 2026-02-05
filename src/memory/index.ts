@@ -6,10 +6,7 @@ export type {
   SummarizerComponent,
   SummarizerConfig,
   SummarizerContext,
-  SummarizerLoadOptions,
-  SummarizerPluginOptions,
-  SummarizerUseOptions,
-  SummarizerWriteOptions,
+  SummarizerOptions,
 } from "./summarizer";
 export { summarizer } from "./summarizer";
 export type { UserScopeOptions } from "./user-scoped";
@@ -24,8 +21,6 @@ export type {
   VectorDBConfig,
   VectorDBEntry,
   VectorDBFormatter,
-  VectorDBLoadOptions,
   VectorDBSearchOptions,
-  VectorDBUseOptions,
 } from "./vector-db";
 export { vectordb } from "./vector-db";
