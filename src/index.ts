@@ -28,6 +28,7 @@ export type {
   SummarizerConfig,
   SummarizerContext,
   SummarizerLoadOptions,
+  SummarizerPluginOptions,
   SummarizerUseOptions,
   SummarizerWriteOptions,
   TextInput,
@@ -65,8 +66,8 @@ export type {
 // LLM Memory
 export {
   InMemoryStore,
-  UserScopedStore,
-  UserScopedVectorStore,
+  scopeKVStore,
+  scopeVectorStore,
 } from "./memory";
 export type {
   ChatCompletionsInput,

@@ -291,11 +291,17 @@ const { text } = await generateText({ model, messages });
 <summary><strong>Redis (conversation summaries)</strong></summary>
 
 ```ts
-import { cria } from "@fastpaca/cria";
+import { cria, type StoredSummary } from "@fastpaca/cria";
+import { RedisStore } from "@fastpaca/cria/memory/redis";
+
+const store = new RedisStore<StoredSummary>({
+  host: "localhost",
+  port: 6379,
+});
 
 const summarizer = cria.summarizer({
   id: "conv-123",
-  store: { redis: { host: "localhost", port: 6379 } },
+  store,
   priority: 2,
   provider,
 });
@@ -316,11 +322,16 @@ const messages = await cria
 <summary><strong>Postgres (conversation summaries)</strong></summary>
 
 ```ts
-import { cria } from "@fastpaca/cria";
+import { cria, type StoredSummary } from "@fastpaca/cria";
+import { PostgresStore } from "@fastpaca/cria/memory/postgres";
+
+const store = new PostgresStore<StoredSummary>({
+  connectionString: "postgres://user:pass@localhost/mydb",
+});
 
 const summarizer = cria.summarizer({
   id: "conv-123",
-  store: { postgres: { connectionString: "postgres://user:pass@localhost/mydb" } },
+  store,
   priority: 2,
   provider,
 });
@@ -341,11 +352,16 @@ const messages = await cria
 <summary><strong>SQLite (conversation summaries)</strong></summary>
 
 ```ts
-import { cria } from "@fastpaca/cria";
+import { cria, type StoredSummary } from "@fastpaca/cria";
+import { SqliteStore } from "@fastpaca/cria/memory/sqlite";
+
+const store = new SqliteStore<StoredSummary>({
+  filename: "cria.sqlite",
+});
 
 const summarizer = cria.summarizer({
   id: "conv-123",
-  store: { sqlite: "cria.sqlite" },
+  store,
   priority: 2,
   provider,
 });
@@ -368,16 +384,17 @@ const messages = await cria
 ```ts
 import { z } from "zod";
 import { cria } from "@fastpaca/cria";
+import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
+
+const store = new SqliteVectorStore<string>({
+  filename: "cria.sqlite",
+  dimensions: 1536,
+  embed: async (text) => await getEmbedding(text),
+  schema: z.string(),
+});
 
 const vectors = cria.vectordb({
-  store: {
-    sqlite: {
-      filename: "cria.sqlite",
-      dimensions: 1536,
-      embed: async (text) => await getEmbedding(text),
-      schema: z.string(),
-    },
-  },
+  store,
 });
 const retrieval = vectors({ query, limit: 10 });
 
@@ -397,17 +414,18 @@ const messages = await cria
 ```ts
 import { ChromaClient } from "chromadb";
 import { cria } from "@fastpaca/cria";
+import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 
 const client = new ChromaClient({ path: "http://localhost:8000" });
 const collection = await client.getOrCreateCollection({ name: "my-docs" });
 
+const store = new ChromaStore({
+  collection,
+  embed: async (text) => await getEmbedding(text),
+});
+
 const vectors = cria.vectordb({
-  store: {
-    chroma: {
-      collection,
-      embed: async (text) => await getEmbedding(text),
-    },
-  },
+  store,
 });
 const retrieval = vectors({ query, limit: 10 });
 
@@ -427,17 +445,18 @@ const messages = await cria
 ```ts
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { cria } from "@fastpaca/cria";
+import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
 
 const client = new QdrantClient({ url: "http://localhost:6333" });
 
+const store = new QdrantStore({
+  client,
+  collectionName: "my-docs",
+  embed: async (text) => await getEmbedding(text),
+});
+
 const vectors = cria.vectordb({
-  store: {
-    qdrant: {
-      client,
-      collectionName: "my-docs",
-      embed: async (text) => await getEmbedding(text),
-    },
-  },
+  store,
 });
 const retrieval = vectors({ query, limit: 10 });
 

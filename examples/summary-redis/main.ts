@@ -4,16 +4,19 @@
  * Requires: Redis running locally (docker run -p 6379:6379 redis)
  */
 
-import { cria } from "@fastpaca/cria";
+import { cria, type StoredSummary } from "@fastpaca/cria";
+import { RedisStore } from "@fastpaca/cria/memory/redis";
 import { createProvider } from "@fastpaca/cria/openai";
 import OpenAI from "openai";
 
 const client = new OpenAI();
 const provider = createProvider(client, "gpt-4o-mini");
 
+const store = new RedisStore<StoredSummary>({ keyPrefix: "cria:summary:" });
+
 const summarizer = cria.summarizer({
   id: "travel-chat",
-  store: { redis: { keyPrefix: "cria:summary:" } },
+  store,
   priority: 2,
   provider,
 });
