@@ -65,9 +65,14 @@ export interface KVMemory<T = unknown> {
  * @example
  * ```typescript
  * import { InMemoryStore, cria, type StoredSummary } from "@fastpaca/cria";
+ * import { createProvider } from "@fastpaca/cria/openai";
+ * import OpenAI from "openai";
+ *
+ * const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+ * const provider = createProvider(client, "gpt-4o-mini");
  *
  * const store = new InMemoryStore<StoredSummary>();
- * const summarizer = cria.summarizer({ id: "conv", store });
+ * const summarizer = cria.summarizer({ id: "conv", store, provider });
  * const summary = summarizer({ history });
  * ```
  */

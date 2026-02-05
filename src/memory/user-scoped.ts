@@ -28,18 +28,6 @@ const scopeMetadata = (options: UserScopeOptions): Record<string, unknown> => ({
   ...(options.sessionId ? { sessionId: options.sessionId } : {}),
 });
 
-const ensurePrefix = (prefix: string, key: string): string => {
-  return key.startsWith(prefix) ? key : `${prefix}${key}`;
-};
-
-const stripPrefix = (prefix: string, key: string): string => {
-  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
-};
-
-const scopedKey = (prefix: string, key: string): string => {
-  return ensurePrefix(prefix, key);
-};
-
 const mergeMetadata = (
   metadata: Record<string, unknown> | undefined,
   extra: Record<string, unknown>
@@ -54,20 +42,20 @@ export const scopeKVStore = <T>(
 
   return {
     get: async (key: string): Promise<MemoryEntry<T> | null> =>
-      await store.get(scopedKey(keyPrefix, key)),
+      await store.get(`${keyPrefix}${key}`),
     set: async (
       key: string,
       data: T,
       entryMetadata?: Record<string, unknown>
     ): Promise<void> => {
       await store.set(
-        scopedKey(keyPrefix, key),
+        `${keyPrefix}${key}`,
         data,
         mergeMetadata(entryMetadata, metadata)
       );
     },
     delete: async (key: string): Promise<boolean> =>
-      await store.delete(scopedKey(keyPrefix, key)),
+      await store.delete(`${keyPrefix}${key}`),
   };
 };
 
@@ -80,20 +68,20 @@ export const scopeVectorStore = <T>(
 
   return {
     get: async (key: string): Promise<MemoryEntry<T> | null> =>
-      await store.get(scopedKey(keyPrefix, key)),
+      await store.get(`${keyPrefix}${key}`),
     set: async (
       key: string,
       data: T,
       entryMetadata?: Record<string, unknown>
     ): Promise<void> => {
       await store.set(
-        scopedKey(keyPrefix, key),
+        `${keyPrefix}${key}`,
         data,
         mergeMetadata(entryMetadata, metadata)
       );
     },
     delete: async (key: string): Promise<boolean> =>
-      await store.delete(scopedKey(keyPrefix, key)),
+      await store.delete(`${keyPrefix}${key}`),
     search: async (
       query: string,
       options?: VectorSearchOptions
@@ -104,7 +92,7 @@ export const scopeVectorStore = <T>(
         .filter((result) => result.key.startsWith(keyPrefix))
         .map((result) => ({
           ...result,
-          key: stripPrefix(keyPrefix, result.key),
+          key: result.key.slice(keyPrefix.length),
         }));
     },
   };

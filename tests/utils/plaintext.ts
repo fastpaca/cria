@@ -163,3 +163,29 @@ export class PlainTextProvider extends ModelProvider<string, PlainTextToolIO> {
     return schema.parse(JSON.parse(rendered));
   }
 }
+
+class FixedCompletionProvider extends PlainTextProvider {
+  private readonly completionText: string;
+
+  constructor(
+    completionText: string,
+    codec: MessageCodec<string, PlainTextToolIO>
+  ) {
+    super(codec);
+    this.completionText = completionText;
+  }
+
+  override completion(
+    _rendered: string,
+    _context?: ProviderRenderContext
+  ): string {
+    return this.completionText;
+  }
+}
+
+export function createFixedCompletionProvider(
+  completion: string,
+  options: PlainTextCodecOptions = {}
+): ModelProvider<string, PlainTextToolIO> {
+  return new FixedCompletionProvider(completion, createPlainTextCodec(options));
+}

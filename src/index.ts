@@ -40,11 +40,6 @@ export type {
   KVMemory,
   MemoryEntry,
   StoredSummary,
-  Summarizer,
-  SummarizerComponent,
-  SummarizerConfig,
-  SummarizerContext,
-  SummarizerOptions,
   UserScopeOptions,
   VectorDBComponent,
   VectorDBConfig,
@@ -58,6 +53,7 @@ export type {
 // LLM Memory
 export {
   InMemoryStore,
+  StoredSummarySchema,
   scopeKVStore,
   scopeVectorStore,
   summarizer,

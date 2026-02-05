@@ -19,7 +19,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 - `Truncate`: shrink content to a token budget when fitting.
 - `Omit`: drop content entirely when fitting.
 - `Last`: keep only the last N items (useful for chat history).
-- `summarizer`: component that replaces older content with a cached summary when fitting (requires a store; uses a provider or custom summarizer). Use `.writeNow(...)` to force a write and `.load(...)` to read cached summaries.
+- `summarizer`: component that replaces older content with a cached summary when fitting (requires a store + provider). Use `.writeNow(...)` to force a write and `.load(...)` to read cached summaries.
 
 ## Retrieval
 
