@@ -36,6 +36,7 @@ export type {
   SummarizerConfig,
   SummarizerContext,
   SummarizerLoadOptions,
+  SummarizerPluginOptions,
   SummarizerUseOptions,
   SummarizerWriteOptions,
 } from "./summary";

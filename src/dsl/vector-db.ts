@@ -3,15 +3,13 @@
  */
 
 import type { MemoryEntry, VectorMemory } from "../memory";
-import { UserScopedVectorStore } from "../memory";
+import { scopeVectorStore } from "../memory";
 import type { ToolIOForProvider } from "../types";
 import type { PromptPlugin } from "./builder";
-import type { VectorStoreConfig } from "./store-config";
-import { resolveVectorStore } from "./store-config";
 import { VectorSearch } from "./vector-search";
 
 export interface VectorDBSearchOptions {
-  query?: string;
+  query: string;
   limit?: number;
 }
 
@@ -24,8 +22,8 @@ export interface VectorDBEntry<T> {
 export type VectorDBFormatter<T> = (data: T) => string;
 
 export type VectorDBConfig<T> =
-  | { store: VectorStoreConfig<T> }
-  | { store: VectorStoreConfig<string>; format: VectorDBFormatter<T> };
+  | { store: VectorMemory<T> }
+  | { store: VectorMemory<string>; format: VectorDBFormatter<T> };
 
 export interface VectorDBScopeOptions {
   userId?: string;
@@ -42,8 +40,8 @@ export interface VectorDBLoadOptions extends VectorDBScopeOptions {
 }
 
 export interface VectorDBComponent<T = unknown, TStored = T> {
-  <P = unknown>(options?: VectorDBUseOptions): PromptPlugin<P>;
-  search<P = unknown>(options?: VectorDBUseOptions): PromptPlugin<P>;
+  <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P>;
+  search<P = unknown>(options: VectorDBUseOptions): PromptPlugin<P>;
   index(options: VectorDBEntry<T> & VectorDBScopeOptions): Promise<void>;
   load(options: VectorDBLoadOptions): Promise<MemoryEntry<TStored> | null>;
 }
@@ -63,7 +61,7 @@ const withUserScope = <T>(
   if (!scope.userId) {
     return store;
   }
-  return new UserScopedVectorStore(store, {
+  return scopeVectorStore(store, {
     userId: scope.userId,
     sessionId: scope.sessionId,
     keyPrefix: scope.keyPrefix,
@@ -71,9 +69,6 @@ const withUserScope = <T>(
 };
 
 const resolveQuery = (options: VectorDBUseOptions): string => {
-  if (!options.query) {
-    throw new Error("VectorDB search requires a query.");
-  }
   const trimmed = options.query.trim();
   if (!trimmed) {
     throw new Error("VectorDB search requires a non-empty query.");
@@ -108,23 +103,23 @@ const createPlugin = <P, T>(
 };
 
 export function vectordb<T>(config: {
-  store: VectorStoreConfig<T>;
+  store: VectorMemory<T>;
 }): VectorDBComponent<T, T>;
 export function vectordb<T>(config: {
-  store: VectorStoreConfig<string>;
+  store: VectorMemory<string>;
   format: VectorDBFormatter<T>;
 }): VectorDBComponent<T, string>;
 export function vectordb<T>(config: VectorDBConfig<T>) {
   if ("format" in config) {
-    const baseStore = resolveVectorStore<string>(config.store);
+    const baseStore = config.store;
     const formatter = config.format;
 
     const component = Object.assign(
-      <P = unknown>(options?: VectorDBUseOptions): PromptPlugin<P> =>
-        createPlugin<P, string>(baseStore, options ?? {}),
+      <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P> =>
+        createPlugin<P, string>(baseStore, options),
       {
-        search: <P = unknown>(options?: VectorDBUseOptions): PromptPlugin<P> =>
-          createPlugin<P, string>(baseStore, options ?? {}),
+        search: <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P> =>
+          createPlugin<P, string>(baseStore, options),
         index: async (options: VectorDBEntry<T> & VectorDBScopeOptions) => {
           const scopedStore = withUserScope(baseStore, {
             userId: options.userId,
@@ -150,14 +145,14 @@ export function vectordb<T>(config: VectorDBConfig<T>) {
     return component;
   }
 
-  const baseStore = resolveVectorStore<T>(config.store);
+  const baseStore = config.store;
 
   const component = Object.assign(
-    <P = unknown>(options?: VectorDBUseOptions): PromptPlugin<P> =>
-      createPlugin<P, T>(baseStore, options ?? {}),
+    <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P> =>
+      createPlugin<P, T>(baseStore, options),
     {
-      search: <P = unknown>(options?: VectorDBUseOptions): PromptPlugin<P> =>
-        createPlugin<P, T>(baseStore, options ?? {}),
+      search: <P = unknown>(options: VectorDBUseOptions): PromptPlugin<P> =>
+        createPlugin<P, T>(baseStore, options),
       index: async (options: VectorDBEntry<T> & VectorDBScopeOptions) => {
         const scopedStore = withUserScope(baseStore, {
           userId: options.userId,

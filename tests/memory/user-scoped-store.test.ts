@@ -1,8 +1,8 @@
 import type { VectorMemory } from "@fastpaca/cria/memory";
 import {
   InMemoryStore,
-  UserScopedStore,
-  UserScopedVectorStore,
+  scopeKVStore,
+  scopeVectorStore,
 } from "@fastpaca/cria/memory";
 import { describe, expect, test } from "vitest";
 
@@ -10,13 +10,12 @@ interface Doc {
   title: string;
 }
 
-describe("UserScopedStore", () => {
+describe("scopeKVStore", () => {
   test("prefixes keys and attaches metadata", async () => {
     const base = new InMemoryStore<{ content: string }>();
-    const scoped = new UserScopedStore(base, {
+    const scoped = scopeKVStore(base, {
       userId: "user-1",
       sessionId: "sess-1",
-      metadata: { tenantId: "acme" },
     });
 
     await scoped.set("summary", { content: "Hello" }, { tag: "t1" });
@@ -25,7 +24,6 @@ describe("UserScopedStore", () => {
     expect(entry?.data.content).toBe("Hello");
     expect(entry?.metadata).toEqual({
       tag: "t1",
-      tenantId: "acme",
       userId: "user-1",
       sessionId: "sess-1",
     });
@@ -35,12 +33,12 @@ describe("UserScopedStore", () => {
   });
 });
 
-describe("UserScopedVectorStore", () => {
+describe("scopeVectorStore", () => {
   test("filters search results to the scoped user", async () => {
     const base = new MockVectorStore<Doc>();
 
-    const userA = new UserScopedVectorStore(base, { userId: "user-a" });
-    const userB = new UserScopedVectorStore(base, { userId: "user-b" });
+    const userA = scopeVectorStore(base, { userId: "user-a" });
+    const userB = scopeVectorStore(base, { userId: "user-b" });
 
     await userA.set("doc-1", { title: "A" });
     await userB.set("doc-2", { title: "B" });

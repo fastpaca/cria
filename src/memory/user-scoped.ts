@@ -12,97 +12,100 @@ export interface UserScopeOptions {
   sessionId?: string;
   /** Override the default key prefix */
   keyPrefix?: string;
-  /** Additional metadata to attach on write */
-  metadata?: Record<string, unknown>;
 }
 
-export class UserScopedStore<T = unknown> implements KVMemory<T> {
-  protected readonly store: KVMemory<T>;
-  protected readonly keyPrefix: string;
-  protected readonly scopeMetadata: Record<string, unknown>;
-  protected readonly userId: string;
-  protected readonly sessionId: string | undefined;
-
-  constructor(store: KVMemory<T>, options: UserScopeOptions) {
-    this.store = store;
-    this.userId = options.userId;
-    this.sessionId = options.sessionId;
-    this.keyPrefix =
-      options.keyPrefix ??
-      (options.sessionId
-        ? `user:${options.userId}:session:${options.sessionId}`
-        : `user:${options.userId}`);
-    this.scopeMetadata = {
-      ...options.metadata,
-      userId: options.userId,
-      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
-    };
+const buildKeyPrefix = (options: UserScopeOptions): string => {
+  if (options.keyPrefix) {
+    return options.keyPrefix;
   }
+  return options.sessionId
+    ? `user:${options.userId}:session:${options.sessionId}`
+    : `user:${options.userId}`;
+};
 
-  protected scopedKey(key: string): string {
-    const prefix = `${this.keyPrefix}:`;
-    return key.startsWith(prefix) ? key : `${this.keyPrefix}:${key}`;
-  }
+const scopeMetadata = (options: UserScopeOptions): Record<string, unknown> => ({
+  userId: options.userId,
+  ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+});
 
-  protected stripPrefix(key: string): string {
-    const prefix = `${this.keyPrefix}:`;
-    return key.startsWith(prefix) ? key.slice(prefix.length) : key;
-  }
+const ensurePrefix = (prefix: string, key: string): string => {
+  return key.startsWith(prefix) ? key : `${prefix}${key}`;
+};
 
-  async get(key: string): Promise<MemoryEntry<T> | null> {
-    return await this.store.get(this.scopedKey(key));
-  }
+const stripPrefix = (prefix: string, key: string): string => {
+  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+};
 
-  async set(
-    key: string,
-    data: T,
-    metadata?: Record<string, unknown>
-  ): Promise<void> {
-    await this.store.set(this.scopedKey(key), data, {
-      ...metadata,
-      ...this.scopeMetadata,
-    });
-  }
+const scopedKey = (prefix: string, key: string): string => {
+  return ensurePrefix(prefix, key);
+};
 
-  async delete(key: string): Promise<boolean> {
-    return await this.store.delete(this.scopedKey(key));
-  }
-}
+const mergeMetadata = (
+  metadata: Record<string, unknown> | undefined,
+  extra: Record<string, unknown>
+): Record<string, unknown> => ({ ...(metadata ?? {}), ...extra });
 
-export class UserScopedVectorStore<T = unknown>
-  extends UserScopedStore<T>
-  implements VectorMemory<T>
-{
-  private readonly vectorStore: VectorMemory<T>;
+export const scopeKVStore = <T>(
+  store: KVMemory<T>,
+  options: UserScopeOptions
+): KVMemory<T> => {
+  const keyPrefix = `${buildKeyPrefix(options)}:`;
+  const metadata = scopeMetadata(options);
 
-  constructor(store: VectorMemory<T>, options: UserScopeOptions) {
-    super(store, options);
-    this.vectorStore = store;
-  }
+  return {
+    get: async (key: string): Promise<MemoryEntry<T> | null> =>
+      await store.get(scopedKey(keyPrefix, key)),
+    set: async (
+      key: string,
+      data: T,
+      entryMetadata?: Record<string, unknown>
+    ): Promise<void> => {
+      await store.set(
+        scopedKey(keyPrefix, key),
+        data,
+        mergeMetadata(entryMetadata, metadata)
+      );
+    },
+    delete: async (key: string): Promise<boolean> =>
+      await store.delete(scopedKey(keyPrefix, key)),
+  };
+};
 
-  async search(
-    query: string,
-    options?: VectorSearchOptions
-  ): Promise<VectorSearchResult<T>[]> {
-    const results = await this.vectorStore.search(query, options);
-    const prefix = `${this.keyPrefix}:`;
+export const scopeVectorStore = <T>(
+  store: VectorMemory<T>,
+  options: UserScopeOptions
+): VectorMemory<T> => {
+  const keyPrefix = `${buildKeyPrefix(options)}:`;
+  const metadata = scopeMetadata(options);
 
-    return results
-      .filter((result) => {
-        if (result.key.startsWith(prefix)) {
-          return true;
-        }
-        const meta = result.entry.metadata as
-          | { userId?: string; sessionId?: string }
-          | undefined;
-        if (!meta || meta.userId !== this.userId) {
-          return false;
-        }
-        return !this.sessionId || meta.sessionId === this.sessionId;
-      })
-      .map((result) => ({
-        ...result,
-        key: this.stripPrefix(result.key),
-      }));
-  }
-}
+  return {
+    get: async (key: string): Promise<MemoryEntry<T> | null> =>
+      await store.get(scopedKey(keyPrefix, key)),
+    set: async (
+      key: string,
+      data: T,
+      entryMetadata?: Record<string, unknown>
+    ): Promise<void> => {
+      await store.set(
+        scopedKey(keyPrefix, key),
+        data,
+        mergeMetadata(entryMetadata, metadata)
+      );
+    },
+    delete: async (key: string): Promise<boolean> =>
+      await store.delete(scopedKey(keyPrefix, key)),
+    search: async (
+      query: string,
+      options?: VectorSearchOptions
+    ): Promise<VectorSearchResult<T>[]> => {
+      const results = await store.search(query, options);
+
+      return results
+        .filter((result) => result.key.startsWith(keyPrefix))
+        .map((result) => ({
+          ...result,
+          key: stripPrefix(keyPrefix, result.key),
+        }));
+    },
+  };
+};

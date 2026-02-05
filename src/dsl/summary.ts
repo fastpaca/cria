@@ -3,7 +3,7 @@
  */
 
 import type { KVMemory, MemoryEntry } from "../memory";
-import { UserScopedStore } from "../memory";
+import { scopeKVStore } from "../memory";
 import type { ModelProvider } from "../provider";
 import { render } from "../render";
 import type {
@@ -19,8 +19,6 @@ import {
   resolveScopeContent,
   type ScopeContent,
 } from "./builder";
-import type { KVStoreConfig } from "./store-config";
-import { resolveKVStore } from "./store-config";
 import { createMessage, createScope } from "./strategies";
 import { textPart } from "./templating";
 
@@ -84,8 +82,8 @@ export interface SummarizerConfig<
     | ModelProvider<unknown, ProviderToolIO>
     | undefined = undefined,
 > {
-  /** Storage adapter or shorthand config for persisting summaries */
-  store: KVStoreConfig<StoredSummary>;
+  /** Storage adapter for persisting summaries */
+  store: KVMemory<StoredSummary>;
   /** Default summary id (overridable per call) */
   id?: string;
   /** Optional metadata to attach to stored summaries */
@@ -103,6 +101,11 @@ export interface SummarizerConfig<
   priority?: number;
 }
 
+type SummarizerProviderFor<P> =
+  P extends ModelProvider<unknown, ProviderToolIO>
+    ? P
+    : ModelProvider<unknown, ProviderToolIO>;
+
 export interface SummarizerUseOptions<P = unknown> {
   /** Content to summarize (prompt nodes/builders/inputs) */
   history?: ScopeContent<P>;
@@ -111,7 +114,7 @@ export interface SummarizerUseOptions<P = unknown> {
   /** Optional metadata to attach to stored summaries */
   metadata?: Record<string, unknown>;
   /** Optional provider for decoding inputs or summarizing outside a prompt */
-  provider?: ModelProvider<unknown, ProviderToolIO>;
+  provider?: SummarizerProviderFor<P>;
   /** Required for per-user scoping */
   userId?: string;
   /** Optional session identifier for further scoping */
@@ -120,8 +123,9 @@ export interface SummarizerUseOptions<P = unknown> {
   keyPrefix?: string;
 }
 
-export interface SummarizerWriteOptions<P = unknown>
-  extends SummarizerUseOptions<P> {}
+export type SummarizerPluginOptions<P = unknown> = SummarizerUseOptions<P>;
+
+export type SummarizerWriteOptions<P = unknown> = SummarizerUseOptions<P>;
 
 export interface SummarizerLoadOptions {
   /** Override summary id */
@@ -139,7 +143,7 @@ type SummarizerProvider<T> =
 
 export interface SummarizerComponent<PDefault = unknown> {
   <P extends PDefault = PDefault>(
-    options?: SummarizerUseOptions<P>
+    options: SummarizerPluginOptions<P>
   ): PromptPlugin<P>;
   writeNow<P extends PDefault = PDefault>(
     options: SummarizerWriteOptions<P>
@@ -221,7 +225,7 @@ const withUserScope = <T>(
   if (!scope.userId) {
     return store;
   }
-  return new UserScopedStore(store, {
+  return scopeKVStore(store, {
     userId: scope.userId,
     sessionId: scope.sessionId,
     keyPrefix: scope.keyPrefix,
@@ -256,14 +260,14 @@ export const summarizer = <
 >(
   config: SummarizerConfig<TProvider>
 ): SummarizerComponent<SummarizerProvider<TProvider>> => {
-  const store = resolveKVStore<StoredSummary>(config.store);
+  const store = config.store;
 
   const component = (<
     P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>,
   >(
-    options?: SummarizerUseOptions<P>
+    options: SummarizerPluginOptions<P>
   ): PromptPlugin<P> => {
-    const callOptions = options ?? {};
+    const callOptions = options;
     const id = resolveSummaryId(config.id, callOptions.id);
     const history = requireHistory(callOptions.history);
     const scopedStore = withUserScope(store, {

@@ -5,6 +5,7 @@
  */
 
 import { cria } from "@fastpaca/cria";
+import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
 import { createProvider } from "@fastpaca/cria/openai";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import OpenAI from "openai";
@@ -30,15 +31,13 @@ const embed = async (text: string) => {
   return response.data[0]?.embedding ?? [];
 };
 
-const vectors = cria.vectordb({
-  store: {
-    qdrant: {
-      client: qdrant,
-      collectionName: "docs",
-      embed,
-    },
-  },
+const vectorStore = new QdrantStore({
+  client: qdrant,
+  collectionName: "docs",
+  embed,
 });
+
+const vectors = cria.vectordb({ store: vectorStore });
 
 // Seed some documents (using UUIDs as Qdrant requires UUID or integer IDs)
 await vectors.index({

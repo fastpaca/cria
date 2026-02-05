@@ -17,18 +17,17 @@ This example requires a running vector DB (Qdrant) and an embedding provider key
 ```ts
 import { ChromaClient } from "chromadb";
 import { cria } from "@fastpaca/cria";
+import { ChromaStore } from "@fastpaca/cria/memory/chroma";
 
 const chroma = new ChromaClient({ path: "http://localhost:8000" });
 const collection = await chroma.getOrCreateCollection({ name: "docs" });
 
-const vectors = cria.vectordb({
-  store: {
-    chroma: {
-      collection,
-      embed: async (text) => embed(text), // supply your embedding function
-    },
-  },
+const store = new ChromaStore({
+  collection,
+  embed: async (text) => embed(text), // supply your embedding function
 });
+
+const vectors = cria.vectordb({ store });
 const retrieval = vectors({ query: userQuestion, limit: 5 });
 
 const prompt = cria
@@ -45,17 +44,16 @@ Tip: for per-user or per-session isolation, pass `userId`/`sessionId` when you c
 ```ts
 import { z } from "zod";
 import { cria } from "@fastpaca/cria";
+import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 
-const vectors = cria.vectordb({
-  store: {
-    sqlite: {
-      filename: "cria.sqlite",
-      dimensions: 1536,
-      embed: async (text) => embed(text), // supply your embedding function
-      schema: z.string(),
-    },
-  },
+const store = new SqliteVectorStore<string>({
+  filename: "cria.sqlite",
+  dimensions: 1536,
+  embed: async (text) => embed(text), // supply your embedding function
+  schema: z.string(),
 });
+
+const vectors = cria.vectordb({ store });
 const retrieval = vectors({ query: userQuestion, limit: 5 });
 
 const prompt = cria
