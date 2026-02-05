@@ -80,7 +80,7 @@ const ChromaEntrySchema = z
  * VectorMemory implementation backed by ChromaDB.
  *
  * This adapter wraps a Chroma collection and implements the VectorMemory interface,
- * allowing you to use ChromaDB for RAG workflows with Cria's VectorSearch component.
+ * allowing you to use ChromaDB for RAG workflows with Cria's vectordb helper.
  *
  * @template T - The type of data stored in the collection
  *
@@ -88,7 +88,7 @@ const ChromaEntrySchema = z
  * ```typescript
  * import { ChromaClient } from "chromadb";
  * import { ChromaStore } from "@fastpaca/cria/memory/chroma";
- * import { VectorSearch } from "@fastpaca/cria";
+ * import { cria } from "@fastpaca/cria";
  *
  * const client = new ChromaClient({ path: "http://localhost:8000" });
  * const collection = await client.getOrCreateCollection({ name: "my-docs" });
@@ -101,10 +101,10 @@ const ChromaEntrySchema = z
  *   },
  * });
  *
- * // Use with VectorSearch
- * <VectorSearch store={store} limit={5}>
- *   What is RAG?
- * </VectorSearch>
+ * const vectors = cria.vectordb({ store });
+ * const retrieval = vectors({ query: "What is RAG?", limit: 5 });
+ *
+ * cria.prompt().use(retrieval);
  * ```
  */
 export class ChromaStore<T = unknown> implements VectorMemory<T> {

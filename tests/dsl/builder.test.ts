@@ -311,6 +311,24 @@ describe("PromptBuilder", () => {
       });
       expect(result).toBe("user: Custom content");
     });
+
+    test("message() rejects prompt-node content", async () => {
+      const builder = cria.prompt().message("user", {
+        kind: "message",
+      } as unknown as string);
+
+      await expect(builder.build()).rejects.toThrow(
+        "Message content must be text or message parts."
+      );
+    });
+
+    test("scope operations reject unknown kind objects", async () => {
+      const builder = cria.prompt().omit({ kind: "unknown" } as never);
+
+      await expect(builder.build()).rejects.toThrow(
+        "Scope content must be prompt nodes, prompt builders, or input wrappers."
+      );
+    });
   });
 
   describe("immutability", () => {

@@ -44,7 +44,7 @@ type PinState = "unpinned" | "pinned";
 interface PinnedPrefix<P> {
   hint: CacheHint;
   priority?: number;
-  children: BuilderChild<P>[];
+  children: ScopeChild<P>[];
 }
 
 /**
@@ -109,26 +109,30 @@ export interface PromptPlugin<P = unknown> {
 }
 
 /**
- * Children can include promises and node fragments (async components like plugins).
- * These are resolved and flattened when `.build()` resolves the tree.
+ * Message-level children (text + parts).
  */
-export type BuilderChild<P = unknown> =
-  | PromptNodeFor<P>
+type MessageChildValue<P> =
   | PromptPartFor<P>
-  | PromptBuilder<P, PinState>
-  | AnyPromptBuilder
-  | readonly PromptNodeFor<P>[]
   | string
   | number
   | boolean
-  | Promise<
-      | PromptNodeFor<P>
-      | PromptPartFor<P>
-      | readonly PromptNodeFor<P>[]
-      | string
-      | number
-      | boolean
-    >;
+  | readonly MessageChildValue<P>[];
+type MessageChild<P> = MessageChildValue<P> | Promise<MessageChildValue<P>>;
+
+/**
+ * Prompt-level children (scopes + messages).
+ * Includes promises and node fragments (async components like plugins).
+ */
+type ScopeChildValue<P> =
+  | PromptNodeFor<P>
+  | PromptBuilder<P, PinState>
+  | AnyPromptBuilder
+  | readonly PromptNodeFor<P>[];
+type ScopeChild<P> =
+  | ScopeChildValue<P>
+  | Promise<PromptNodeFor<P> | readonly PromptNodeFor<P>[]>;
+
+export type BuilderChild<P = unknown> = ScopeChild<P>;
 
 type BoundProvider = ModelProvider<unknown, ProviderToolIO>;
 // Tie a builder's provider type to the codec render output for that provider.
@@ -150,14 +154,15 @@ type RenderOptionsWithoutProvider<
  * Shared fluent API for prompt-level and message-level builders.
  */
 export abstract class BuilderBase<
-  TBuilder extends BuilderBase<TBuilder, P>,
+  TBuilder extends BuilderBase<TBuilder, P, TChild>,
   P,
+  TChild,
 > {
-  readonly children: BuilderChild<P>[];
+  readonly children: TChild[];
   readonly context: CriaContext | undefined;
 
   protected constructor(
-    children: BuilderChild<P>[] = [],
+    children: TChild[] = [],
     context: CriaContext | undefined = undefined
   ) {
     this.children = children;
@@ -165,7 +170,7 @@ export abstract class BuilderBase<
   }
 
   protected abstract create(
-    children: BuilderChild<P>[],
+    children: TChild[],
     context: CriaContext | undefined
   ): TBuilder;
 
@@ -174,13 +179,13 @@ export abstract class BuilderBase<
    * Contexts must be compatible (either identical or undefined).
    */
   merge(...builders: TBuilder[]): TBuilder {
-    const sources: BuilderBase<TBuilder, P>[] = [this, ...builders];
+    const sources: BuilderBase<TBuilder, P, TChild>[] = [this, ...builders];
     let nextContext = this.context;
     const totalChildren = sources.reduce(
       (sum, builder) => sum + builder.children.length,
       0
     );
-    const mergedChildren = new Array<BuilderChild<P>>(totalChildren);
+    const mergedChildren = new Array<TChild>(totalChildren);
     let writeIndex = 0;
 
     for (const builder of sources) {
@@ -203,28 +208,29 @@ export abstract class BuilderBase<
     return this.create(mergedChildren, nextContext);
   }
 
-  protected addChild(child: BuilderChild<P>): TBuilder {
+  protected addChild(child: TChild): TBuilder {
     return this.create([...this.children, child], this.context);
   }
 
-  protected addChildren(children: readonly BuilderChild<P>[]): TBuilder {
+  protected addChildren(children: readonly TChild[]): TBuilder {
     return this.create([...this.children, ...children], this.context);
   }
 }
 
 export class MessageBuilder<P = unknown> extends BuilderBase<
   MessageBuilder<P>,
-  P
+  P,
+  MessageChild<P>
 > {
   constructor(
-    children: BuilderChild<P>[] = [],
+    children: MessageChild<P>[] = [],
     context: CriaContext | undefined = undefined
   ) {
     super(children, context);
   }
 
   protected create(
-    children: BuilderChild<P>[],
+    children: MessageChild<P>[],
     context: CriaContext | undefined
   ): MessageBuilder<P> {
     return new MessageBuilder<P>(children, context);
@@ -264,12 +270,12 @@ export class MessageBuilder<P = unknown> extends BuilderBase<
 export class PromptBuilder<
   P = unknown,
   TPinned extends PinState = "unpinned",
-> extends BuilderBase<PromptBuilder<P, TPinned>, P> {
+> extends BuilderBase<PromptBuilder<P, TPinned>, P, ScopeChild<P>> {
   private readonly boundProvider: BoundProvider | undefined;
   private readonly pinState: PinnedPrefix<P> | null;
 
   private constructor(
-    children: BuilderChild<P>[] = [],
+    children: ScopeChild<P>[] = [],
     context: CriaContext | undefined = undefined,
     provider: BoundProvider | undefined = undefined,
     pinState: PinnedPrefix<P> | null = null
@@ -304,7 +310,7 @@ export class PromptBuilder<
   }
 
   protected create(
-    children: BuilderChild<P>[],
+    children: ScopeChild<P>[],
     context: CriaContext | undefined
   ): PromptBuilder<P, TPinned> {
     return new PromptBuilder<P, TPinned>(
@@ -316,7 +322,7 @@ export class PromptBuilder<
   }
 
   private createUnpinned(
-    children: BuilderChild<P>[],
+    children: ScopeChild<P>[],
     context: CriaContext | undefined
   ): PromptBuilder<P, "unpinned"> {
     return new PromptBuilder<P, "unpinned">(
@@ -357,14 +363,13 @@ export class PromptBuilder<
     }
 
     const inner = fn(this.createUnpinned([], this.context));
-    const element = inner
-      .buildChildren()
-      .then((children) =>
-        createScope<ToolIOFor<P>>(
-          children,
-          opts?.id ? { id: opts.id } : undefined
-        )
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await inner.buildChildren();
+      return createScope<ToolIOFor<P>>(
+        children,
+        opts?.id ? { id: opts.id } : undefined
       );
+    })();
 
     return this.addChild(element);
   }
@@ -412,15 +417,16 @@ export class PromptBuilder<
       }
     }
 
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec
-    ).then((children) =>
-      createScope<ToolIOFor<P>>(
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(
         children,
         opts?.id ? { id: opts.id } : undefined
-      )
-    );
+      );
+    })();
 
     if (this.pinState) {
       // Once pinned, prefix additions expand the pinned prefix itself.
@@ -451,14 +457,17 @@ export class PromptBuilder<
       id?: string;
     }
   ): PromptBuilder<P, TPinned> {
-    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
-      (children) =>
-        createScope<ToolIOFor<P>>(children, {
-          ...(opts.priority !== undefined && { priority: opts.priority }),
-          strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
-          ...(opts.id && { id: opts.id }),
-        })
-    );
+    const node = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(children, {
+        ...(opts.priority !== undefined && { priority: opts.priority }),
+        strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
+        ...(opts.id && { id: opts.id }),
+      });
+    })();
 
     return this.addChild(node);
   }
@@ -470,14 +479,17 @@ export class PromptBuilder<
     content: ScopeContent<P>,
     opts?: { priority?: number; id?: string }
   ): PromptBuilder<P, TPinned> {
-    const node = resolveScopeContent(content, this.boundProvider?.codec).then(
-      (children) =>
-        createScope<ToolIOFor<P>>(children, {
-          ...(opts?.priority !== undefined && { priority: opts.priority }),
-          strategy: createOmitStrategy(),
-          ...(opts?.id && { id: opts.id }),
-        })
-    );
+    const node = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
+      return createScope<ToolIOFor<P>>(children, {
+        ...(opts?.priority !== undefined && { priority: opts.priority }),
+        strategy: createOmitStrategy(),
+        ...(opts?.id && { id: opts.id }),
+      });
+    })();
 
     return this.addChild(node);
   }
@@ -492,7 +504,7 @@ export class PromptBuilder<
    * import { openai } from "@ai-sdk/openai";
    *
    * const provider = createProvider(openai("gpt-4o"));
-   * const summarizer = cria.summarizer({ id: "conv", store });
+   * const summarizer = cria.summarizer({ id: "conv", store, provider });
    * cria.prompt()
    *   .providerScope(provider, (p) =>
    *     p.use(summarizer({ history: content }))
@@ -513,14 +525,15 @@ export class PromptBuilder<
     const bound = this.provider(modelProvider);
     const inner = fn(PromptBuilder.create(modelProvider));
 
-    const element = inner.buildChildren().then(
-      (children): PromptScopeFor<TProvider> => ({
+    const element = (async (): Promise<PromptScopeFor<TProvider>> => {
+      const children = await inner.buildChildren();
+      return {
         kind: "scope",
         priority: 0,
         children,
         context,
-      })
-    );
+      };
+    })();
 
     return bound.addChild(element);
   }
@@ -533,7 +546,7 @@ export class PromptBuilder<
     content: TRendered
   ): PromptBuilder<ModelProvider<TRendered, TToolIO>, TPinned> {
     const provider = this.boundProvider;
-    if (!hasProvider<TRendered, TToolIO>(provider)) {
+    if (!provider) {
       throw new Error("Inputs require a bound provider.");
     }
     const layout = provider.codec.parse(content);
@@ -596,10 +609,11 @@ export class PromptBuilder<
     content: ScopeContent<P>,
     opts: { n: number; id?: string }
   ): PromptBuilder<P, TPinned> {
-    const element = resolveScopeContent(
-      content,
-      this.boundProvider?.codec
-    ).then((children) => {
+    const element = (async (): Promise<PromptScopeFor<P>> => {
+      const children = await resolveScopeContent(
+        content,
+        this.boundProvider?.codec
+      );
       // Filter to only message nodes and take the last N
       const messages = children.filter(
         (child): child is PromptMessageNode<ToolIOFor<P>> =>
@@ -610,7 +624,7 @@ export class PromptBuilder<
         lastN,
         opts.id ? { id: opts.id } : undefined
       );
-    });
+    })();
 
     return this.addChild(element);
   }
@@ -654,7 +668,7 @@ export class PromptBuilder<
       | readonly PromptNodeFor<P>[]
     )[]
   ): PromptBuilder<P, PinState> {
-    const newChildren: BuilderChild<P>[] = [...this.children];
+    const newChildren: ScopeChild<P>[] = [...this.children];
     let nextContext = this.context;
     let nextPinState = this.pinState ? this.clonePinState(this.pinState) : null;
 
@@ -696,9 +710,7 @@ export class PromptBuilder<
         continue;
       }
 
-      if (isPromptNode<ToolIOFor<P>>(item)) {
-        newChildren.push(item);
-      }
+      newChildren.push(item);
     }
 
     return new PromptBuilder<P, PinState>(
@@ -717,9 +729,10 @@ export class PromptBuilder<
       throw new Error("use() requires a plugin with a render() method.");
     }
 
-    const element = Promise.resolve(plugin.render()).then((content) =>
-      resolveScopeContent(content, this.boundProvider?.codec)
-    );
+    const element = (async (): Promise<PromptNodeFor<P>[]> => {
+      const content = await plugin.render();
+      return await resolveScopeContent(content, this.boundProvider?.codec);
+    })();
 
     return this.addChild(element);
   }
@@ -915,14 +928,15 @@ export class PromptBuilder<
     opts?: { id?: string }
   ): PromptBuilder<P, TPinned> {
     // Normalize text-like inputs into typed parts so tool IO stays provider-bound.
-    const childrenPromise =
-      typeof content === "function"
-        ? content(new MessageBuilder<P>([], this.context)).buildChildren()
-        : Promise.resolve(normalizeTextInput<ToolIOFor<P>>(content));
-
-    const element = childrenPromise.then((children) =>
-      createMessage<ToolIOFor<P>>(role, children, opts?.id)
-    );
+    const element = (async (): Promise<PromptMessageNode<ToolIOFor<P>>> => {
+      const children =
+        typeof content === "function"
+          ? await content(
+              new MessageBuilder<P>([], this.context)
+            ).buildChildren()
+          : normalizeTextInput<ToolIOFor<P>>(content);
+      return createMessage<ToolIOFor<P>>(role, children, opts?.id);
+    })();
 
     return this.addChild(element);
   }
@@ -934,42 +948,34 @@ export class PromptBuilder<
 export type Prompt<P = unknown> = PromptBuilder<P, PinState>;
 
 // Resolution functions (colocated with builders).
-// They resolve async children and enforce message/scope boundaries early.
-// This avoids deferred checks and ensures type safety at build time.
-
-function isPromptNode<TToolIO extends ProviderToolIO>(
-  value: unknown
-): value is PromptNode<TToolIO> {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  if (!("kind" in value)) {
-    return false;
-  }
-  const kind = (value as { kind?: unknown }).kind;
-  return kind === "scope" || kind === "message";
-}
+// They resolve async children and normalize message/scope content.
 
 async function resolveMessageChildren<P>(
-  children: BuilderChild<P> | readonly BuilderChild<P>[]
+  children: MessageChild<P> | readonly MessageChild<P>[]
 ): Promise<PromptPartFor<P>[]> {
   const list = Array.isArray(children) ? children : [children];
-  const resolved = await Promise.all(
-    list.map((child) => resolveBuilderChild(child, "message"))
-  );
+  const resolved: PromptPartFor<P>[] = [];
 
-  return resolved.flat();
+  for (const child of list) {
+    const parts = await resolveMessageChild(child);
+    resolved.push(...parts);
+  }
+
+  return resolved;
 }
 
 async function resolveScopeChildren<P>(
-  children: BuilderChild<P> | readonly BuilderChild<P>[]
+  children: ScopeChild<P> | readonly ScopeChild<P>[]
 ): Promise<PromptNodeFor<P>[]> {
   const list = Array.isArray(children) ? children : [children];
-  const resolved = await Promise.all(
-    list.map((child) => resolveBuilderChild(child, "scope"))
-  );
+  const resolved: PromptNodeFor<P>[] = [];
 
-  return resolved.flat();
+  for (const child of list) {
+    const nodes = await resolveScopeChild(child);
+    resolved.push(...nodes);
+  }
+
+  return resolved;
 }
 
 export async function resolveScopeContent<P>(
@@ -980,27 +986,19 @@ export async function resolveScopeContent<P>(
   // Provider-native inputs are decoded back into PromptLayout via the codec.
   if (content instanceof PromptBuilder) {
     const built = await content.build();
-    const nodes: PromptNodeFor<P>[] = [];
-    // Extract children so strategies operate on individual items, not a wrapper scope
-    for (const child of built.children) {
-      if (!isPromptNode<ToolIOFor<P>>(child)) {
-        throw new Error("Scope content must be prompt nodes.");
-      }
-      nodes.push(child);
-    }
-    return nodes;
+    return [...built.children];
   }
 
   if (content instanceof Promise) {
-    const value = await content;
-    return await resolveScopeContent(value as ScopeContent<P>, codec);
+    return await resolveScopeContent(await content, codec);
   }
 
   if (Array.isArray(content)) {
-    const resolved = await Promise.all(
-      content.map((item) => resolveScopeContent<P>(item, codec))
-    );
-    return resolved.flat();
+    const resolved: PromptNodeFor<P>[] = [];
+    for (const item of content) {
+      resolved.push(...(await resolveScopeContent<P>(item, codec)));
+    }
+    return resolved;
   }
 
   if (isPromptNode<ToolIOFor<P>>(content)) {
@@ -1029,6 +1027,35 @@ function resolveInputContent<P>(
 ): PromptNodeFor<P>[] {
   const layout = codec.parse(content.value);
   return promptLayoutToNodes(layout);
+}
+
+function isPromptNode<TToolIO extends ProviderToolIO>(
+  value: unknown
+): value is PromptNode<TToolIO> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  if (!("kind" in value)) {
+    return false;
+  }
+  const kind = (value as { kind?: unknown }).kind;
+  return kind === "scope" || kind === "message";
+}
+
+function isInputLayout<TToolIO extends ProviderToolIO>(
+  value: unknown
+): value is InputLayout<TToolIO> {
+  return hasKind(value) && value.kind === "input-layout";
+}
+
+function isPromptInput<TRendered>(
+  value: unknown
+): value is PromptInput<TRendered> {
+  return hasKind(value) && value.kind === "input";
+}
+
+function hasKind(value: unknown): value is { kind: unknown } {
+  return typeof value === "object" && value !== null && "kind" in value;
 }
 
 // Type-only narrowing: codec comes from the bound provider.
@@ -1076,124 +1103,54 @@ function promptMessageToNode<TToolIO extends ProviderToolIO>(
   return createMessage<TToolIO>(message.role, parts);
 }
 
-function isInputLayout<TToolIO extends ProviderToolIO>(
-  value: unknown
-): value is InputLayout<TToolIO> {
-  return hasKind(value) && value.kind === "input-layout";
-}
-
-function isPromptInput<TRendered>(
-  value: unknown
-): value is PromptInput<TRendered> {
-  return hasKind(value) && value.kind === "input";
-}
-
-function hasKind(value: unknown): value is { kind: unknown } {
-  return typeof value === "object" && value !== null && "kind" in value;
-}
-
-// Narrow a bound provider so codec usage preserves render/tool IO types.
-function hasProvider<TRendered, TToolIO extends ProviderToolIO>(
-  provider: BoundProvider | undefined
-): provider is ModelProvider<TRendered, TToolIO> {
-  return Boolean(provider);
-}
-
-async function resolveBuilderChild<P>(
-  child: BuilderChild<P>,
-  target: "message"
-): Promise<PromptPartFor<P>[]>;
-async function resolveBuilderChild<P>(
-  child: BuilderChild<P>,
-  target: "scope"
-): Promise<PromptNodeFor<P>[]>;
-async function resolveBuilderChild<P>(
-  child: BuilderChild<P>,
-  target: "message" | "scope"
-): Promise<PromptPartFor<P>[] | PromptNodeFor<P>[]> {
-  const resolved = await resolveBuilderChildPromise(child);
-
-  if (target === "message") {
-    return resolveMessageChild(resolved);
-  }
-
-  return await resolveScopeChild(resolved);
-}
-
-async function resolveBuilderChildPromise<P>(
-  child: BuilderChild<P>
-): Promise<BuilderChild<P>> {
+async function resolveChild<T>(child: T | Promise<T>): Promise<T> {
   if (child instanceof Promise) {
     return await child;
   }
   return child;
 }
 
-function resolveMessageChild<P>(child: BuilderChild<P>): PromptPartFor<P>[] {
-  if (child instanceof PromptBuilder) {
-    throw new Error("Prompt builders cannot be nested inside messages.");
+async function resolveMessageChild<P>(
+  child: MessageChild<P>
+): Promise<PromptPartFor<P>[]> {
+  const resolved = await resolveChild(child);
+
+  if (Array.isArray(resolved)) {
+    return await resolveMessageChildren(resolved);
   }
 
-  if (Array.isArray(child)) {
-    throw new Error("Message content cannot be arrays.");
+  if (typeof resolved === "string") {
+    return [textPart<ToolIOFor<P>>(resolved)];
   }
 
-  if (typeof child === "string") {
-    return [textPart<ToolIOFor<P>>(child)];
+  if (typeof resolved === "number" || typeof resolved === "boolean") {
+    return [textPart<ToolIOFor<P>>(String(resolved))];
   }
 
-  if (typeof child === "number" || typeof child === "boolean") {
-    return [textPart<ToolIOFor<P>>(String(child))];
+  if (isPromptPart<ToolIOFor<P>>(resolved)) {
+    return [resolved];
   }
 
-  if (isPromptPart<ToolIOFor<P>>(child)) {
-    return [child];
-  }
-
-  if (isPromptNode<ToolIOFor<P>>(child)) {
-    throw new Error("Prompt nodes are not allowed inside messages.");
-  }
-
-  throw new Error("Unsupported child type.");
+  throw new Error("Message content must be text or message parts.");
 }
 
 async function resolveScopeChild<P>(
-  child: BuilderChild<P>
+  child: ScopeChild<P>
 ): Promise<PromptNodeFor<P>[]> {
-  if (child instanceof PromptBuilder) {
-    const built = await child.build();
-    if (!isPromptNode<ToolIOFor<P>>(built)) {
-      throw new Error("Scope content must be prompt nodes.");
-    }
+  const resolved = await resolveChild(child);
+
+  if (Array.isArray(resolved)) {
+    return await resolveScopeChildren(resolved);
+  }
+
+  if (resolved instanceof PromptBuilder) {
+    const built = await resolved.build();
     return [built];
   }
 
-  if (Array.isArray(child)) {
-    const nodes: PromptNodeFor<P>[] = [];
-    for (const node of child) {
-      if (!isPromptNode<ToolIOFor<P>>(node)) {
-        throw new Error("Scope content must be prompt nodes.");
-      }
-      nodes.push(node);
-    }
-    return nodes;
+  if (isPromptNode<ToolIOFor<P>>(resolved)) {
+    return [resolved];
   }
 
-  if (
-    typeof child === "string" ||
-    typeof child === "number" ||
-    typeof child === "boolean"
-  ) {
-    throw new Error("Text nodes are only allowed inside messages.");
-  }
-
-  if (isPromptPart<ToolIOFor<P>>(child)) {
-    throw new Error("Message parts are only allowed inside messages.");
-  }
-
-  if (isPromptNode<ToolIOFor<P>>(child)) {
-    return [child];
-  }
-
-  throw new Error("Unsupported child type.");
+  throw new Error("Scope content must be prompt nodes or prompt builders.");
 }

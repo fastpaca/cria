@@ -4,9 +4,16 @@ import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { type Client, createClient } from "@libsql/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { z } from "zod";
-import { createTestProvider } from "../utils/plaintext";
+import {
+  createFixedCompletionProvider,
+  createTestProvider,
+} from "../utils/plaintext";
 
 const provider = createTestProvider({
+  includeRolePrefix: true,
+  joinMessagesWith: "\n\n",
+});
+const summaryProvider = createFixedCompletionProvider("S", {
   includeRolePrefix: true,
   joinMessagesWith: "\n\n",
 });
@@ -54,14 +61,13 @@ describe("prompt plugins", () => {
 
   test("summary plugin writes when over budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
-    const summarize = () => "S";
 
     const summaryPlugin = cria.summarizer({
       id: "conv-summary",
       store,
       metadata: { sessionId: "s-1" },
-      summarize,
       priority: 1,
+      provider: summaryProvider,
     })({ history: cria.prompt().user("x".repeat(200)) });
 
     const summaryOutput = "system: S";
@@ -84,12 +90,15 @@ describe("prompt plugins", () => {
 
   test("summary writeNow writes immediately", async () => {
     const store = new InMemoryStore<StoredSummary>();
-    const summarize = () => "Now";
+    const nowProvider = createFixedCompletionProvider("Now", {
+      includeRolePrefix: true,
+      joinMessagesWith: "\n\n",
+    });
 
     const summaryPlugin = cria.summarizer({
       id: "conv-now",
       store,
-      summarize,
+      provider: nowProvider,
     });
 
     const result = await summaryPlugin.writeNow({

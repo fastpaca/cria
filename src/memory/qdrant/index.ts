@@ -44,7 +44,7 @@ const QdrantPayloadSchema = z
  * VectorMemory implementation backed by Qdrant.
  *
  * This adapter wraps a Qdrant collection and implements the VectorMemory interface,
- * allowing you to use Qdrant for RAG workflows with Cria's VectorSearch component.
+ * allowing you to use Qdrant for RAG workflows with Cria's vectordb helper.
  *
  * @template T - The type of data stored in the payload
  *
@@ -52,7 +52,7 @@ const QdrantPayloadSchema = z
  * ```typescript
  * import { QdrantClient } from "@qdrant/js-client-rest";
  * import { QdrantStore } from "@fastpaca/cria/memory/qdrant";
- * import { VectorSearch } from "@fastpaca/cria";
+ * import { cria } from "@fastpaca/cria";
  *
  * const client = new QdrantClient({ url: "http://localhost:6333" });
  *
@@ -65,10 +65,10 @@ const QdrantPayloadSchema = z
  *   },
  * });
  *
- * // Use with VectorSearch
- * <VectorSearch store={store} limit={5}>
- *   What is RAG?
- * </VectorSearch>
+ * const vectors = cria.vectordb({ store });
+ * const retrieval = vectors({ query: "What is RAG?", limit: 5 });
+ *
+ * cria.prompt().use(retrieval);
  * ```
  */
 export class QdrantStore<T = unknown> implements VectorMemory<T> {

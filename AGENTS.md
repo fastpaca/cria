@@ -39,6 +39,12 @@ npm exec -- ultracite doctor  # diagnose setup
 - No implicit context propagation; require explicit parameters.
 - Use SDK types directly; don't invent wrapper interfaces.
 - Cache pinning must be explicit: `pin({ id, version })` directly.
+- Avoid over-abstraction: prefer a single clear shape over multiple helper layers.
+- Do not export internal DSL plumbing across module boundaries.
+- Invariants are required in types (provider/id/history), not optional with runtime guards.
+- No DSL creep: keep memory components out of `dsl/`.
+- Avoid redundant indirection (helper wrappers, global consts used once).
+- Don't add "extensibility" hooks/interfaces without concrete need.
 
 ## Patterns
 
