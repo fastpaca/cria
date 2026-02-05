@@ -129,6 +129,40 @@ export interface SummarizerComponent<PDefault = unknown> {
   load(options?: { id?: string }): Promise<MemoryEntry<StoredSummary> | null>;
 }
 
+const resolveSummaryId = (
+  configId: string | undefined,
+  callId: string | undefined
+): string => {
+  const id = callId ?? configId;
+  if (!id) {
+    throw new Error(
+      "Summarizer requires an id. Provide one in the config or per call."
+    );
+  }
+  return id;
+};
+
+const mergeMetadata = (
+  base: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined => {
+  if (!(base || override)) {
+    return undefined;
+  }
+  return { ...(base ?? {}), ...(override ?? {}) };
+};
+
+const requireHistory = <P>(
+  history: ScopeContent<P> | undefined
+): ScopeContent<P> => {
+  if (!history) {
+    throw new Error(
+      "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
+    );
+  }
+  return history;
+};
+
 export async function writeSummary({
   id,
   store,
@@ -149,7 +183,7 @@ export async function writeSummary({
   const summarizerContext: SummarizerContext = {
     target,
     existingSummary: existingEntry?.data.content ?? null,
-    provider,
+    ...(provider ? { provider } : {}),
   };
 
   let newSummary: string;
@@ -167,19 +201,6 @@ export async function writeSummary({
   return newSummary;
 }
 
-const resolveSummaryId = (
-  configId: string | undefined,
-  callId: string | undefined
-): string => {
-  const id = callId ?? configId;
-  if (!id) {
-    throw new Error(
-      "Summarizer requires an id. Provide one in the config or per call."
-    );
-  }
-  return id;
-};
-
 export const summarizer = <
   TProvider extends
     | ModelProvider<unknown, ProviderToolIO>
@@ -194,16 +215,9 @@ export const summarizer = <
       <P extends SummarizerProvider<TProvider> = SummarizerProvider<TProvider>>(
         options: SummarizerOptions<P>
       ): PromptPlugin<P> => {
+        const history = requireHistory(options.history);
         const id = resolveSummaryId(config.id, options.id);
-        if (!options.history) {
-          throw new Error(
-            "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
-          );
-        }
-        const metadata =
-          config.metadata || options.metadata
-            ? { ...(config.metadata ?? {}), ...(options.metadata ?? {}) }
-            : undefined;
+        const metadata = mergeMetadata(config.metadata, options.metadata);
         const role = config.role ?? "system";
         const priority = config.priority;
         const decodeProvider = config.provider ?? options.provider;
@@ -211,25 +225,26 @@ export const summarizer = <
         return {
           render: async () => {
             const children = await resolveScopeContent(
-              options.history,
+              history,
               decodeProvider?.codec
             );
 
             return createScope(children, {
-              priority,
+              ...(priority !== undefined ? { priority } : {}),
               strategy: async <TToolIO extends ProviderToolIO>(
                 input: StrategyInput<TToolIO>
               ) => {
                 const resolvedProvider =
                   config.provider ?? options.provider ?? input.context.provider;
-                const summaryText = await writeSummary({
+                const writeArgs = {
                   id,
                   store,
                   target: input.target,
-                  metadata,
-                  summarize: config.summarize,
-                  provider: resolvedProvider,
-                });
+                  ...(metadata ? { metadata } : {}),
+                  ...(config.summarize ? { summarize: config.summarize } : {}),
+                  ...(resolvedProvider ? { provider: resolvedProvider } : {}),
+                };
+                const summaryText = await writeSummary(writeArgs);
 
                 const message = createMessage<TToolIO>(role, [
                   textPart<TToolIO>(summaryText),
@@ -249,32 +264,33 @@ export const summarizer = <
         >(
           options: SummarizerOptions<P>
         ): Promise<string> => {
+          const history = requireHistory(options.history);
           const id = resolveSummaryId(config.id, options.id);
-          if (!options.history) {
-            throw new Error(
-              "Summarizer requires history. Pass { history } when creating the plugin or calling writeNow()."
-            );
-          }
-          const metadata =
-            config.metadata || options.metadata
-              ? { ...(config.metadata ?? {}), ...(options.metadata ?? {}) }
-              : undefined;
+          const metadata = mergeMetadata(config.metadata, options.metadata);
           const decodeProvider = config.provider ?? options.provider;
 
           const children = await resolveScopeContent(
-            options.history,
+            history,
             decodeProvider?.codec
           );
-          const target = createScope(children, { priority: config.priority });
+          const target = createScope(
+            children,
+            config.priority !== undefined
+              ? { priority: config.priority }
+              : undefined
+          );
 
-          return await writeSummary({
+          const writeArgs = {
             id,
             store,
             target,
-            metadata,
-            summarize: config.summarize,
-            provider: config.provider ?? options.provider,
-          });
+            ...(metadata ? { metadata } : {}),
+            ...(config.summarize ? { summarize: config.summarize } : {}),
+            ...((config.provider ?? options.provider)
+              ? { provider: config.provider ?? options.provider }
+              : {}),
+          };
+          return await writeSummary(writeArgs);
         },
         load: async (options: { id?: string } = {}) => {
           const id = resolveSummaryId(config.id, options.id);
