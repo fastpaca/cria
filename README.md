@@ -36,14 +36,13 @@ const summarizer = cria.summarizer({
 });
 const vectors = cria.vectordb(store);
 const summary = summarizer.plugin({ history: conversation });
-const recentHistory = cria.history({ history: recentTurns });
 const retrieval = vectors.plugin({ query, limit: 8 });
 
 const messages = await cria
   .prompt(provider)
   .system("You are a research assistant.")
   .use(summary)
-  .use(recentHistory)
+  .use(cria.history({ history: recentTurns }))
   .use(retrieval)
   .user(query)
   .render({ budget: 128_000 });
