@@ -1,3 +1,10 @@
+## [1.7.4](https://github.com/fastpaca/cria/compare/v1.7.3...v1.7.4) (2026-02-06)
+
+
+### Features
+
+* **memory:** add summarizer get convenience accessor ([994064c](https://github.com/fastpaca/cria/commit/994064c7f16475b81321a9c5a3ee97860f2f3c80))
+
 ## [1.7.3](https://github.com/fastpaca/cria/compare/v1.7.2...v1.7.3) (2026-02-06)
 
 
