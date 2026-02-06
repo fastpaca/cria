@@ -39,12 +39,20 @@ const toScopeContent = <P>(history: HistoryContent<P>): ScopeContent<P> => {
   return layoutInput;
 };
 
+class HistoryPlugin<P> implements PromptPlugin<P> {
+  private readonly content: ScopeContent<P>;
+
+  constructor(options: HistoryOptions<P>) {
+    this.content = toScopeContent(options.history);
+  }
+
+  render(): ScopeContent<P> {
+    return this.content;
+  }
+}
+
 export const history = <P = unknown>(
   options: HistoryOptions<P>
 ): PromptPlugin<P> => {
-  return {
-    render() {
-      return toScopeContent(options.history);
-    },
-  };
+  return new HistoryPlugin(options);
 };
