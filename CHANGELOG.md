@@ -1,3 +1,11 @@
+## [1.7.5](https://github.com/fastpaca/cria/compare/v1.7.4...v1.7.5) (2026-02-06)
+
+
+### Bug Fixes
+
+* **memory:** apply vector filters at store search layer ([e5d7ee1](https://github.com/fastpaca/cria/commit/e5d7ee13869a4adefdc057da63e5dfba645be4fc))
+* **memory:** skip vector search when limit is zero ([c190f74](https://github.com/fastpaca/cria/commit/c190f74a18f09f57e6fbc810c0a3bfbaa57879c0))
+
 ## [1.7.4](https://github.com/fastpaca/cria/compare/v1.7.3...v1.7.4) (2026-02-06)
 
 
