@@ -468,6 +468,7 @@ const messages = await cria
 
 - [Quickstart](docs/quickstart.md)
 - [RAG / vector search](docs/how-to/rag.md)
+- [Use history plugin](docs/how-to/history-plugin.md)
 - [Summarize long history](docs/how-to/summarize-history.md)
 - [Fit & compaction](docs/how-to/fit-and-compaction.md)
 - [Prompt evaluation](docs/how-to/prompt-evaluation.md)

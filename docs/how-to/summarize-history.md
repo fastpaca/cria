@@ -35,15 +35,19 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer.plugin({ history: cria.input(history) });
+const conversation = cria.history({ history });
+const summary = summarizer.plugin({ history });
 
 const prompt = cria
   .prompt(provider)
   .use(summary)
+  .use(conversation)
   .user(question);
 ```
 
-Tip: `history` can be provider-native message input (for example, AI SDK `ModelMessage[]`). Wrap it with `cria.input(history)` and pass a `provider` in the summarizer config so it can decode the input.
+Tip: `cria.history({ history })` is the easiest way to insert prior turns with `.use(...)`.
+
+Tip: `history` can be a prompt builder, prompt nodes, or a `PromptLayout`.
 
 Tip: for per-user or per-session isolation, use an id convention like `history:${userId}:${sessionId}` and attach metadata via `summarizer({ metadata: { userId, sessionId }, ... })`.
 

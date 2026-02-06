@@ -151,7 +151,7 @@ export class Summarizer {
   private async resolveHistory(
     history: ScopeContent<SummarizerProvider>
   ): Promise<PromptScope<ProviderToolIO>["children"]> {
-    return await resolveScopeContent(history, this.provider.codec);
+    return await resolveScopeContent(history);
   }
 
   private async summarize(
