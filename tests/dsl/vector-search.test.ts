@@ -1,5 +1,5 @@
 import { cria } from "@fastpaca/cria";
-import type { VectorMemory } from "@fastpaca/cria/memory";
+import type { VectorStore } from "@fastpaca/cria/memory";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { type Client, createClient } from "@libsql/client";
 import { afterEach, describe, expect, test } from "vitest";
@@ -126,7 +126,7 @@ describe("vector search", () => {
   });
 });
 
-class SpyVectorStore<T> implements VectorMemory<T> {
+class SpyVectorStore<T> implements VectorStore<T> {
   private readonly entries = new Map<string, T>();
   searchCalls = 0;
 
@@ -156,7 +156,7 @@ class SpyVectorStore<T> implements VectorMemory<T> {
   }
 }
 
-class FilterVectorStore implements VectorMemory<string> {
+class FilterVectorStore implements VectorStore<string> {
   lastLimit: number | undefined;
 
   get(_key: string) {

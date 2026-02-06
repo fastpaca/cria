@@ -2,10 +2,10 @@ import { type Collection, IncludeEnum, type Metadata } from "chromadb";
 import { z } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
-  VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
-} from "../vector";
+  VectorStore,
+} from "../vector-store";
 
 /**
  * Function to generate embeddings for text.
@@ -77,9 +77,9 @@ const ChromaEntrySchema = z
   });
 
 /**
- * VectorMemory implementation backed by ChromaDB.
+ * VectorStore implementation backed by ChromaDB.
  *
- * This adapter wraps a Chroma collection and implements the VectorMemory interface,
+ * This adapter wraps a Chroma collection and implements the VectorStore interface,
  * allowing you to use ChromaDB for RAG workflows with Cria's vectordb helper.
  *
  * @template T - The type of data stored in the collection
@@ -107,7 +107,7 @@ const ChromaEntrySchema = z
  * cria.prompt().use(retrieval);
  * ```
  */
-export class ChromaStore<T = unknown> implements VectorMemory<T> {
+export class ChromaStore<T = unknown> implements VectorStore<T> {
   private readonly collection: Collection;
   private readonly embedFn: EmbeddingFunction;
 

@@ -3,10 +3,10 @@ import { z } from "zod";
 import type { MemoryEntry } from "./key-value";
 import type { SqliteConnectionOptions, SqliteDatabase } from "./sqlite";
 import type {
-  VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
-} from "./vector";
+  VectorStore,
+} from "./vector-store";
 
 /**
  * Function to generate embeddings for text.
@@ -60,7 +60,7 @@ const sqliteRowSchema = z.object({
 });
 
 /**
- * SQLite-backed implementation of VectorMemory.
+ * SQLite-backed implementation of VectorStore.
  *
  * Uses libSQL vector columns and vector indexes for DB-side similarity search.
  *
@@ -81,7 +81,7 @@ const sqliteRowSchema = z.object({
  * const results = await store.search("What is RAG?", { limit: 5 });
  * ```
  */
-export class SqliteVectorStore<T = unknown> implements VectorMemory<T> {
+export class SqliteVectorStore<T = unknown> implements VectorStore<T> {
   private readonly db: SqliteDatabase;
   private readonly tableName: string;
   private readonly embedFn: EmbeddingFunction;

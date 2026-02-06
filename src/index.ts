@@ -42,9 +42,9 @@ export type {
   StoredSummary,
   VectorDBEntry,
   VectorDBSearchOptions,
-  VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
+  VectorStore,
 } from "./memory";
 // LLM Memory
 export {
