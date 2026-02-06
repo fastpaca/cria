@@ -1,3 +1,17 @@
+## [1.7.3](https://github.com/fastpaca/cria/compare/v1.7.2...v1.7.3) (2026-02-06)
+
+
+### Bug Fixes
+
+* **eval:** use cria namespace ([9f90232](https://github.com/fastpaca/cria/commit/9f9023281cd8c2ee58d4771f0c7b92b88d93d02c))
+
+
+### Features
+
+* **dsl:** add prompt plugins and user-scoped stores ([d06295a](https://github.com/fastpaca/cria/commit/d06295a32c522ab7cec0b8dd0fe853c8c09fab51))
+* **dsl:** add summarizer/vectordb components ([ced2f93](https://github.com/fastpaca/cria/commit/ced2f93ce43577c1d1aabf509204582f6d10c7fe))
+* **memory:** tighten prompt-plugin boundaries and tests ([d292606](https://github.com/fastpaca/cria/commit/d2926066e4802512aaa3528f2b1564df46e03dc5))
+
 ## [1.7.2](https://github.com/fastpaca/cria/compare/v1.7.1...v1.7.2) (2026-02-03)
 
 
