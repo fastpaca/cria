@@ -2,10 +2,10 @@ import type { QdrantClient } from "@qdrant/js-client-rest";
 import { z } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
-  VectorMemory,
   VectorSearchOptions,
   VectorSearchResult,
-} from "../vector";
+  VectorStore,
+} from "../vector-store";
 
 /**
  * Function to generate embeddings for text.
@@ -41,9 +41,9 @@ const QdrantPayloadSchema = z
   }));
 
 /**
- * VectorMemory implementation backed by Qdrant.
+ * VectorStore implementation backed by Qdrant.
  *
- * This adapter wraps a Qdrant collection and implements the VectorMemory interface,
+ * This adapter wraps a Qdrant collection and implements the VectorStore interface,
  * allowing you to use Qdrant for RAG workflows with Cria's vectordb helper.
  *
  * @template T - The type of data stored in the payload
@@ -71,7 +71,7 @@ const QdrantPayloadSchema = z
  * cria.prompt().use(retrieval);
  * ```
  */
-export class QdrantStore<T = unknown> implements VectorMemory<T> {
+export class QdrantStore<T = unknown> implements VectorStore<T> {
   private readonly client: QdrantClient;
   private readonly collectionName: string;
   private readonly embedFn: EmbeddingFunction;

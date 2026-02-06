@@ -23,7 +23,7 @@ This is a lightweight map of what exists and when you’d reach for it. For the 
 
 ## Retrieval
 
-- `vectordb(...)`: component that injects retrieval results at render time from a `VectorMemory` store. Use `.index(...)` to write entries, `.load(...)` to read by id, and `filter` on retrieval for metadata-scoped search.
+- `vectordb(...)`: component that injects retrieval results at render time from a `VectorStore`. Use `.index(...)` to write entries, `.load(...)` to read by id, and `filter` on retrieval for metadata-scoped search.
 
 ## Semantic nodes (provider mapping)
 

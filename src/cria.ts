@@ -6,7 +6,7 @@ import {
   c as templateC,
 } from "./dsl/templating";
 import { summarizer } from "./memory/summarizer";
-import { vectordb } from "./memory/vector-db";
+import { vectordb } from "./memory/vector-store";
 import type {
   PromptMessageNode,
   PromptRole,
