@@ -9,9 +9,12 @@ import type { ToolIOForProvider } from "../types";
 import type { MemoryEntry } from "./key-value";
 import type { VectorMemory, VectorSearchResult } from "./vector";
 
+type VectorDBFilterValue = string | number | boolean;
+
 export interface VectorDBSearchOptions {
   query: string;
   limit?: number;
+  filter?: Record<string, VectorDBFilterValue>;
 }
 
 export interface VectorDBEntry<T> {
@@ -33,12 +36,31 @@ export interface VectorDBComponent<TInput = unknown, TStored = TInput> {
 }
 
 const DEFAULT_SEARCH_LIMIT = 10;
+const DEFAULT_FILTER_OVERFETCH_MULTIPLIER = 5;
 
 const formatEntry = <T>(data: T): string => {
   if (typeof data === "string") {
     return data;
   }
   return JSON.stringify(data, null, 2);
+};
+
+const matchesFilter = <T>(
+  result: VectorSearchResult<T>,
+  filter: Record<string, VectorDBFilterValue>
+): boolean => {
+  const metadata = result.entry.metadata;
+  if (!metadata) {
+    return false;
+  }
+
+  for (const [key, value] of Object.entries(filter)) {
+    if (metadata[key] !== value) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 const formatResults = <T>(results: VectorSearchResult<T>[]): string => {
@@ -64,10 +86,17 @@ const createPlugin = <P, TStored>(
     if (!query) {
       throw new Error("VectorDB search requires a non-empty query.");
     }
+    const filter = options.filter;
     const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
+    const searchLimit = filter
+      ? limit * DEFAULT_FILTER_OVERFETCH_MULTIPLIER
+      : limit;
 
-    const results = await store.search(query, { limit });
-    const content = formatResults(results);
+    const rawResults = await store.search(query, { limit: searchLimit });
+    const results = filter
+      ? rawResults.filter((result) => matchesFilter(result, filter))
+      : rawResults;
+    const content = formatResults(results.slice(0, limit));
     const message = createMessage<ToolIOForProvider<P>>("user", [
       textPart<ToolIOForProvider<P>>(content),
     ]);

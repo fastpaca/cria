@@ -37,7 +37,21 @@ const prompt = cria
   .user(userQuestion);
 ```
 
-Tip: for per-user or per-session isolation, wrap your store with `scopeVectorStore` from `@fastpaca/cria/memory` and pass the scoped store to `vectordb(...)`.
+Tip: for per-user or per-session isolation, index with metadata and filter at retrieval:
+
+```ts
+await vectors.index({
+  id: "doc-1",
+  data: docText,
+  metadata: { userId, sessionId },
+});
+
+const retrieval = vectors({
+  query: userQuestion,
+  limit: 5,
+  filter: { userId, sessionId },
+});
+```
 
 ## SQLite adapter (libSQL)
 

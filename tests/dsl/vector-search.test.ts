@@ -99,6 +99,31 @@ describe("vector search", () => {
     ).rejects.toThrow("VectorDB search requires a non-empty query.");
     expect(store.searchCalls).toBe(0);
   });
+
+  test("vector search metadata filter scopes results", async () => {
+    const store = new FilterVectorStore();
+    const vectors = cria.vectordb({ store });
+
+    const output = await cria
+      .prompt()
+      .use(vectors({ query: "q", limit: 1, filter: { userId: "u-1" } }))
+      .render({ provider, budget: 10_000 });
+
+    expect(output).toContain("match-u1");
+    expect(output).not.toContain("other-u2");
+  });
+
+  test("vector search metadata filter overfetches before limit", async () => {
+    const store = new FilterVectorStore();
+    const vectors = cria.vectordb({ store });
+
+    await cria
+      .prompt()
+      .use(vectors({ query: "q", limit: 1, filter: { userId: "u-1" } }))
+      .render({ provider, budget: 10_000 });
+
+    expect(store.lastLimit).toBe(5);
+  });
 });
 
 class SpyVectorStore<T> implements VectorMemory<T> {
@@ -128,5 +153,83 @@ class SpyVectorStore<T> implements VectorMemory<T> {
   search(_query: string) {
     this.searchCalls += 1;
     return [];
+  }
+}
+
+class FilterVectorStore implements VectorMemory<string> {
+  lastLimit: number | undefined;
+
+  get(_key: string) {
+    return null;
+  }
+
+  set(_key: string, _data: string, _metadata?: Record<string, unknown>) {
+    return;
+  }
+
+  delete(_key: string) {
+    return true;
+  }
+
+  search(_query: string, options?: { limit?: number }) {
+    this.lastLimit = options?.limit;
+    const all = [
+      {
+        key: "d1",
+        score: 0.99,
+        entry: {
+          data: "other-u2",
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { userId: "u-2" },
+        },
+      },
+      {
+        key: "d2",
+        score: 0.98,
+        entry: {
+          data: "other-u2-2",
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { userId: "u-2" },
+        },
+      },
+      {
+        key: "d3",
+        score: 0.97,
+        entry: {
+          data: "other-u2-3",
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { userId: "u-2" },
+        },
+      },
+      {
+        key: "d4",
+        score: 0.96,
+        entry: {
+          data: "other-u2-4",
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { userId: "u-2" },
+        },
+      },
+      {
+        key: "d5",
+        score: 0.95,
+        entry: {
+          data: "match-u1",
+          createdAt: 0,
+          updatedAt: 0,
+          metadata: { userId: "u-1" },
+        },
+      },
+    ];
+
+    if (options?.limit === undefined) {
+      return all;
+    }
+
+    return all.slice(0, options.limit);
   }
 }
