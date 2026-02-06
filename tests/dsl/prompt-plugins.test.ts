@@ -62,13 +62,15 @@ describe("prompt plugins", () => {
   test("summary plugin writes when over budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
 
-    const summaryPlugin = cria.summarizer({
-      id: "conv-summary",
-      store,
-      metadata: { sessionId: "s-1" },
-      priority: 1,
-      provider: summaryProvider,
-    })({ history: cria.prompt().user("x".repeat(200)) });
+    const summaryPlugin = cria
+      .summarizer({
+        id: "conv-summary",
+        store,
+        metadata: { sessionId: "s-1" },
+        priority: 1,
+        provider: summaryProvider,
+      })
+      .plugin({ history: cria.prompt().user("x".repeat(200)) });
 
     const summaryOutput = "system: S";
     const fullOutput = `user: ${"x".repeat(200)}`;
@@ -116,8 +118,8 @@ describe("prompt plugins", () => {
     );
     await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
-    const vectors = cria.vectordb({ store });
-    const retrieval = vectors({ query: "search query", limit: 1 });
+    const vectors = cria.vectordb(store);
+    const retrieval = vectors.plugin({ query: "search query", limit: 1 });
 
     const output = await cria
       .prompt()
@@ -127,28 +129,25 @@ describe("prompt plugins", () => {
     expect(output).toContain("Doc 1");
   });
 
-  test("vector index uses formatter for both index and search", async () => {
-    const store = createStore(z.string());
-    const vectors = cria.vectordb({
-      store,
-      format: (data: string) => `Title: ${data}`,
-    });
+  test("vector index stores data and metadata", async () => {
+    const store = createStore(z.object({ title: z.string() }));
+    const vectors = cria.vectordb(store);
 
     await vectors.index({
       id: "doc-1",
-      data: "Indexed",
+      data: { title: "Indexed" },
       metadata: { source: "test" },
     });
 
     const entry = await store.get("doc-1");
-    expect(entry?.data).toBe("Title: Indexed");
+    expect(entry?.data).toEqual({ title: "Indexed" });
     expect(entry?.metadata).toEqual({ source: "test" });
 
     const output = await cria
       .prompt()
-      .use(vectors({ query: "Indexed", limit: 1 }))
+      .use(vectors.plugin({ query: "Indexed", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
-    expect(output).toContain("Title: Indexed");
+    expect(output).toContain('"title": "Indexed"');
   });
 });

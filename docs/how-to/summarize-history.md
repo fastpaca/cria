@@ -35,7 +35,7 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer({ history: cria.input(history) });
+const summary = summarizer.plugin({ history: cria.input(history) });
 
 const prompt = cria
   .prompt(provider)

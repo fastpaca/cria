@@ -73,7 +73,7 @@ export interface KVMemory<T = unknown> {
  *
  * const store = new InMemoryStore<StoredSummary>();
  * const summarizer = cria.summarizer({ id: "conv", store, provider });
- * const summary = summarizer({ history });
+ * const summary = summarizer.plugin({ history });
  * ```
  */
 export class InMemoryStore<T = unknown> implements KVMemory<T> {

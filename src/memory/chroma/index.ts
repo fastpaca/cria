@@ -101,8 +101,8 @@ const ChromaEntrySchema = z
  *   },
  * });
  *
- * const vectors = cria.vectordb({ store });
- * const retrieval = vectors({ query: "What is RAG?", limit: 5 });
+ * const vectors = cria.vectordb(store);
+ * const retrieval = vectors.plugin({ query: "What is RAG?", limit: 5 });
  *
  * cria.prompt().use(retrieval);
  * ```

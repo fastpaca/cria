@@ -45,12 +45,14 @@ describe("summary helper", () => {
   test("summary writes when over budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
 
-    const summary = cria.summarizer({
-      id: "conv-summary",
-      store,
-      priority: 1,
-      provider: summaryProvider,
-    })({ history: cria.prompt().user("x".repeat(200)) });
+    const summary = cria
+      .summarizer({
+        id: "conv-summary",
+        store,
+        priority: 1,
+        provider: summaryProvider,
+      })
+      .plugin({ history: cria.prompt().user("x".repeat(200)) });
 
     const builder = cria.prompt().use(summary);
 
@@ -71,11 +73,13 @@ describe("summary helper", () => {
   test("summary does not write when under budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
 
-    const summary = cria.summarizer({
-      id: "conv-under-budget",
-      store,
-      provider: summaryProvider,
-    })({ history: cria.prompt().user("brief history") });
+    const summary = cria
+      .summarizer({
+        id: "conv-under-budget",
+        store,
+        provider: summaryProvider,
+      })
+      .plugin({ history: cria.prompt().user("brief history") });
 
     const fullOutput = "user: brief history";
     const output = await cria
@@ -113,16 +117,18 @@ describe("summary helper", () => {
 
   test("summary supports inputLayout history", async () => {
     const store = new InMemoryStore<StoredSummary>();
-    const summary = cria.summarizer({
-      id: "conv-input-layout",
-      store,
-      provider: summaryProvider,
-    })({
-      history: cria.inputLayout([
-        { role: "system", text: "Prior context" },
-        { role: "user", text: "Question" },
-      ]),
-    });
+    const summary = cria
+      .summarizer({
+        id: "conv-input-layout",
+        store,
+        provider: summaryProvider,
+      })
+      .plugin({
+        history: cria.inputLayout([
+          { role: "system", text: "Prior context" },
+          { role: "user", text: "Question" },
+        ]),
+      });
 
     const summaryOutput = "system: S";
     const fullOutput = "system: Prior context\n\nuser: Question";

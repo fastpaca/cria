@@ -30,45 +30,137 @@ export const StoredSummarySchema = z.object({
  */
 export type StoredSummary = z.infer<typeof StoredSummarySchema>;
 
-type SummarizerProvider = ModelProvider<unknown, ProviderToolIO>;
+export type SummarizerProvider = ModelProvider<unknown, ProviderToolIO>;
+export type SummarizerHistory = ScopeContent<SummarizerProvider>;
 
 export interface SummarizerOptions {
-  history: ScopeContent<SummarizerProvider>;
+  history: SummarizerHistory;
   id?: string;
   metadata?: Record<string, unknown>;
 }
 
-export const summarizer = (config: {
+export interface SummarizerConfig {
   store: KVMemory<StoredSummary>;
   id: string;
   provider: SummarizerProvider;
   metadata?: Record<string, unknown>;
   role?: PromptRole;
   priority?: number;
-}): {
-  (options: SummarizerOptions): PromptPlugin<SummarizerProvider>;
-  writeNow(options: SummarizerOptions): Promise<string>;
-  load(options?: { id?: string }): Promise<MemoryEntry<StoredSummary> | null>;
-} => {
-  const { store, id: defaultId, provider, metadata, role, priority } = config;
-  const messageRole = role ?? "system";
+}
 
-  const resolveHistory = async (
-    history: ScopeContent<SummarizerProvider>
-  ): Promise<PromptScope<ProviderToolIO>["children"]> =>
-    await resolveScopeContent(history, provider.codec);
+class SummarizerPlugin implements PromptPlugin<SummarizerProvider> {
+  private readonly component: Summarizer;
+  private readonly options: SummarizerOptions;
 
-  const summarize = async (
+  constructor(component: Summarizer, options: SummarizerOptions) {
+    this.component = component;
+    this.options = options;
+  }
+
+  async render() {
+    return await this.component.renderPlugin(this.options);
+  }
+}
+
+export class Summarizer {
+  private readonly store: KVMemory<StoredSummary>;
+  private readonly defaultId: string;
+  private readonly provider: SummarizerProvider;
+  private readonly defaultMetadata: Record<string, unknown> | undefined;
+  private readonly messageRole: PromptRole;
+  private readonly priority: number | undefined;
+
+  constructor(config: SummarizerConfig) {
+    this.store = config.store;
+    this.defaultId = config.id;
+    this.provider = config.provider;
+    this.defaultMetadata = config.metadata;
+    this.messageRole = config.role ?? "system";
+    this.priority = config.priority;
+  }
+
+  plugin(options: SummarizerOptions): PromptPlugin<SummarizerProvider> {
+    return new SummarizerPlugin(this, options);
+  }
+
+  async writeNow(options: SummarizerOptions): Promise<string> {
+    const summaryId = this.resolveId(options.id);
+    const summaryMetadata = this.resolveMetadata(options.metadata);
+    const children = await this.resolveHistory(options.history);
+    const target = createScope(children, {
+      ...(this.priority !== undefined ? { priority: this.priority } : {}),
+    });
+
+    return await this.summarize(target, summaryId, summaryMetadata);
+  }
+
+  async load(
+    options: { id?: string } = {}
+  ): Promise<MemoryEntry<StoredSummary> | null> {
+    const summaryId = this.resolveId(options.id);
+    const entry = await this.store.get(summaryId);
+    if (!entry) {
+      return null;
+    }
+    return {
+      ...entry,
+      data: StoredSummarySchema.parse(entry.data),
+    };
+  }
+
+  async renderPlugin(options: SummarizerOptions) {
+    const summaryId = this.resolveId(options.id);
+    const summaryMetadata = this.resolveMetadata(options.metadata);
+    const children = await this.resolveHistory(options.history);
+
+    return createScope(children, {
+      ...(this.priority !== undefined ? { priority: this.priority } : {}),
+      strategy: async <TToolIO extends ProviderToolIO>(
+        input: StrategyInput<TToolIO>
+      ) => {
+        const summaryText = await this.summarize(
+          input.target,
+          summaryId,
+          summaryMetadata
+        );
+
+        const message = createMessage<TToolIO>(this.messageRole, [
+          textPart<TToolIO>(summaryText),
+        ]);
+        return createScope<TToolIO>([message], {
+          priority: input.target.priority,
+        });
+      },
+    });
+  }
+
+  private resolveId(idOverride?: string): string {
+    return idOverride ?? this.defaultId;
+  }
+
+  private resolveMetadata(
+    metadataOverride?: Record<string, unknown>
+  ): Record<string, unknown> | undefined {
+    return metadataOverride ?? this.defaultMetadata;
+  }
+
+  private async resolveHistory(
+    history: SummarizerHistory
+  ): Promise<PromptScope<ProviderToolIO>["children"]> {
+    return await resolveScopeContent(history, this.provider.codec);
+  }
+
+  private async summarize(
     target: PromptScope<ProviderToolIO>,
     summaryId: string,
     summaryMetadata: Record<string, unknown> | undefined
-  ): Promise<string> => {
-    const existingEntry = await store.get(summaryId);
+  ): Promise<string> {
+    const existingEntry = await this.store.get(summaryId);
     const existingSummary = existingEntry
       ? StoredSummarySchema.parse(existingEntry.data).content
       : null;
 
-    let builder = PromptBuilder.create(provider).system(
+    let builder = PromptBuilder.create(this.provider).system(
       "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information."
     );
 
@@ -85,66 +177,14 @@ export const summarizer = (config: {
     );
 
     const summaryPrompt = await builder.build();
-    const rendered = await render(summaryPrompt, { provider });
-    const summaryText = await provider.completion(rendered);
+    const rendered = await render(summaryPrompt, { provider: this.provider });
+    const summaryText = await this.provider.completion(rendered);
 
-    await store.set(summaryId, { content: summaryText }, summaryMetadata);
+    await this.store.set(summaryId, { content: summaryText }, summaryMetadata);
     return summaryText;
-  };
+  }
+}
 
-  const createPlugin = (
-    options: SummarizerOptions
-  ): PromptPlugin<SummarizerProvider> => {
-    const summaryId = options.id ?? defaultId;
-    const summaryMetadata = options.metadata ?? metadata;
-
-    return {
-      render: async () => {
-        const children = await resolveHistory(options.history);
-        return createScope(children, {
-          ...(priority !== undefined ? { priority } : {}),
-          strategy: async <TToolIO extends ProviderToolIO>(
-            input: StrategyInput<TToolIO>
-          ) => {
-            const summaryText = await summarize(
-              input.target,
-              summaryId,
-              summaryMetadata
-            );
-
-            const message = createMessage<TToolIO>(messageRole, [
-              textPart<TToolIO>(summaryText),
-            ]);
-            return createScope<TToolIO>([message], {
-              priority: input.target.priority,
-            });
-          },
-        });
-      },
-    };
-  };
-
-  return Object.assign(createPlugin, {
-    writeNow: async (options: SummarizerOptions): Promise<string> => {
-      const summaryId = options.id ?? defaultId;
-      const summaryMetadata = options.metadata ?? metadata;
-      const children = await resolveHistory(options.history);
-      const target = createScope(children, {
-        ...(priority !== undefined ? { priority } : {}),
-      });
-
-      return await summarize(target, summaryId, summaryMetadata);
-    },
-    load: async (options: { id?: string } = {}) => {
-      const summaryId = options.id ?? defaultId;
-      const entry = await store.get(summaryId);
-      if (!entry) {
-        return null;
-      }
-      return {
-        ...entry,
-        data: StoredSummarySchema.parse(entry.data),
-      };
-    },
-  });
+export const summarizer = (config: SummarizerConfig): Summarizer => {
+  return new Summarizer(config);
 };

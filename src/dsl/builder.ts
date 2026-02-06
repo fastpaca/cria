@@ -507,7 +507,7 @@ export class PromptBuilder<
    * const summarizer = cria.summarizer({ id: "conv", store, provider });
    * cria.prompt()
    *   .providerScope(provider, (p) =>
-   *     p.use(summarizer({ history: content }))
+   *     p.use(summarizer.plugin({ history: content }))
    *   )
    * ```
    */
