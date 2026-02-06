@@ -164,4 +164,29 @@ describe("summary helper", () => {
 
     await expect(summary.load()).rejects.toThrow();
   });
+
+  test("get returns trimmed summary content", async () => {
+    const store = new InMemoryStore<StoredSummary>();
+    store.set("conv-load-text", { content: "  summarized context  " });
+    const summary = cria.summarizer({
+      id: "conv-load-text",
+      store,
+      provider: summaryProvider,
+    });
+
+    await expect(summary.get()).resolves.toBe("summarized context");
+  });
+
+  test("get returns null for empty or missing summary", async () => {
+    const store = new InMemoryStore<StoredSummary>();
+    const summary = cria.summarizer({
+      id: "conv-load-empty",
+      store,
+      provider: summaryProvider,
+    });
+
+    store.set("conv-load-empty", { content: " \n\t " });
+    await expect(summary.get()).resolves.toBeNull();
+    await expect(summary.get({ id: "conv-missing" })).resolves.toBeNull();
+  });
 });
