@@ -59,6 +59,45 @@ describe("prompt plugins", () => {
     );
   });
 
+  test("history plugin inserts history at call site", async () => {
+    const conversation = cria.history({
+      history: cria
+        .prompt()
+        .user("Earlier question")
+        .assistant("Earlier answer"),
+    });
+
+    const output = await cria
+      .prompt()
+      .system("System")
+      .use(conversation)
+      .user("Current question")
+      .render({ provider, budget: 1000 });
+
+    expect(output).toBe(
+      "system: System\n\nuser: Earlier question\n\nassistant: Earlier answer\n\nuser: Current question"
+    );
+  });
+
+  test("history plugin accepts PromptLayout history", async () => {
+    const conversation = cria.history({
+      history: [
+        { role: "system", text: "Stored system" },
+        { role: "user", text: "Stored user" },
+        { role: "assistant", text: "Stored answer" },
+      ],
+    });
+
+    const output = await cria
+      .prompt()
+      .use(conversation)
+      .render({ provider, budget: 1000 });
+
+    expect(output).toBe(
+      "system: Stored system\n\nuser: Stored user\n\nassistant: Stored answer"
+    );
+  });
+
   test("summary plugin writes when over budget", async () => {
     const store = new InMemoryStore<StoredSummary>();
 

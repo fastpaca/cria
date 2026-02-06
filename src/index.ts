@@ -8,7 +8,7 @@
  * const result = await cria
  *   .prompt(provider)
  *   .system("You are a helpful assistant.")
- *   .truncate(cria.input(conversationHistory), { budget: 20000, from: "start", priority: 2 })
+ *   .truncate(conversationHistory, { budget: 20000, from: "start", priority: 2 })
  *   .omit(optionalContext, { priority: 3 })
  *   .render({ budget: 128000 });
  * ```
@@ -28,7 +28,6 @@ export type {
 export {
   BuilderBase,
   c,
-  input,
   inputLayout,
   MessageBuilder,
   merge,
@@ -37,6 +36,7 @@ export {
 } from "./dsl";
 export { createOtelRenderHooks } from "./instrumentation/otel";
 export type {
+  HistoryOptions,
   KVMemory,
   MemoryEntry,
   StoredSummary,
@@ -48,6 +48,7 @@ export type {
 } from "./memory";
 // LLM Memory
 export {
+  history,
   InMemoryStore,
   StoredSummarySchema,
   summarizer,
@@ -78,7 +79,6 @@ export {
   ListMessageCodec,
   MessageCodec,
   ModelProvider,
-  type PromptInput,
   ProtocolProvider,
   type ProviderAdapter,
 } from "./provider";

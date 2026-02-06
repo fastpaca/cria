@@ -30,13 +30,9 @@ export {
 } from "./builder";
 export { c, type TextInput } from "./templating";
 
-import type { InputLayout, ModelProvider, PromptInput } from "../provider";
+import type { InputLayout, ModelProvider } from "../provider";
 import type { PromptLayout, ProviderToolIO } from "../types";
 import { PromptBuilder } from "./builder";
-
-function input<TRendered>(value: TRendered): PromptInput<TRendered> {
-  return { kind: "input", value };
-}
 
 function inputLayout<TToolIO extends ProviderToolIO>(
   value: PromptLayout<TToolIO>
@@ -73,4 +69,4 @@ export const merge = (
   return first.merge(...rest);
 };
 
-export { input, inputLayout };
+export { inputLayout };

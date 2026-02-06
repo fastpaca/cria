@@ -2,12 +2,7 @@
  * Fluent builders for constructing prompts.
  */
 
-import type {
-  InputLayout,
-  MessageCodec,
-  ModelProvider,
-  PromptInput,
-} from "../provider";
+import type { InputLayout, ModelProvider } from "../provider";
 import type { RenderOptions } from "../render";
 import { assertValidMessageScope, render as renderPrompt } from "../render";
 import type {
@@ -68,11 +63,6 @@ type PromptScopeFor<P> = PromptScope<ToolIOFor<P>>;
 type PromptTreeFor<P> = PromptTree<ToolIOFor<P>>;
 type ToolResultPartFor<P> = ToolResultPart<ToolIOFor<P>>;
 type TextInputFor<P> = TextInput<ToolIOFor<P>>;
-// Provider-native inputs flow through the bound provider codec into PromptLayout.
-type InputFor<P> =
-  P extends ModelProvider<infer TRendered, infer _TToolIO>
-    ? PromptInput<TRendered>
-    : never;
 type InputLayoutFor<P> = InputLayout<ToolIOFor<P>>;
 
 const DEFAULT_PIN_ID = "__cria:auto-pin__";
@@ -99,7 +89,6 @@ export type ScopeContent<P = unknown> =
   | PromptNodeFor<P>
   | PromptBuilder<P, PinState>
   | AnyPromptBuilder
-  | InputFor<P>
   | InputLayoutFor<P>
   | Promise<PromptNodeFor<P>>
   | readonly ScopeContent<P>[];
@@ -418,10 +407,7 @@ export class PromptBuilder<
     }
 
     const element = (async (): Promise<PromptScopeFor<P>> => {
-      const children = await resolveScopeContent(
-        content,
-        this.boundProvider?.codec
-      );
+      const children = await resolveScopeContent(content);
       return createScope<ToolIOFor<P>>(
         children,
         opts?.id ? { id: opts.id } : undefined
@@ -458,10 +444,7 @@ export class PromptBuilder<
     }
   ): PromptBuilder<P, TPinned> {
     const node = (async (): Promise<PromptScopeFor<P>> => {
-      const children = await resolveScopeContent(
-        content,
-        this.boundProvider?.codec
-      );
+      const children = await resolveScopeContent(content);
       return createScope<ToolIOFor<P>>(children, {
         ...(opts.priority !== undefined && { priority: opts.priority }),
         strategy: createTruncateStrategy(opts.budget, opts.from ?? "start"),
@@ -480,10 +463,7 @@ export class PromptBuilder<
     opts?: { priority?: number; id?: string }
   ): PromptBuilder<P, TPinned> {
     const node = (async (): Promise<PromptScopeFor<P>> => {
-      const children = await resolveScopeContent(
-        content,
-        this.boundProvider?.codec
-      );
+      const children = await resolveScopeContent(content);
       return createScope<ToolIOFor<P>>(children, {
         ...(opts?.priority !== undefined && { priority: opts.priority }),
         strategy: createOmitStrategy(),
@@ -536,21 +516,6 @@ export class PromptBuilder<
     })();
 
     return bound.addChild(element);
-  }
-
-  /**
-   * Add provider-native input (requires a bound provider).
-   */
-  input<TRendered, TToolIO extends ProviderToolIO>(
-    this: PromptBuilder<ModelProvider<TRendered, TToolIO>, TPinned>,
-    content: TRendered
-  ): PromptBuilder<ModelProvider<TRendered, TToolIO>, TPinned> {
-    const provider = this.boundProvider;
-    if (!provider) {
-      throw new Error("Inputs require a bound provider.");
-    }
-    const layout = provider.codec.parse(content);
-    return this.addChildren(promptLayoutToNodes(layout));
   }
 
   /**
@@ -610,10 +575,7 @@ export class PromptBuilder<
     opts: { n: number; id?: string }
   ): PromptBuilder<P, TPinned> {
     const element = (async (): Promise<PromptScopeFor<P>> => {
-      const children = await resolveScopeContent(
-        content,
-        this.boundProvider?.codec
-      );
+      const children = await resolveScopeContent(content);
       // Filter to only message nodes and take the last N
       const messages = children.filter(
         (child): child is PromptMessageNode<ToolIOFor<P>> =>
@@ -731,7 +693,7 @@ export class PromptBuilder<
 
     const element = (async (): Promise<PromptNodeFor<P>[]> => {
       const content = await plugin.render();
-      return await resolveScopeContent(content, this.boundProvider?.codec);
+      return await resolveScopeContent(content);
     })();
 
     return this.addChild(element);
@@ -979,24 +941,22 @@ async function resolveScopeChildren<P>(
 }
 
 export async function resolveScopeContent<P>(
-  content: ScopeContent<P>,
-  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined
+  content: ScopeContent<P>
 ): Promise<PromptNodeFor<P>[]> {
-  // Scope content can be trees, builders, layouts, or provider-native inputs.
-  // Provider-native inputs are decoded back into PromptLayout via the codec.
+  // Scope content can be trees, builders, and prompt layouts.
   if (content instanceof PromptBuilder) {
     const built = await content.build();
     return [...built.children];
   }
 
   if (content instanceof Promise) {
-    return await resolveScopeContent(await content, codec);
+    return await resolveScopeContent(await content);
   }
 
   if (Array.isArray(content)) {
     const resolved: PromptNodeFor<P>[] = [];
     for (const item of content) {
-      resolved.push(...(await resolveScopeContent<P>(item, codec)));
+      resolved.push(...(await resolveScopeContent<P>(item)));
     }
     return resolved;
   }
@@ -1009,24 +969,9 @@ export async function resolveScopeContent<P>(
     return promptLayoutToNodes(content.value);
   }
 
-  if (isPromptInput<RenderedForProvider<P>>(content)) {
-    if (!isCodecForInput<P>(codec, content)) {
-      throw new Error("Inputs require a provider with a codec.");
-    }
-    return resolveInputContent<P>(content, codec);
-  }
-
   throw new Error(
-    "Scope content must be prompt nodes, prompt builders, or input wrappers."
+    "Scope content must be prompt nodes, prompt builders, or input layouts."
   );
-}
-
-function resolveInputContent<P>(
-  content: PromptInput<RenderedForProvider<P>>,
-  codec: MessageCodec<RenderedForProvider<P>, ToolIOFor<P>>
-): PromptNodeFor<P>[] {
-  const layout = codec.parse(content.value);
-  return promptLayoutToNodes(layout);
 }
 
 function isPromptNode<TToolIO extends ProviderToolIO>(
@@ -1048,22 +993,8 @@ function isInputLayout<TToolIO extends ProviderToolIO>(
   return hasKind(value) && value.kind === "input-layout";
 }
 
-function isPromptInput<TRendered>(
-  value: unknown
-): value is PromptInput<TRendered> {
-  return hasKind(value) && value.kind === "input";
-}
-
 function hasKind(value: unknown): value is { kind: unknown } {
   return typeof value === "object" && value !== null && "kind" in value;
-}
-
-// Type-only narrowing: codec comes from the bound provider.
-function isCodecForInput<P>(
-  codec: MessageCodec<unknown, ProviderToolIO> | null | undefined,
-  _content: PromptInput<RenderedForProvider<P>>
-): codec is MessageCodec<RenderedForProvider<P>, ToolIOFor<P>> {
-  return Boolean(codec);
 }
 
 function promptLayoutToNodes<TToolIO extends ProviderToolIO>(

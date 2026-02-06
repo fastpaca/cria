@@ -1,10 +1,11 @@
-import { input, inputLayout, merge, prompt } from "./dsl";
+import { inputLayout, merge, prompt } from "./dsl";
 import { createMessage, createScope } from "./dsl/strategies";
 import {
   normalizeTextInput,
   type TextInput,
   c as templateC,
 } from "./dsl/templating";
+import { history } from "./memory/history";
 import { summarizer } from "./memory/summarizer";
 import { vectordb } from "./memory/vector-db";
 import type {
@@ -61,7 +62,7 @@ export const cria = {
   system: (content: TextInput) => message("system", content),
   developer: (content: TextInput) => message("developer", content),
   assistant: (content: TextInput) => message("assistant", content),
-  input,
+  history,
   inputLayout,
   summarizer,
   vectordb,
