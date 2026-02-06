@@ -31,6 +31,20 @@ describe("scopeKVStore", () => {
     const scopedEntry = await scoped.get("summary");
     expect(scopedEntry?.data.content).toBe("Hello");
   });
+
+  test("normalizes custom keyPrefix with trailing separator", async () => {
+    const base = new InMemoryStore<{ content: string }>();
+    const scoped = scopeKVStore(base, {
+      userId: "user-1",
+      keyPrefix: "tenant:user-1:",
+    });
+
+    await scoped.set("summary", { content: "Hello" });
+
+    const entry = await base.get("tenant:user-1:summary");
+    expect(entry?.data.content).toBe("Hello");
+    expect(await scoped.get("summary")).toEqual(entry);
+  });
 });
 
 describe("scopeVectorStore", () => {
@@ -48,6 +62,24 @@ describe("scopeVectorStore", () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.key).toBe("doc-1");
     expect(results[0]?.entry.data.title).toBe("A");
+  });
+
+  test("applies limit after scoping results", async () => {
+    const base = new MockVectorStore<Doc>();
+    const userA = scopeVectorStore(base, { userId: "user-a" });
+    const userB = scopeVectorStore(base, { userId: "user-b" });
+
+    await userB.set("b-1", { title: "B1" });
+    await userB.set("b-2", { title: "B2" });
+    await userB.set("b-3", { title: "B3" });
+    await userA.set("a-1", { title: "A1" });
+    await userA.set("a-2", { title: "A2" });
+
+    const results = await userA.search("query", { limit: 2 });
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.key).toBe("a-1");
+    expect(results[1]?.key).toBe("a-2");
   });
 });
 
@@ -78,16 +110,24 @@ class MockVectorStore<T> implements VectorMemory<T> {
     return this.entries.delete(key);
   }
 
-  search(_query: string) {
-    return Array.from(this.entries.entries()).map(([key, entry], index) => ({
-      key,
-      score: 1 - index * 0.01,
-      entry: {
-        data: entry.data,
-        createdAt: 0,
-        updatedAt: 0,
-        ...(entry.metadata ? { metadata: entry.metadata } : {}),
-      },
-    }));
+  search(_query: string, options?: { limit?: number }) {
+    const results = Array.from(this.entries.entries()).map(
+      ([key, entry], index) => ({
+        key,
+        score: 1 - index * 0.01,
+        entry: {
+          data: entry.data,
+          createdAt: 0,
+          updatedAt: 0,
+          ...(entry.metadata ? { metadata: entry.metadata } : {}),
+        },
+      })
+    );
+
+    if (options?.limit === undefined) {
+      return results;
+    }
+
+    return results.slice(0, options.limit);
   }
 }

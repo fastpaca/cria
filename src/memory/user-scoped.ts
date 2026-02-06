@@ -5,6 +5,10 @@ import type {
   VectorSearchResult,
 } from "./vector";
 
+/**
+ * Namespacing options for multi-tenant memory wrappers.
+ * Stores remain unchanged; wrappers only prefix keys + attach metadata.
+ */
 export interface UserScopeOptions {
   /** Required user identifier for scoping */
   userId: string;
@@ -14,48 +18,58 @@ export interface UserScopeOptions {
   keyPrefix?: string;
 }
 
-const buildKeyPrefix = (options: UserScopeOptions): string => {
-  if (options.keyPrefix) {
-    return options.keyPrefix;
-  }
-  return options.sessionId
-    ? `user:${options.userId}:session:${options.sessionId}`
-    : `user:${options.userId}`;
-};
+const SCOPED_SEARCH_OVERFETCH_MULTIPLIER = 5;
 
-const scopeMetadata = (options: UserScopeOptions): Record<string, unknown> => ({
-  userId: options.userId,
-  ...(options.sessionId ? { sessionId: options.sessionId } : {}),
-});
+interface ScopeConfig {
+  keyPrefix: string;
+  metadata: Record<string, unknown>;
+}
+
+const resolveScopeConfig = (options: UserScopeOptions): ScopeConfig => {
+  const basePrefix =
+    options.keyPrefix ??
+    (options.sessionId
+      ? `user:${options.userId}:session:${options.sessionId}`
+      : `user:${options.userId}`);
+  const keyPrefix = basePrefix.endsWith(":") ? basePrefix : `${basePrefix}:`;
+
+  return {
+    keyPrefix,
+    metadata: {
+      userId: options.userId,
+      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+    },
+  };
+};
 
 const mergeMetadata = (
   metadata: Record<string, unknown> | undefined,
-  extra: Record<string, unknown>
-): Record<string, unknown> => ({ ...(metadata ?? {}), ...extra });
+  scopeMetadata: Record<string, unknown>
+): Record<string, unknown> => ({ ...(metadata ?? {}), ...scopeMetadata });
 
 export const scopeKVStore = <T>(
   store: KVMemory<T>,
   options: UserScopeOptions
 ): KVMemory<T> => {
-  const keyPrefix = `${buildKeyPrefix(options)}:`;
-  const metadata = scopeMetadata(options);
+  const scope = resolveScopeConfig(options);
+  const scopedKey = (key: string): string => `${scope.keyPrefix}${key}`;
 
   return {
     get: async (key: string): Promise<MemoryEntry<T> | null> =>
-      await store.get(`${keyPrefix}${key}`),
+      await store.get(scopedKey(key)),
     set: async (
       key: string,
       data: T,
       entryMetadata?: Record<string, unknown>
     ): Promise<void> => {
       await store.set(
-        `${keyPrefix}${key}`,
+        scopedKey(key),
         data,
-        mergeMetadata(entryMetadata, metadata)
+        mergeMetadata(entryMetadata, scope.metadata)
       );
     },
     delete: async (key: string): Promise<boolean> =>
-      await store.delete(`${keyPrefix}${key}`),
+      await store.delete(scopedKey(key)),
   };
 };
 
@@ -63,37 +77,51 @@ export const scopeVectorStore = <T>(
   store: VectorMemory<T>,
   options: UserScopeOptions
 ): VectorMemory<T> => {
-  const keyPrefix = `${buildKeyPrefix(options)}:`;
-  const metadata = scopeMetadata(options);
+  const scope = resolveScopeConfig(options);
+  const scopedKey = (key: string): string => `${scope.keyPrefix}${key}`;
 
   return {
     get: async (key: string): Promise<MemoryEntry<T> | null> =>
-      await store.get(`${keyPrefix}${key}`),
+      await store.get(scopedKey(key)),
     set: async (
       key: string,
       data: T,
       entryMetadata?: Record<string, unknown>
     ): Promise<void> => {
       await store.set(
-        `${keyPrefix}${key}`,
+        scopedKey(key),
         data,
-        mergeMetadata(entryMetadata, metadata)
+        mergeMetadata(entryMetadata, scope.metadata)
       );
     },
     delete: async (key: string): Promise<boolean> =>
-      await store.delete(`${keyPrefix}${key}`),
+      await store.delete(scopedKey(key)),
     search: async (
       query: string,
       options?: VectorSearchOptions
     ): Promise<VectorSearchResult<T>[]> => {
-      const results = await store.search(query, options);
+      const scopedLimit = options?.limit;
+      const searchOptions =
+        scopedLimit === undefined
+          ? options
+          : {
+              ...(options ?? {}),
+              limit: scopedLimit * SCOPED_SEARCH_OVERFETCH_MULTIPLIER,
+            };
+      const results = await store.search(query, searchOptions);
 
-      return results
-        .filter((result) => result.key.startsWith(keyPrefix))
+      const scopedResults = results
+        .filter((result) => result.key.startsWith(scope.keyPrefix))
         .map((result) => ({
           ...result,
-          key: result.key.slice(keyPrefix.length),
+          key: result.key.slice(scope.keyPrefix.length),
         }));
+
+      if (scopedLimit === undefined) {
+        return scopedResults;
+      }
+
+      return scopedResults.slice(0, scopedLimit);
     },
   };
 };
