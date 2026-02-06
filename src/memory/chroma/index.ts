@@ -2,6 +2,7 @@ import { type Collection, IncludeEnum, type Metadata } from "chromadb";
 import { z } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
+  VectorSearchFilter,
   VectorSearchOptions,
   VectorSearchResult,
   VectorStore,
@@ -40,6 +41,21 @@ const DocumentSchema = z
   });
 
 const MetadataSchema = z.record(z.string(), z.unknown()).optional().nullable();
+
+const buildChromaWhere = (
+  filter: VectorSearchFilter | undefined
+): Record<string, string | number | boolean> | undefined => {
+  if (filter === undefined) {
+    return undefined;
+  }
+
+  const entries = Object.entries(filter);
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries);
+};
 
 /**
  * Convert L2 distance to a similarity score (0-1).
@@ -177,6 +193,7 @@ export class ChromaStore<T = unknown> implements VectorStore<T> {
   ): Promise<VectorSearchResult<T>[]> {
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold;
+    const where = buildChromaWhere(options?.filter);
 
     const queryVector = await this.embedFn(query);
 
@@ -188,6 +205,7 @@ export class ChromaStore<T = unknown> implements VectorStore<T> {
         IncludeEnum.metadatas,
         IncludeEnum.distances,
       ],
+      ...(where !== undefined && { where }),
     });
 
     const ids = response.ids[0] ?? [];

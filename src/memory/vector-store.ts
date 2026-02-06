@@ -20,6 +20,9 @@ export interface VectorSearchResult<T = unknown> {
   score: number;
 }
 
+export type VectorSearchFilterValue = string | number | boolean;
+export type VectorSearchFilter = Record<string, VectorSearchFilterValue>;
+
 /**
  * Options for vector search operations.
  */
@@ -28,6 +31,8 @@ export interface VectorSearchOptions {
   limit?: number;
   /** Minimum similarity threshold (0-1). Results below this are excluded. */
   threshold?: number;
+  /** Metadata equality filter to apply at the store layer. */
+  filter?: VectorSearchFilter;
 }
 
 /**
@@ -64,12 +69,8 @@ export interface VectorStore<T = unknown> extends KVMemory<T> {
   ): MaybePromise<VectorSearchResult<T>[]>;
 }
 
-type VectorDBFilterValue = string | number | boolean;
-
-export interface VectorDBSearchOptions {
+export interface VectorDBSearchOptions extends VectorSearchOptions {
   query: string;
-  limit?: number;
-  filter?: Record<string, VectorDBFilterValue>;
 }
 
 export interface VectorDBEntry<T> {
@@ -79,31 +80,12 @@ export interface VectorDBEntry<T> {
 }
 
 const DEFAULT_SEARCH_LIMIT = 10;
-const DEFAULT_FILTER_OVERFETCH_MULTIPLIER = 5;
 
 const formatEntry = <T>(data: T): string => {
   if (typeof data === "string") {
     return data;
   }
   return JSON.stringify(data, null, 2);
-};
-
-const matchesFilter = <T>(
-  result: VectorSearchResult<T>,
-  filter: Record<string, VectorDBFilterValue>
-): boolean => {
-  const metadata = result.entry.metadata;
-  if (!metadata) {
-    return false;
-  }
-
-  for (const [key, value] of Object.entries(filter)) {
-    if (metadata[key] !== value) {
-      return false;
-    }
-  }
-
-  return true;
 };
 
 const formatResults = <T>(results: VectorSearchResult<T>[]): string => {
@@ -162,8 +144,20 @@ export class VectorDB<T> {
     return await this.store.get(options.id);
   }
 
-  async search(query: string, limit: number): Promise<VectorSearchResult<T>[]> {
-    return await this.store.search(query, { limit });
+  async search(query: string, limit: number): Promise<VectorSearchResult<T>[]>;
+  async search(
+    query: string,
+    options?: VectorSearchOptions
+  ): Promise<VectorSearchResult<T>[]>;
+  async search(
+    query: string,
+    limitOrOptions: number | VectorSearchOptions = {}
+  ): Promise<VectorSearchResult<T>[]> {
+    const options =
+      typeof limitOrOptions === "number"
+        ? { limit: limitOrOptions }
+        : limitOrOptions;
+    return await this.store.search(query, options);
   }
 
   async renderSearch(options: VectorDBSearchOptions): Promise<string> {
@@ -184,17 +178,11 @@ export class VectorDB<T> {
       return [];
     }
 
-    const filter = options.filter;
-    const searchLimit = filter
-      ? limit * DEFAULT_FILTER_OVERFETCH_MULTIPLIER
-      : limit;
-
-    const rawResults = await this.search(query, searchLimit);
-    const filteredResults = filter
-      ? rawResults.filter((result) => matchesFilter(result, filter))
-      : rawResults;
-
-    return filteredResults.slice(0, limit);
+    return await this.search(query, {
+      limit,
+      ...(options.threshold !== undefined && { threshold: options.threshold }),
+      ...(options.filter !== undefined && { filter: options.filter }),
+    });
   }
 }
 
