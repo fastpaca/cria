@@ -1,5 +1,4 @@
 import { cria } from "@fastpaca/cria";
-import type { VectorSearchOptions, VectorStore } from "@fastpaca/cria/memory";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { type Client, createClient } from "@libsql/client";
 import { afterEach, describe, expect, test } from "vitest";
@@ -12,21 +11,38 @@ const provider = createTestProvider({
 });
 
 // Simple embedding: text length as single dimension
-const embed = async (text: string): Promise<number[]> => [text.length];
+const embedByLength = async (text: string): Promise<number[]> => [text.length];
+
+const docSchema = z.object({ title: z.string(), content: z.string() });
 
 const SCORE_PATTERN = /score: \d+\.\d+/;
 
 const clients: Client[] = [];
 
-const createStore = () => {
+const createStore = <T>(
+  schema: z.ZodType<T>,
+  embed: (text: string) => Promise<number[]> = embedByLength
+) => {
   const db = createClient({ url: ":memory:" });
   clients.push(db);
-  return new SqliteVectorStore({
+  return new SqliteVectorStore<T>({
     database: db,
     embed,
     dimensions: 1,
-    schema: z.object({ title: z.string(), content: z.string() }),
+    schema,
   });
+};
+
+const createCountingEmbed = () => {
+  let calls = 0;
+
+  return {
+    embed: (text: string): Promise<number[]> => {
+      calls += 1;
+      return Promise.resolve([text.length]);
+    },
+    getCalls: () => calls,
+  };
 };
 
 afterEach(() => {
@@ -38,7 +54,7 @@ afterEach(() => {
 
 describe("vector search", () => {
   test("vector search renders results at prompt level", async () => {
-    const store = createStore();
+    const store = createStore(docSchema);
     await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
     const vectors = cria.vectordb(store);
@@ -56,7 +72,7 @@ describe("vector search", () => {
   });
 
   test("vector search renders results between messages", async () => {
-    const store = createStore();
+    const store = createStore(docSchema);
     await store.set("doc-1", { title: "Result", content: "Found it" });
 
     const vectors = cria.vectordb(store);
@@ -73,7 +89,7 @@ describe("vector search", () => {
   });
 
   test("vector search handles empty results", async () => {
-    const store = createStore();
+    const store = createStore(docSchema);
     const vectors = cria.vectordb(store);
 
     const result = await cria
@@ -85,10 +101,8 @@ describe("vector search", () => {
   });
 
   test("vector search rejects empty query and does not search", async () => {
-    const store = new SpyVectorStore<{
-      title: string;
-      content: string;
-    }>();
+    const { embed, getCalls } = createCountingEmbed();
+    const store = createStore(docSchema, embed);
     const vectors = cria.vectordb(store);
 
     await expect(
@@ -97,11 +111,35 @@ describe("vector search", () => {
         .use(vectors.plugin({ query: "   ", limit: 1 }))
         .render({ provider, budget: 10_000 })
     ).rejects.toThrow("VectorDB search requires a non-empty query.");
-    expect(store.searchCalls).toBe(0);
+    expect(getCalls()).toBe(0);
   });
 
   test("vector search metadata filter scopes results", async () => {
-    const store = new FilterVectorStore();
+    const store = createStore(z.string());
+    await store.set("u1-a", "bravo!", { userId: "u-1" });
+    await store.set("u1-b", "charlie", { userId: "u-1" });
+    await store.set("u2-a", "alpha", { userId: "u-2" });
+
+    const vectors = cria.vectordb(store);
+
+    const output = await cria
+      .prompt()
+      .use(
+        vectors.plugin({ query: "12345", limit: 2, filter: { userId: "u-1" } })
+      )
+      .render({ provider, budget: 10_000 });
+
+    expect(output).toContain("bravo!");
+    expect(output).toContain("charlie");
+    expect(output).not.toContain("alpha");
+  });
+
+  test("vector search applies metadata filter before limit", async () => {
+    const store = createStore(z.string());
+    await store.set("u2-top", "alpha", { userId: "u-2" });
+    await store.set("u1-match", "bravo!", { userId: "u-1" });
+    await store.set("u1-backup", "charlie", { userId: "u-1" });
+
     const vectors = cria.vectordb(store);
 
     const output = await cria
@@ -109,28 +147,13 @@ describe("vector search", () => {
       .use(vectors.plugin({ query: "q", limit: 1, filter: { userId: "u-1" } }))
       .render({ provider, budget: 10_000 });
 
-    expect(output).toContain("match-u1");
-    expect(output).not.toContain("other-u2");
-  });
-
-  test("vector search forwards metadata filter to store options", async () => {
-    const store = new FilterVectorStore();
-    const vectors = cria.vectordb(store);
-
-    await cria
-      .prompt()
-      .use(vectors.plugin({ query: "q", limit: 1, filter: { userId: "u-1" } }))
-      .render({ provider, budget: 10_000 });
-
-    expect(store.lastLimit).toBe(1);
-    expect(store.lastFilter).toEqual({ userId: "u-1" });
+    expect(output).toContain("bravo!");
+    expect(output).not.toContain("alpha");
   });
 
   test("vector search with zero limit skips backend search", async () => {
-    const store = new SpyVectorStore<{
-      title: string;
-      content: string;
-    }>();
+    const { embed, getCalls } = createCountingEmbed();
+    const store = createStore(z.string(), embed);
     const vectors = cria.vectordb(store);
 
     const output = await cria
@@ -139,90 +162,6 @@ describe("vector search", () => {
       .render({ provider, budget: 10_000 });
 
     expect(output).toContain("Vector search returned no results");
-    expect(store.searchCalls).toBe(0);
+    expect(getCalls()).toBe(0);
   });
 });
-
-class SpyVectorStore<T> implements VectorStore<T> {
-  private readonly entries = new Map<string, T>();
-  searchCalls = 0;
-
-  get(key: string) {
-    const value = this.entries.get(key);
-    if (value === undefined) {
-      return null;
-    }
-    return {
-      data: value,
-      createdAt: 0,
-      updatedAt: 0,
-    };
-  }
-
-  set(key: string, data: T) {
-    this.entries.set(key, data);
-  }
-
-  delete(key: string) {
-    return this.entries.delete(key);
-  }
-
-  search(_query: string) {
-    this.searchCalls += 1;
-    return [];
-  }
-}
-
-class FilterVectorStore implements VectorStore<string> {
-  lastLimit: number | undefined;
-  lastFilter: VectorSearchOptions["filter"] | undefined;
-
-  get(_key: string) {
-    return null;
-  }
-
-  set(_key: string, _data: string, _metadata?: Record<string, unknown>) {
-    return;
-  }
-
-  delete(_key: string) {
-    return true;
-  }
-
-  search(_query: string, options?: VectorSearchOptions) {
-    this.lastLimit = options?.limit;
-    this.lastFilter = options?.filter;
-    const all =
-      options?.filter?.userId === "u-1"
-        ? [
-            {
-              key: "d5",
-              score: 0.95,
-              entry: {
-                data: "match-u1",
-                createdAt: 0,
-                updatedAt: 0,
-                metadata: { userId: "u-1" },
-              },
-            },
-          ]
-        : [
-            {
-              key: "d1",
-              score: 0.99,
-              entry: {
-                data: "other-u2",
-                createdAt: 0,
-                updatedAt: 0,
-                metadata: { userId: "u-2" },
-              },
-            },
-          ];
-
-    if (options?.limit === undefined) {
-      return all;
-    }
-
-    return all.slice(0, options.limit);
-  }
-}
