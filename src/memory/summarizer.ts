@@ -31,10 +31,9 @@ export const StoredSummarySchema = z.object({
 export type StoredSummary = z.infer<typeof StoredSummarySchema>;
 
 export type SummarizerProvider = ModelProvider<unknown, ProviderToolIO>;
-export type SummarizerHistory = ScopeContent<SummarizerProvider>;
 
 export interface SummarizerOptions {
-  history: SummarizerHistory;
+  history: ScopeContent<SummarizerProvider>;
   id?: string;
   metadata?: Record<string, unknown>;
 }
@@ -145,7 +144,7 @@ export class Summarizer {
   }
 
   private async resolveHistory(
-    history: SummarizerHistory
+    history: ScopeContent<SummarizerProvider>
   ): Promise<PromptScope<ProviderToolIO>["children"]> {
     return await resolveScopeContent(history, this.provider.codec);
   }
