@@ -1,5 +1,5 @@
 import { cria } from "@fastpaca/cria";
-import type { VectorStore } from "@fastpaca/cria/memory";
+import type { VectorSearchOptions, VectorStore } from "@fastpaca/cria/memory";
 import { SqliteVectorStore } from "@fastpaca/cria/memory/sqlite-vector";
 import { type Client, createClient } from "@libsql/client";
 import { afterEach, describe, expect, test } from "vitest";
@@ -113,7 +113,7 @@ describe("vector search", () => {
     expect(output).not.toContain("other-u2");
   });
 
-  test("vector search metadata filter overfetches before limit", async () => {
+  test("vector search forwards metadata filter to store options", async () => {
     const store = new FilterVectorStore();
     const vectors = cria.vectordb(store);
 
@@ -122,7 +122,8 @@ describe("vector search", () => {
       .use(vectors.plugin({ query: "q", limit: 1, filter: { userId: "u-1" } }))
       .render({ provider, budget: 10_000 });
 
-    expect(store.lastLimit).toBe(5);
+    expect(store.lastLimit).toBe(1);
+    expect(store.lastFilter).toEqual({ userId: "u-1" });
   });
 
   test("vector search with zero limit skips backend search", async () => {
@@ -174,6 +175,7 @@ class SpyVectorStore<T> implements VectorStore<T> {
 
 class FilterVectorStore implements VectorStore<string> {
   lastLimit: number | undefined;
+  lastFilter: VectorSearchOptions["filter"] | undefined;
 
   get(_key: string) {
     return null;
@@ -187,60 +189,35 @@ class FilterVectorStore implements VectorStore<string> {
     return true;
   }
 
-  search(_query: string, options?: { limit?: number }) {
+  search(_query: string, options?: VectorSearchOptions) {
     this.lastLimit = options?.limit;
-    const all = [
-      {
-        key: "d1",
-        score: 0.99,
-        entry: {
-          data: "other-u2",
-          createdAt: 0,
-          updatedAt: 0,
-          metadata: { userId: "u-2" },
-        },
-      },
-      {
-        key: "d2",
-        score: 0.98,
-        entry: {
-          data: "other-u2-2",
-          createdAt: 0,
-          updatedAt: 0,
-          metadata: { userId: "u-2" },
-        },
-      },
-      {
-        key: "d3",
-        score: 0.97,
-        entry: {
-          data: "other-u2-3",
-          createdAt: 0,
-          updatedAt: 0,
-          metadata: { userId: "u-2" },
-        },
-      },
-      {
-        key: "d4",
-        score: 0.96,
-        entry: {
-          data: "other-u2-4",
-          createdAt: 0,
-          updatedAt: 0,
-          metadata: { userId: "u-2" },
-        },
-      },
-      {
-        key: "d5",
-        score: 0.95,
-        entry: {
-          data: "match-u1",
-          createdAt: 0,
-          updatedAt: 0,
-          metadata: { userId: "u-1" },
-        },
-      },
-    ];
+    this.lastFilter = options?.filter;
+    const all =
+      options?.filter?.userId === "u-1"
+        ? [
+            {
+              key: "d5",
+              score: 0.95,
+              entry: {
+                data: "match-u1",
+                createdAt: 0,
+                updatedAt: 0,
+                metadata: { userId: "u-1" },
+              },
+            },
+          ]
+        : [
+            {
+              key: "d1",
+              score: 0.99,
+              entry: {
+                data: "other-u2",
+                createdAt: 0,
+                updatedAt: 0,
+                metadata: { userId: "u-2" },
+              },
+            },
+          ];
 
     if (options?.limit === undefined) {
       return all;

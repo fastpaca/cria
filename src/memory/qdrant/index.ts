@@ -2,6 +2,7 @@ import type { QdrantClient } from "@qdrant/js-client-rest";
 import { z } from "zod";
 import type { MemoryEntry } from "../key-value";
 import type {
+  VectorSearchFilter,
   VectorSearchOptions,
   VectorSearchResult,
   VectorStore,
@@ -39,6 +40,33 @@ const QdrantPayloadSchema = z
     updatedAt: payload.updatedAt,
     ...(payload.metadata && { metadata: payload.metadata }),
   }));
+
+const buildQdrantFilter = (
+  filter: VectorSearchFilter | undefined
+):
+  | {
+      must: Array<{
+        key: string;
+        match: { value: string | number | boolean };
+      }>;
+    }
+  | undefined => {
+  if (filter === undefined) {
+    return undefined;
+  }
+
+  const entries = Object.entries(filter);
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return {
+    must: entries.map(([key, value]) => ({
+      key: `metadata.${key}`,
+      match: { value },
+    })),
+  };
+};
 
 /**
  * VectorStore implementation backed by Qdrant.
@@ -150,6 +178,7 @@ export class QdrantStore<T = unknown> implements VectorStore<T> {
   ): Promise<VectorSearchResult<T>[]> {
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold;
+    const filter = buildQdrantFilter(options?.filter);
 
     const queryVector = await this.embedFn(query);
 
@@ -160,6 +189,7 @@ export class QdrantStore<T = unknown> implements VectorStore<T> {
       limit,
       with_payload: true,
       ...(threshold !== undefined && { score_threshold: threshold }),
+      ...(filter !== undefined && { filter }),
     });
 
     const results: VectorSearchResult<T>[] = [];

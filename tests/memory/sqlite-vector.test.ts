@@ -100,6 +100,21 @@ test("SqliteVectorStore: search respects threshold", async () => {
   expect(results.map((result) => result.key)).toEqual(["alpha"]);
 });
 
+test("SqliteVectorStore: search applies metadata filter before limit", async () => {
+  const { store } = createStore();
+
+  await store.set("u2-top", "alpha", { userId: "u-2" });
+  await store.set("u1-match", "alpha beta", { userId: "u-1" });
+  await store.set("u1-backup", "beta", { userId: "u-1" });
+
+  const results = await store.search("alpha", {
+    limit: 1,
+    filter: { userId: "u-1" },
+  });
+
+  expect(results.map((result) => result.key)).toEqual(["u1-match"]);
+});
+
 test("SqliteVectorStore: delete removes entry", async () => {
   const { store } = createStore();
 
