@@ -41,11 +41,11 @@ describe("vector search", () => {
     const store = createStore();
     await store.set("doc-1", { title: "Doc 1", content: "Content 1" });
 
-    const vectors = cria.vectordb({ store });
+    const vectors = cria.vectordb(store);
 
     const result = await cria
       .prompt()
-      .use(vectors({ query: "search query", limit: 1 }))
+      .use(vectors.plugin({ query: "search query", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
@@ -59,12 +59,12 @@ describe("vector search", () => {
     const store = createStore();
     await store.set("doc-1", { title: "Result", content: "Found it" });
 
-    const vectors = cria.vectordb({ store });
+    const vectors = cria.vectordb(store);
 
     const result = await cria
       .prompt()
       .user("Here are the search results:")
-      .use(vectors({ query: "test query", limit: 1 }))
+      .use(vectors.plugin({ query: "test query", limit: 1 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("user:");
@@ -74,11 +74,11 @@ describe("vector search", () => {
 
   test("vector search handles empty results", async () => {
     const store = createStore();
-    const vectors = cria.vectordb({ store });
+    const vectors = cria.vectordb(store);
 
     const result = await cria
       .prompt()
-      .use(vectors({ query: "no matches", limit: 5 }))
+      .use(vectors.plugin({ query: "no matches", limit: 5 }))
       .render({ provider, budget: 10_000 });
 
     expect(result).toContain("Vector search returned no results");
@@ -89,12 +89,12 @@ describe("vector search", () => {
       title: string;
       content: string;
     }>();
-    const vectors = cria.vectordb({ store });
+    const vectors = cria.vectordb(store);
 
     await expect(
       cria
         .prompt()
-        .use(vectors({ query: "   ", limit: 1 }))
+        .use(vectors.plugin({ query: "   ", limit: 1 }))
         .render({ provider, budget: 10_000 })
     ).rejects.toThrow("VectorDB search requires a non-empty query.");
     expect(store.searchCalls).toBe(0);
@@ -102,11 +102,11 @@ describe("vector search", () => {
 
   test("vector search metadata filter scopes results", async () => {
     const store = new FilterVectorStore();
-    const vectors = cria.vectordb({ store });
+    const vectors = cria.vectordb(store);
 
     const output = await cria
       .prompt()
-      .use(vectors({ query: "q", limit: 1, filter: { userId: "u-1" } }))
+      .use(vectors.plugin({ query: "q", limit: 1, filter: { userId: "u-1" } }))
       .render({ provider, budget: 10_000 });
 
     expect(output).toContain("match-u1");
@@ -115,11 +115,11 @@ describe("vector search", () => {
 
   test("vector search metadata filter overfetches before limit", async () => {
     const store = new FilterVectorStore();
-    const vectors = cria.vectordb({ store });
+    const vectors = cria.vectordb(store);
 
     await cria
       .prompt()
-      .use(vectors({ query: "q", limit: 1, filter: { userId: "u-1" } }))
+      .use(vectors.plugin({ query: "q", limit: 1, filter: { userId: "u-1" } }))
       .render({ provider, budget: 10_000 });
 
     expect(store.lastLimit).toBe(5);

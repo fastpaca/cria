@@ -230,12 +230,14 @@ describe("PromptBuilder", () => {
         { role: "user", content: "User history." },
       ];
 
-      const summary = cria.summarizer({
-        id: "history",
-        store,
-        priority: 1,
-        provider,
-      })({ history: cria.input(input) });
+      const summary = cria
+        .summarizer({
+          id: "history",
+          store,
+          priority: 1,
+          provider,
+        })
+        .plugin({ history: cria.input(input) });
 
       const output = await cria
         .prompt(provider)

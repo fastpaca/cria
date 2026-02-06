@@ -23,18 +23,6 @@ export interface VectorDBEntry<T> {
   metadata?: Record<string, unknown>;
 }
 
-export type VectorDBFormatter<T> = (data: T) => string;
-
-export type VectorDBConfig<T> =
-  | { store: VectorMemory<T> }
-  | { store: VectorMemory<string>; format: VectorDBFormatter<T> };
-
-export interface VectorDBComponent<TInput = unknown, TStored = TInput> {
-  <P = unknown>(options: VectorDBSearchOptions): PromptPlugin<P>;
-  index(options: VectorDBEntry<TInput>): Promise<void>;
-  load(options: { id: string }): Promise<MemoryEntry<TStored> | null>;
-}
-
 const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_FILTER_OVERFETCH_MULTIPLIER = 5;
 
@@ -77,22 +65,27 @@ const formatResults = <T>(results: VectorSearchResult<T>[]): string => {
     .join("\n\n");
 };
 
-const createPlugin = <P, TStored>(
-  store: VectorMemory<TStored>,
-  options: VectorDBSearchOptions
-): PromptPlugin<P> => ({
-  render: async () => {
-    const query = options.query.trim();
+class VectorDBPlugin<P, T> implements PromptPlugin<P> {
+  private readonly db: VectorDB<T>;
+  private readonly options: VectorDBSearchOptions;
+
+  constructor(db: VectorDB<T>, options: VectorDBSearchOptions) {
+    this.db = db;
+    this.options = options;
+  }
+
+  async render() {
+    const query = this.options.query.trim();
     if (!query) {
       throw new Error("VectorDB search requires a non-empty query.");
     }
-    const filter = options.filter;
-    const limit = options.limit ?? DEFAULT_SEARCH_LIMIT;
+    const filter = this.options.filter;
+    const limit = this.options.limit ?? DEFAULT_SEARCH_LIMIT;
     const searchLimit = filter
       ? limit * DEFAULT_FILTER_OVERFETCH_MULTIPLIER
       : limit;
 
-    const rawResults = await store.search(query, { limit: searchLimit });
+    const rawResults = await this.db.search(query, searchLimit);
     const results = filter
       ? rawResults.filter((result) => matchesFilter(result, filter))
       : rawResults;
@@ -100,37 +93,35 @@ const createPlugin = <P, TStored>(
     const message = createMessage<ToolIOForProvider<P>>("user", [
       textPart<ToolIOForProvider<P>>(content),
     ]);
+
     return createScope<ToolIOForProvider<P>>([message]);
-  },
-});
+  }
+}
 
-const createVectorDb = <TInput, TStored>(
-  store: VectorMemory<TStored>,
-  toStored: (data: TInput) => TStored
-): VectorDBComponent<TInput, TStored> => {
-  const plugin = <P = unknown>(
-    options: VectorDBSearchOptions
-  ): PromptPlugin<P> => createPlugin<P, TStored>(store, options);
+export class VectorDB<T> {
+  private readonly store: VectorMemory<T>;
 
-  return Object.assign(plugin, {
-    index: async (options: VectorDBEntry<TInput>) => {
-      await store.set(options.id, toStored(options.data), options.metadata);
-    },
-    load: async ({ id }: { id: string }) => await store.get(id),
-  });
-};
-
-export function vectordb<T>(config: {
-  store: VectorMemory<T>;
-}): VectorDBComponent<T, T>;
-export function vectordb<T>(config: {
-  store: VectorMemory<string>;
-  format: VectorDBFormatter<T>;
-}): VectorDBComponent<T, string>;
-export function vectordb<T>(config: VectorDBConfig<T>) {
-  if ("format" in config) {
-    return createVectorDb<T, string>(config.store, config.format);
+  constructor(store: VectorMemory<T>) {
+    this.store = store;
   }
 
-  return createVectorDb<T, T>(config.store, (data) => data);
+  plugin<P = unknown>(options: VectorDBSearchOptions): PromptPlugin<P> {
+    return new VectorDBPlugin<P, T>(this, options);
+  }
+
+  async index(options: VectorDBEntry<T>): Promise<void> {
+    await this.store.set(options.id, options.data, options.metadata);
+  }
+
+  async load(options: { id: string }): Promise<MemoryEntry<T> | null> {
+    return await this.store.get(options.id);
+  }
+
+  async search(query: string, limit: number): Promise<VectorSearchResult<T>[]> {
+    return await this.store.search(query, { limit });
+  }
 }
+
+export const vectordb = <T>(store: VectorMemory<T>): VectorDB<T> => {
+  return new VectorDB(store);
+};

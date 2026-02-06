@@ -27,8 +27,8 @@ const store = new ChromaStore({
   embed: async (text) => embed(text), // supply your embedding function
 });
 
-const vectors = cria.vectordb({ store });
-const retrieval = vectors({ query: userQuestion, limit: 5 });
+const vectors = cria.vectordb(store);
+const retrieval = vectors.plugin({ query: userQuestion, limit: 5 });
 
 const prompt = cria
   .prompt()
@@ -46,7 +46,7 @@ await vectors.index({
   metadata: { userId, sessionId },
 });
 
-const retrieval = vectors({
+const retrieval = vectors.plugin({
   query: userQuestion,
   limit: 5,
   filter: { userId, sessionId },
@@ -67,8 +67,8 @@ const store = new SqliteVectorStore<string>({
   schema: z.string(),
 });
 
-const vectors = cria.vectordb({ store });
-const retrieval = vectors({ query: userQuestion, limit: 5 });
+const vectors = cria.vectordb(store);
+const retrieval = vectors.plugin({ query: userQuestion, limit: 5 });
 
 const prompt = cria
   .prompt()

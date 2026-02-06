@@ -34,9 +34,9 @@ const summarizer = cria.summarizer({
   store: memory,
   provider,
 });
-const vectors = cria.vectordb({ store });
-const summary = summarizer({ history: conversation });
-const retrieval = vectors({ query, limit: 8 });
+const vectors = cria.vectordb(store);
+const summary = summarizer.plugin({ history: conversation });
+const retrieval = vectors.plugin({ query, limit: 8 });
 
 const messages = await cria
   .prompt(provider)
@@ -102,8 +102,8 @@ const response = await client.chat.completions.create({ model, messages });
 <summary><strong>RAG with vector search</strong></summary>
 
 ```ts
-const vectors = cria.vectordb({ store: qdrant });
-const retrieval = vectors({ query, limit: 10 });
+const vectors = cria.vectordb(qdrant);
+const retrieval = vectors.plugin({ query, limit: 10 });
 
 const messages = await cria
   .prompt(provider)
@@ -125,7 +125,7 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer({ history: conversation });
+const summary = summarizer.plugin({ history: conversation });
 
 const messages = await cria
   .prompt(provider)
@@ -148,9 +148,9 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer({ history: conversation });
-const vectors = cria.vectordb({ store: qdrant });
-const retrieval = vectors({ query, limit: 10 });
+const summary = summarizer.plugin({ history: conversation });
+const vectors = cria.vectordb(qdrant);
+const retrieval = vectors.plugin({ query, limit: 10 });
 
 const messages = await cria
   .prompt(provider)
@@ -305,7 +305,7 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer({ history: conversation });
+const summary = summarizer.plugin({ history: conversation });
 
 const messages = await cria
   .prompt(provider)
@@ -335,7 +335,7 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer({ history: conversation });
+const summary = summarizer.plugin({ history: conversation });
 
 const messages = await cria
   .prompt(provider)
@@ -365,7 +365,7 @@ const summarizer = cria.summarizer({
   priority: 2,
   provider,
 });
-const summary = summarizer({ history: conversation });
+const summary = summarizer.plugin({ history: conversation });
 
 const messages = await cria
   .prompt(provider)
@@ -393,10 +393,8 @@ const store = new SqliteVectorStore<string>({
   schema: z.string(),
 });
 
-const vectors = cria.vectordb({
-  store,
-});
-const retrieval = vectors({ query, limit: 10 });
+const vectors = cria.vectordb(store);
+const retrieval = vectors.plugin({ query, limit: 10 });
 
 const messages = await cria
   .prompt(provider)
@@ -424,10 +422,8 @@ const store = new ChromaStore({
   embed: async (text) => await getEmbedding(text),
 });
 
-const vectors = cria.vectordb({
-  store,
-});
-const retrieval = vectors({ query, limit: 10 });
+const vectors = cria.vectordb(store);
+const retrieval = vectors.plugin({ query, limit: 10 });
 
 const messages = await cria
   .prompt(provider)
@@ -455,10 +451,8 @@ const store = new QdrantStore({
   embed: async (text) => await getEmbedding(text),
 });
 
-const vectors = cria.vectordb({
-  store,
-});
-const retrieval = vectors({ query, limit: 10 });
+const vectors = cria.vectordb(store);
+const retrieval = vectors.plugin({ query, limit: 10 });
 
 const messages = await cria
   .prompt(provider)

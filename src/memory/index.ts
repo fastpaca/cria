@@ -8,10 +8,7 @@ export type {
   VectorSearchResult,
 } from "./vector";
 export type {
-  VectorDBComponent,
-  VectorDBConfig,
   VectorDBEntry,
-  VectorDBFormatter,
   VectorDBSearchOptions,
 } from "./vector-db";
-export { vectordb } from "./vector-db";
+export { VectorDB, vectordb } from "./vector-db";
