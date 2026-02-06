@@ -40,7 +40,6 @@ export type {
   KVMemory,
   MemoryEntry,
   StoredSummary,
-  UserScopeOptions,
   VectorDBComponent,
   VectorDBConfig,
   VectorDBEntry,
@@ -54,8 +53,6 @@ export type {
 export {
   InMemoryStore,
   StoredSummarySchema,
-  scopeKVStore,
-  scopeVectorStore,
   summarizer,
   vectordb,
 } from "./memory";
