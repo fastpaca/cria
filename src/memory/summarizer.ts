@@ -107,6 +107,11 @@ export class Summarizer {
     };
   }
 
+  async get(options: { id?: string } = {}): Promise<string | null> {
+    const entry = await this.load(options);
+    return entry?.data.content.trim() || null;
+  }
+
   async renderPlugin(options: SummarizerOptions) {
     const summaryId = this.resolveId(options.id);
     const summaryMetadata = this.resolveMetadata(options.metadata);
