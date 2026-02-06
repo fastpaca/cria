@@ -1,25 +1,11 @@
-import {
-  c,
-  cria,
-  PromptBuilder,
-  prompt,
-  type StoredSummary,
-} from "@fastpaca/cria";
-import { InMemoryStore } from "@fastpaca/cria/memory";
-import {
-  ListMessageCodec,
-  ModelProvider,
-  type ProviderRenderContext,
-} from "@fastpaca/cria/provider";
+import { c, cria, PromptBuilder, prompt } from "@fastpaca/cria";
 import { render } from "@fastpaca/cria/render";
 import type {
   PromptLayout,
-  PromptMessage,
   PromptMessageNode,
   PromptNode,
 } from "@fastpaca/cria/types";
 import { describe, expect, test } from "vitest";
-import type { ZodType } from "zod";
 import { createTestProvider } from "../utils/plaintext";
 
 const provider = createTestProvider({
@@ -32,62 +18,6 @@ const renderBuilder = async (
   builder: PromptBuilder<unknown, "unpinned" | "pinned">,
   budget = 10_000
 ): Promise<string> => render(await builder.build(), { provider, budget });
-
-interface FakeToolIO {
-  callInput: string;
-  resultOutput: string;
-}
-
-interface FakeInputMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-class FakeInputCodec extends ListMessageCodec<FakeInputMessage, FakeToolIO> {
-  protected toProviderMessage(args: {
-    message: PromptMessage<FakeToolIO>;
-    index: number;
-    context?: ProviderRenderContext;
-  }): readonly FakeInputMessage[] {
-    const { message } = args;
-    if (message.role === "tool") {
-      return [];
-    }
-    return [{ role: message.role, content: message.text }];
-  }
-
-  protected fromProviderMessage(
-    message: FakeInputMessage
-  ): readonly PromptMessage<FakeToolIO>[] {
-    return [{ role: message.role, text: message.content }];
-  }
-}
-
-class FakeInputProvider extends ModelProvider<FakeInputMessage[], FakeToolIO> {
-  readonly codec = new FakeInputCodec();
-
-  countTokens(rendered: FakeInputMessage[]): number {
-    return rendered.reduce(
-      (total, message) => total + message.content.length,
-      0
-    );
-  }
-
-  completion(
-    _rendered: FakeInputMessage[],
-    _context?: ProviderRenderContext
-  ): string {
-    return "";
-  }
-
-  object<T>(
-    _rendered: FakeInputMessage[],
-    _schema: ZodType<T>,
-    _context?: ProviderRenderContext
-  ): never {
-    throw new Error("Not implemented");
-  }
-}
 
 describe("PromptBuilder", () => {
   describe("basic usage", () => {
@@ -206,46 +136,6 @@ describe("PromptBuilder", () => {
 
       expect(result).toBe("system: System history.\n\nuser: User history.");
     });
-
-    test("input() accepts provider-native inputs", async () => {
-      const provider = new FakeInputProvider();
-      const input: FakeInputMessage[] = [
-        { role: "system", content: "System history." },
-        { role: "user", content: "User history." },
-      ];
-
-      const output = await cria
-        .prompt(provider)
-        .input(input)
-        .render({ budget: 1000 });
-
-      expect(output).toEqual(input);
-    });
-
-    test("summary accepts provider-native inputs", async () => {
-      const provider = new FakeInputProvider();
-      const store = new InMemoryStore<StoredSummary>();
-      const input: FakeInputMessage[] = [
-        { role: "system", content: "System history." },
-        { role: "user", content: "User history." },
-      ];
-
-      const summary = cria
-        .summarizer({
-          id: "history",
-          store,
-          priority: 1,
-          provider,
-        })
-        .plugin({ history: cria.input(input) });
-
-      const output = await cria
-        .prompt(provider)
-        .use(summary)
-        .render({ budget: 1000 });
-
-      expect(output).toEqual(input);
-    });
   });
 
   describe("scopes", () => {
@@ -328,7 +218,7 @@ describe("PromptBuilder", () => {
       const builder = cria.prompt().omit({ kind: "unknown" } as never);
 
       await expect(builder.build()).rejects.toThrow(
-        "Scope content must be prompt nodes, prompt builders, or input wrappers."
+        "Scope content must be prompt nodes, prompt builders, or input layouts."
       );
     });
   });

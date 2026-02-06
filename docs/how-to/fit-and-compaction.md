@@ -13,11 +13,12 @@ import { cria } from "@fastpaca/cria";
 import { createProvider } from "@fastpaca/cria/openai";
 
 const provider = createProvider(new OpenAI(), "gpt-4o-mini");
+const conversation = cria.history({ history });
 
 const output = await cria
   .prompt(provider)
   .system("You are a helpful assistant.")
-  .truncate(cria.input(history), { budget: 4000, priority: 2 })
+  .truncate(cria.prompt().use(conversation), { budget: 4000, priority: 2 })
   .omit(optionalExamples, { priority: 3 })
   .user(question)
   .render({ budget: 8000 });
