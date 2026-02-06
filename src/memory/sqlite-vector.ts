@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { MemoryEntry } from "./key-value";
 import type { SqliteConnectionOptions, SqliteDatabase } from "./sqlite";
 import type {
-  VectorSearchFilter,
   VectorSearchOptions,
   VectorSearchResult,
   VectorStore,
@@ -63,36 +62,6 @@ const sqliteRowSchema = z.object({
 const searchRowSchema = sqliteRowSchema.extend({
   distance: z.number(),
 });
-
-const toMetadataPath = (key: string): string => {
-  return `$.${key}`;
-};
-
-const buildFilterClause = (
-  filter: VectorSearchFilter | undefined
-): { sql: string; args: Array<string | number | boolean> } => {
-  if (filter === undefined) {
-    return { sql: "", args: [] };
-  }
-
-  const entries = Object.entries(filter);
-  if (entries.length === 0) {
-    return { sql: "", args: [] };
-  }
-
-  const predicates: string[] = [];
-  const args: Array<string | number | boolean> = [];
-
-  for (const [key, value] of entries) {
-    predicates.push(`json_extract(COALESCE(t.metadata, '{}'), ?) = ?`);
-    args.push(toMetadataPath(key), value);
-  }
-
-  return {
-    sql: `WHERE ${predicates.join(" AND ")}`,
-    args,
-  };
-};
 
 /**
  * SQLite-backed implementation of VectorStore.
@@ -282,14 +251,41 @@ export class SqliteVectorStore<T = unknown> implements VectorStore<T> {
     }
 
     const threshold = options?.threshold;
-    const filterClause = buildFilterClause(options?.filter);
-    const hasFilter = filterClause.sql.length > 0;
+    const filterEntries = options?.filter
+      ? Object.entries(options.filter)
+      : undefined;
 
     const queryVector = this.embeddingSchema.parse(await this.embedFn(query));
     const serializedQuery = JSON.stringify(queryVector);
 
-    const sql = hasFilter
-      ? `
+    let sql = `
+      SELECT
+        t.key,
+        t.data,
+        t.created_at,
+        t.updated_at,
+        t.metadata,
+        vector_distance_cos(t.embedding, vector32(?)) AS distance
+      FROM vector_top_k(
+        ?,
+        vector32(?),
+        CAST(? AS INTEGER)
+      ) AS i
+      JOIN ${this.tableName} AS t ON t.rowid = i.id
+      ORDER BY distance ASC
+    `;
+    const args: Array<string | number | boolean> = [
+      serializedQuery,
+      `${this.tableName}_vector_idx`,
+      serializedQuery,
+      limit,
+    ];
+
+    if (filterEntries && filterEntries.length > 0) {
+      const predicates = filterEntries.map(
+        () => "json_extract(COALESCE(t.metadata, '{}'), ?) = ?"
+      );
+      sql = `
         SELECT
           t.key,
           t.data,
@@ -298,34 +294,19 @@ export class SqliteVectorStore<T = unknown> implements VectorStore<T> {
           t.metadata,
           vector_distance_cos(t.embedding, vector32(?)) AS distance
         FROM ${this.tableName} AS t
-        ${filterClause.sql}
+        WHERE ${predicates.join(" AND ")}
         ORDER BY distance ASC
         LIMIT CAST(? AS INTEGER)
-      `
-      : `
-        SELECT
-          t.key,
-          t.data,
-          t.created_at,
-          t.updated_at,
-          t.metadata,
-          vector_distance_cos(t.embedding, vector32(?)) AS distance
-        FROM vector_top_k(
-          ?,
-          vector32(?),
-          CAST(? AS INTEGER)
-        ) AS i
-        JOIN ${this.tableName} AS t ON t.rowid = i.id
-        ORDER BY distance ASC
       `;
-    const args = hasFilter
-      ? [serializedQuery, ...filterClause.args, limit]
-      : [
-          serializedQuery,
-          `${this.tableName}_vector_idx`,
-          serializedQuery,
-          limit,
-        ];
+
+      args.length = 0;
+      args.push(serializedQuery);
+      for (const [key, value] of filterEntries) {
+        args.push(`$.${key}`);
+        args.push(value);
+      }
+      args.push(limit);
+    }
 
     const result = await this.db.execute({
       sql,
