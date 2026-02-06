@@ -80,30 +80,26 @@ export interface VectorDBEntry<T> {
 }
 
 const DEFAULT_SEARCH_LIMIT = 10;
-
-const formatEntry = <T>(data: T): string => {
-  if (typeof data === "string") {
-    return data;
-  }
-  return JSON.stringify(data, null, 2);
-};
+const EMPTY_SEARCH_RESULTS_MESSAGE = "Vector search returned no results.";
 
 const formatResults = <T>(results: VectorSearchResult<T>[]): string => {
   if (results.length === 0) {
-    return "Vector search returned no results.";
+    return EMPTY_SEARCH_RESULTS_MESSAGE;
   }
 
-  return results
-    .map((result, index) => {
-      return `[${index + 1}] (score: ${result.score.toFixed(3)})\n${formatEntry(
-        result.entry.data
-      )}`;
-    })
-    .join("\n\n");
-};
+  const sections: string[] = [];
+  for (const [index, result] of results.entries()) {
+    const content =
+      typeof result.entry.data === "string"
+        ? result.entry.data
+        : JSON.stringify(result.entry.data, null, 2);
 
-const resolveSearchLimit = (limit?: number): number => {
-  return Math.max(0, Math.trunc(limit ?? DEFAULT_SEARCH_LIMIT));
+    sections.push(
+      `[${index + 1}] (score: ${result.score.toFixed(3)})\n${content}`
+    );
+  }
+
+  return sections.join("\n\n");
 };
 
 class VectorDBPlugin<P, T> implements PromptPlugin<P> {
@@ -144,45 +140,33 @@ export class VectorDB<T> {
     return await this.store.get(options.id);
   }
 
-  async search(query: string, limit: number): Promise<VectorSearchResult<T>[]>;
   async search(
     query: string,
-    options?: VectorSearchOptions
-  ): Promise<VectorSearchResult<T>[]>;
-  async search(
-    query: string,
-    limitOrOptions: number | VectorSearchOptions = {}
+    options: VectorSearchOptions = {}
   ): Promise<VectorSearchResult<T>[]> {
-    const options =
-      typeof limitOrOptions === "number"
-        ? { limit: limitOrOptions }
-        : limitOrOptions;
-    return await this.store.search(query, options);
-  }
-
-  async renderSearch(options: VectorDBSearchOptions): Promise<string> {
-    const results = await this.searchWithFilter(options);
-    return formatResults(results);
-  }
-
-  private async searchWithFilter(
-    options: VectorDBSearchOptions
-  ): Promise<VectorSearchResult<T>[]> {
-    const query = options.query.trim();
-    if (!query) {
-      throw new Error("VectorDB search requires a non-empty query.");
-    }
-
-    const limit = resolveSearchLimit(options.limit);
+    const limit = Math.max(
+      0,
+      Math.trunc(options.limit ?? DEFAULT_SEARCH_LIMIT)
+    );
     if (limit === 0) {
       return [];
     }
 
-    return await this.search(query, {
+    return await this.store.search(query, {
+      ...options,
       limit,
-      ...(options.threshold !== undefined && { threshold: options.threshold }),
-      ...(options.filter !== undefined && { filter: options.filter }),
     });
+  }
+
+  async renderSearch(options: VectorDBSearchOptions): Promise<string> {
+    const { query: rawQuery, ...searchOptions } = options;
+    const query = rawQuery.trim();
+    if (!query) {
+      throw new Error("VectorDB search requires a non-empty query.");
+    }
+
+    const results = await this.search(query, searchOptions);
+    return formatResults(results);
   }
 }
 
