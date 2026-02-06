@@ -124,6 +124,22 @@ describe("vector search", () => {
 
     expect(store.lastLimit).toBe(5);
   });
+
+  test("vector search with zero limit skips backend search", async () => {
+    const store = new SpyVectorStore<{
+      title: string;
+      content: string;
+    }>();
+    const vectors = cria.vectordb(store);
+
+    const output = await cria
+      .prompt()
+      .use(vectors.plugin({ query: "valid query", limit: 0 }))
+      .render({ provider, budget: 10_000 });
+
+    expect(output).toContain("Vector search returned no results");
+    expect(store.searchCalls).toBe(0);
+  });
 });
 
 class SpyVectorStore<T> implements VectorStore<T> {

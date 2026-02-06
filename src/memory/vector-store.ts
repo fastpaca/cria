@@ -180,6 +180,10 @@ export class VectorDB<T> {
     }
 
     const limit = resolveSearchLimit(options.limit);
+    if (limit === 0) {
+      return [];
+    }
+
     const filter = options.filter;
     const searchLimit = filter
       ? limit * DEFAULT_FILTER_OVERFETCH_MULTIPLIER
