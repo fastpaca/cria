@@ -1,3 +1,10 @@
+## [1.7.6](https://github.com/fastpaca/cria/compare/v1.7.5...v1.7.6) (2026-02-06)
+
+
+### Features
+
+* **memory:** add history plugin and remove input wrappers ([f7f14e6](https://github.com/fastpaca/cria/commit/f7f14e6cb83b5d2dc8ec4c03f30c17230e75f62e))
+
 ## [1.7.5](https://github.com/fastpaca/cria/compare/v1.7.4...v1.7.5) (2026-02-06)
 
 
