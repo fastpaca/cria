@@ -32,15 +32,6 @@ export type StoredSummary = z.infer<typeof StoredSummarySchema>;
 
 export type SummarizerProvider = ModelProvider<unknown, ProviderToolIO>;
 
-const DEFAULT_SUMMARIZER_SYSTEM_PROMPT =
-  "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
-
-const DEFAULT_SUMMARIZER_INITIAL_INSTRUCTION =
-  "Summarize the conversation above.";
-
-const DEFAULT_SUMMARIZER_UPDATE_INSTRUCTION =
-  "Update the summary based on the previous summary and the conversation above.";
-
 type SummarizerPromptSeed = string | ScopeContent<SummarizerProvider>;
 
 export interface SummarizerPromptContext {
@@ -96,7 +87,9 @@ export class Summarizer {
     this.defaultId = config.id;
     this.provider = config.provider;
     this.defaultMetadata = config.metadata;
-    this.defaultPrompt = config.prompt ?? DEFAULT_SUMMARIZER_SYSTEM_PROMPT;
+    this.defaultPrompt =
+      config.prompt ??
+      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
     this.messageRole = config.role ?? "system";
     this.priority = config.priority;
   }
@@ -238,8 +231,8 @@ export class Summarizer {
 
     builder = builder.user(
       existingSummary
-        ? DEFAULT_SUMMARIZER_UPDATE_INSTRUCTION
-        : DEFAULT_SUMMARIZER_INITIAL_INSTRUCTION
+        ? "Update the summary based on the previous summary and the conversation above."
+        : "Summarize the conversation above."
     );
 
     return builder;
