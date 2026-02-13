@@ -1,3 +1,15 @@
+## [1.7.7](https://github.com/fastpaca/cria/compare/v1.7.6...v1.7.7) (2026-02-13)
+
+
+### Bug Fixes
+
+* **memory:** resolve prompt seed nodes via summarizer helper ([8887611](https://github.com/fastpaca/cria/commit/8887611a6b861037b0b7dffe67d32a1912683e33))
+
+
+### Features
+
+* **memory:** support configurable summarizer prompt seeds ([e20e824](https://github.com/fastpaca/cria/commit/e20e8243a2a5d36209e184a5d586ce579e482bf3))
+
 ## [1.7.6](https://github.com/fastpaca/cria/compare/v1.7.5...v1.7.6) (2026-02-06)
 
 
