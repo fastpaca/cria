@@ -115,6 +115,108 @@ describe("summary helper", () => {
     expect(provider.lastRendered).toContain("user: new detail");
   });
 
+  test("summary supports system prompt override", async () => {
+    const store = new InMemoryStore<StoredSummary>();
+    store.set("conv-existing", { content: "previous summary" });
+    const provider = new RecordingSummaryProvider("updated");
+
+    const summary = cria.summarizer({
+      id: "conv-existing",
+      store,
+      provider,
+      prompt:
+        "You are a strict summarizer. Return compact JSON.",
+    });
+
+    const output = await summary.writeNow({
+      history: cria.prompt().user("new detail"),
+    });
+
+    expect(output).toBe("updated");
+    expect(provider.lastRendered).toContain(
+      "system: You are a strict summarizer. Return compact JSON."
+    );
+    expect(provider.lastRendered).toContain(
+      "assistant: Current summary:\nprevious summary"
+    );
+    expect(provider.lastRendered).toContain(
+      "user: Update the summary based on the previous summary and the conversation above."
+    );
+    expect(provider.lastRendered).toContain("user: new detail");
+    expect(provider.lastRendered).not.toContain(
+      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation."
+    );
+  });
+
+  test("summary supports prompt builder factories", async () => {
+    const store = new InMemoryStore<StoredSummary>();
+    const provider = new RecordingSummaryProvider("updated");
+
+    const summary = cria.summarizer({
+      id: "conv-builder-prompt",
+      store,
+      provider,
+      prompt: ({ existingSummary }) => {
+        let builder = cria.prompt().system("Factory summary start");
+        if (existingSummary) {
+          builder = builder.user(`Previous summary: ${existingSummary}`);
+        }
+        return builder;
+      },
+    });
+
+    const output = await summary.writeNow({
+      history: cria.prompt().user("User asked about billing."),
+    });
+
+    expect(output).toBe("updated");
+    expect(provider.lastRendered).toContain("system: Factory summary start");
+    expect(provider.lastRendered).toContain("user: Summarize the conversation above.");
+    expect(provider.lastRendered).toContain("user: User asked about billing.");
+  });
+
+  test("summary supports prompt builder seeds", async () => {
+    const store = new InMemoryStore<StoredSummary>();
+    const provider = new RecordingSummaryProvider("updated");
+
+    const summary = cria.summarizer({
+      id: "conv-builder-seed",
+      store,
+      provider,
+      prompt: cria.prompt().system("Seeded summary prompt"),
+    });
+
+    const output = await summary.writeNow({
+      history: cria.prompt().user("Need a recap."),
+    });
+
+    expect(output).toBe("updated");
+    expect(provider.lastRendered).toContain("system: Seeded summary prompt");
+    expect(provider.lastRendered).toContain("user: Need a recap.");
+    expect(provider.lastRendered).toContain("user: Summarize the conversation above.");
+  });
+
+  test("writeNow prompt override wins over config prompt", async () => {
+    const store = new InMemoryStore<StoredSummary>();
+    const provider = new RecordingSummaryProvider("updated");
+
+    const summary = cria.summarizer({
+      id: "conv-prompt-precedence",
+      store,
+      provider,
+      prompt: "Config prompt",
+    });
+
+    const output = await summary.writeNow({
+      history: cria.prompt().user("Need a recap."),
+      prompt: "Call-site prompt",
+    });
+
+    expect(output).toBe("updated");
+    expect(provider.lastRendered).toContain("system: Call-site prompt");
+    expect(provider.lastRendered).not.toContain("system: Config prompt");
+  });
+
   test("summary supports inputLayout history", async () => {
     const store = new InMemoryStore<StoredSummary>();
     const summary = cria

@@ -32,10 +32,30 @@ export type StoredSummary = z.infer<typeof StoredSummarySchema>;
 
 export type SummarizerProvider = ModelProvider<unknown, ProviderToolIO>;
 
+const DEFAULT_SUMMARIZER_SYSTEM_PROMPT =
+  "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information.";
+
+const DEFAULT_SUMMARIZER_INITIAL_INSTRUCTION =
+  "Summarize the conversation above.";
+
+const DEFAULT_SUMMARIZER_UPDATE_INSTRUCTION =
+  "Update the summary based on the previous summary and the conversation above.";
+
+type SummarizerPromptSeed = string | ScopeContent<SummarizerProvider>;
+
+export interface SummarizerPromptContext {
+  existingSummary: string | null;
+}
+
+export type SummarizerPrompt = SummarizerPromptSeed | ((
+  context: SummarizerPromptContext
+) => SummarizerPromptSeed | Promise<SummarizerPromptSeed>);
+
 export interface SummarizerOptions {
   history: ScopeContent<SummarizerProvider>;
   id?: string;
   metadata?: Record<string, unknown>;
+  prompt?: SummarizerPrompt;
 }
 
 export interface SummarizerConfig {
@@ -43,6 +63,7 @@ export interface SummarizerConfig {
   id: string;
   provider: SummarizerProvider;
   metadata?: Record<string, unknown>;
+  prompt?: SummarizerPrompt;
   role?: PromptRole;
   priority?: number;
 }
@@ -68,12 +89,14 @@ export class Summarizer {
   private readonly defaultMetadata: Record<string, unknown> | undefined;
   private readonly messageRole: PromptRole;
   private readonly priority: number | undefined;
+  private readonly defaultPrompt: SummarizerPrompt;
 
   constructor(config: SummarizerConfig) {
     this.store = config.store;
     this.defaultId = config.id;
     this.provider = config.provider;
     this.defaultMetadata = config.metadata;
+    this.defaultPrompt = config.prompt ?? DEFAULT_SUMMARIZER_SYSTEM_PROMPT;
     this.messageRole = config.role ?? "system";
     this.priority = config.priority;
   }
@@ -90,7 +113,12 @@ export class Summarizer {
       ...(this.priority !== undefined ? { priority: this.priority } : {}),
     });
 
-    return await this.summarize(target, summaryId, summaryMetadata);
+    return await this.summarize(
+      target,
+      summaryId,
+      summaryMetadata,
+      options.prompt
+    );
   }
 
   async load(
@@ -125,7 +153,8 @@ export class Summarizer {
         const summaryText = await this.summarize(
           input.target,
           summaryId,
-          summaryMetadata
+          summaryMetadata,
+          options.prompt
         );
 
         const message = createMessage<TToolIO>(this.messageRole, [
@@ -157,35 +186,74 @@ export class Summarizer {
   private async summarize(
     target: PromptScope<ProviderToolIO>,
     summaryId: string,
-    summaryMetadata: Record<string, unknown> | undefined
+    summaryMetadata: Record<string, unknown> | undefined,
+    summaryPrompt?: SummarizerPrompt
   ): Promise<string> {
     const existingEntry = await this.store.get(summaryId);
     const existingSummary = existingEntry
       ? StoredSummarySchema.parse(existingEntry.data).content
       : null;
 
-    let builder = PromptBuilder.create(this.provider).system(
-      "You are a conversation summarizer. Create a concise summary that captures the key points and context needed to continue the conversation. Be brief but preserve essential information."
+    const seed = await this.resolvePromptSeed(
+      {
+        existingSummary,
+      },
+      summaryPrompt
     );
+    const prompt = await this.makeBuilderFromSeed(seed);
+    const builder = this.applySummaryFlow(prompt, existingSummary, target.children);
+
+    const summaryPromptTree = await builder.build();
+    const rendered = await render(summaryPromptTree, { provider: this.provider });
+    const summaryText = await this.provider.completion(rendered);
+
+    await this.store.set(summaryId, { content: summaryText }, summaryMetadata);
+    return summaryText;
+  }
+
+  private async resolvePromptSeed(
+    context: SummarizerPromptContext,
+    customPrompt?: SummarizerPrompt
+  ): Promise<SummarizerPromptSeed> {
+    const template = customPrompt ?? this.defaultPrompt;
+    if (typeof template === "function") {
+      return await template(context);
+    }
+
+    return template;
+  }
+
+  private applySummaryFlow(
+    basePrompt: PromptBuilder<SummarizerProvider>,
+    existingSummary: string | null,
+    historyChildren: PromptScope<ProviderToolIO>["children"]
+  ): PromptBuilder<SummarizerProvider> {
+    let builder = basePrompt;
 
     if (existingSummary) {
       builder = builder.assistant(`Current summary:\n${existingSummary}`);
     }
 
-    builder = builder.merge(target.children);
+    builder = builder.merge(historyChildren);
 
     builder = builder.user(
       existingSummary
-        ? "Update the summary based on the previous summary and the conversation above."
-        : "Summarize the conversation above."
+        ? DEFAULT_SUMMARIZER_UPDATE_INSTRUCTION
+        : DEFAULT_SUMMARIZER_INITIAL_INSTRUCTION
     );
 
-    const summaryPrompt = await builder.build();
-    const rendered = await render(summaryPrompt, { provider: this.provider });
-    const summaryText = await this.provider.completion(rendered);
+    return builder;
+  }
 
-    await this.store.set(summaryId, { content: summaryText }, summaryMetadata);
-    return summaryText;
+  private async makeBuilderFromSeed(
+    seed: SummarizerPromptSeed
+  ): Promise<PromptBuilder<SummarizerProvider>> {
+    if (typeof seed === "string") {
+      return PromptBuilder.create(this.provider).system(seed);
+    }
+
+    const nodes = await resolveScopeContent(seed, this.provider.codec);
+    return PromptBuilder.create(this.provider).merge(...nodes);
   }
 }
 
