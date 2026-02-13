@@ -253,7 +253,7 @@ export class Summarizer {
       return PromptBuilder.create(this.provider).system(seed);
     }
 
-    const nodes = await resolveScopeContent(seed, this.provider.codec);
+    const nodes = await this.resolveHistory(seed);
     return PromptBuilder.create(this.provider).merge(...nodes);
   }
 }
