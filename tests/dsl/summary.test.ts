@@ -124,8 +124,7 @@ describe("summary helper", () => {
       id: "conv-existing",
       store,
       provider,
-      prompt:
-        "You are a strict summarizer. Return compact JSON.",
+      prompt: "You are a strict summarizer. Return compact JSON.",
     });
 
     const output = await summary.writeNow({
@@ -171,7 +170,9 @@ describe("summary helper", () => {
 
     expect(output).toBe("updated");
     expect(provider.lastRendered).toContain("system: Factory summary start");
-    expect(provider.lastRendered).toContain("user: Summarize the conversation above.");
+    expect(provider.lastRendered).toContain(
+      "user: Summarize the conversation above."
+    );
     expect(provider.lastRendered).toContain("user: User asked about billing.");
   });
 
@@ -193,7 +194,9 @@ describe("summary helper", () => {
     expect(output).toBe("updated");
     expect(provider.lastRendered).toContain("system: Seeded summary prompt");
     expect(provider.lastRendered).toContain("user: Need a recap.");
-    expect(provider.lastRendered).toContain("user: Summarize the conversation above.");
+    expect(provider.lastRendered).toContain(
+      "user: Summarize the conversation above."
+    );
   });
 
   test("writeNow prompt override wins over config prompt", async () => {

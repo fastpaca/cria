@@ -38,9 +38,11 @@ export interface SummarizerPromptContext {
   existingSummary: string | null;
 }
 
-export type SummarizerPrompt = SummarizerPromptSeed | ((
-  context: SummarizerPromptContext
-) => SummarizerPromptSeed | Promise<SummarizerPromptSeed>);
+export type SummarizerPrompt =
+  | SummarizerPromptSeed
+  | ((
+      context: SummarizerPromptContext
+    ) => SummarizerPromptSeed | Promise<SummarizerPromptSeed>);
 
 export interface SummarizerOptions {
   history: ScopeContent<SummarizerProvider>;
@@ -194,10 +196,16 @@ export class Summarizer {
       summaryPrompt
     );
     const prompt = await this.makeBuilderFromSeed(seed);
-    const builder = this.applySummaryFlow(prompt, existingSummary, target.children);
+    const builder = this.applySummaryFlow(
+      prompt,
+      existingSummary,
+      target.children
+    );
 
     const summaryPromptTree = await builder.build();
-    const rendered = await render(summaryPromptTree, { provider: this.provider });
+    const rendered = await render(summaryPromptTree, {
+      provider: this.provider,
+    });
     const summaryText = await this.provider.completion(rendered);
 
     await this.store.set(summaryId, { content: summaryText }, summaryMetadata);
